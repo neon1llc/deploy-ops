@@ -22,6 +22,9 @@ This archive does not revoke previously granted MIT rights to that earlier code.
 
 No source code from the researched deployment platforms was copied into this release. Their ideas informed
 scope and design. Python libraries are dependencies with their own licenses, not renamed neon1 code.
+The bundled appearance library in `src/deploy_ops/ui/theme.mjs` retains its upstream MIT license in
+[licenses/theme-MIT.txt](../licenses/theme-MIT.txt). It supplies the semantic tokens, presets and preference
+validation. The console owns its browser integration and uses separate local appearance storage.
 A future copied feature set must record its exact source revision, original file paths, license, required
 notices, and local changes. Do not label an entire mixed-license repository permissive because its root is Apache-2.0.
 

@@ -1,6 +1,6 @@
 # Verification
 
-**Checked:** 2026-11-03 · **Candidate:** v0.3.0 preview
+**Checked:** 2026-11-03 · **Candidate:** v0.4.0 preview
 
 ## Local execution
 
@@ -30,14 +30,19 @@ keyboard unlock, configuration validation and save, workflow preview, two exact 
 pending cancellation, bounded delegation, app-only delivery, event history and lock.
 Promotion and rollback preserved the original static artifact through new approvals. Missing dependency
 receipts were explained without offering an executable control, and polling retained keyboard focus. Browser storage
-remained empty. The 390-pixel layout had no horizontal overflow. JavaScript syntax also passed.
+contained no credentials. The 390-pixel layout had no horizontal overflow. JavaScript syntax also passed.
+
+Appearance checks exercised all six presets, system preference changes, retained explicit choices, density,
+corner radius, unsaved workspace drafts, invalid and low-contrast import refusal, cross-tab updates,
+appearance-only export and storage, reset, and blocked-storage fallback. The narrow layout was inspected
+visually. Appearance settings use their own storage key and do not contain operator credentials.
 
 Cancellation during preparation produced an uncertain outcome. After inspecting events and the unchanged
 deployment pointer, explicit reconciliation allowed further work. That result does not prove that a
 cancelled cloud operation has stopped.
 
 Both the source distribution and wheel built successfully. Their contents retained Apache-2.0, NOTICE,
-and the prior MIT notice. The installed wheel includes the console, local starter and catalog resources.
+the prior MIT notice and the bundled theme MIT notice. The installed wheel includes the console, local starter and catalog resources.
 The source distribution includes shared test fixtures, check commands, configuration examples and user
 documentation so the documented checks can run from the extracted archive.
 Pinned requirements are version snapshots, not an independently audited dependency lock or SBOM.

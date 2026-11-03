@@ -91,7 +91,7 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
 
     @app.get("/assets/{name}")
     def asset(name: str):
-        if name not in ("app.js", "style.css"):
+        if name not in ("app.js", "style.css", "appearance.mjs", "theme.mjs"):
             raise HTTPException(404)
         return FileResponse(assets / name)
 

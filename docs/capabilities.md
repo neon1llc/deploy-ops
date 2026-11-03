@@ -1,6 +1,6 @@
 # Capabilities
 
-This table describes version 0.3.0. "Implemented" describes source behavior. "Live" means it actually ran
+This table describes version 0.4.0. "Implemented" describes source behavior. "Live" means it actually ran
 in this build environment. Mocked provider commands are not cloud integration evidence.
 
 | Capability | Current behavior | Evidence or limit |
@@ -24,6 +24,7 @@ in this build environment. Mocked provider commands are not cloud integration ev
 | Notifications | Durable outbox to JSON webhook, Slack webhook, or ntfy | Mocked HTTP retries and stable event IDs |
 | Paging escalation | External incident system can consume webhooks | Escalation, acknowledgement, and on-call schedule logic are not implemented |
 | Local GUI | Token unlock, config editor, graph preview, run, approval, local delegation, events, promotion and rollback | API tests and real headless Chrome journey on macOS, including keyboard unlock and narrow layout |
+| Appearance | System mode, six presets, validated import/export, density and radius | Real browser checks for drafts, storage failures and narrow layout |
 | Catalog | Curated prior-art and integration metadata | Research only, no automatic installation or subscriptions |
 | Cross-repo cloud coordination | Split-job IaC and native app worker building blocks | Durable cross-workflow receipt exchange not implemented |
 | Preview environments and cleanup | Planned contract and acceptance criteria | Not implemented |

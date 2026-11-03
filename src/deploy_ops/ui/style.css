@@ -1,23 +1,68 @@
-/* ui/style.css - Keep the operator console readable, responsive, and keyboard accessible. */
-:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #0b0f0d; color: #e8eeea; --accent: #b4ff39; }
-* { box-sizing: border-box; } body { margin: 0 auto; max-width: 1280px; padding: 32px; }
-header, .row, .controls { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-header { margin-bottom: 28px; } h1 { font-size: 2.3rem; margin: 8px 0; } h2 { font-size: 1.15rem; margin: 0 0 16px; }
-.brand { color: var(--accent); font-weight: 750; letter-spacing: .06em; } p { line-height: 1.6; }
-section, details { background: #131b16; border: 1px solid #2d3c31; border-radius: 14px; padding: 24px; margin-bottom: 20px; }
-.grid { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(360px, 1.7fr); gap: 20px; }
-input, select, button { font: inherit; border-radius: 7px; padding: 11px 14px; border: 1px solid #506354; }
-input, select { background: #09130c; color: inherit; max-width: 100%; } input[type=password] { width: min(100%, 520px); }
-label { display: grid; gap: 8px; margin-bottom: 16px; } .check { display: flex; align-items: center; margin: 16px 0; }
-button { background: var(--accent); color: #0b1600; cursor: pointer; font-weight: 650; } button.secondary { background: transparent; color: #e8eeea; }
-button:hover { filter: brightness(1.1); } button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
-.badge { border: 1px solid #607449; padding: 6px 12px; border-radius: 30px; } .muted, footer { color: #a1b2a6; }
-pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .83rem; line-height: 1.6; background: #080f0a; padding: 14px; border-radius: 8px; max-height: 360px; overflow: auto; }
-.release { width: 100%; text-align: left; display: block; margin: 10px 0; background: #1d2c20; color: #e8eeea; }
-.node { border-top: 1px solid #344b3a; padding: 18px 0; } #message { padding: 12px; overflow-wrap: anywhere; } .error { color: #ffb7ad; }
-footer { font-size: .8rem; padding: 16px 0; } [hidden] { display: none !important; }
-@media (max-width: 800px) { body { padding: 16px; } .grid { display: block; } section { padding: 18px; } }
+/* ui/style.css - Map reading surfaces and controls to the shared semantic theme. */
 
-textarea { width: 100%; resize: vertical; padding: 16px; background: #080f0a; color: #e8eeea; font: .85rem/1.6 monospace; border: 1px solid #506354; border-radius: 8px; margin-bottom: 16px; }
-textarea:focus-visible, #detail-heading:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+:root {
+  color-scheme: light dark;
+  font-family: var(--font, system-ui, sans-serif);
+  background: var(--bg, Canvas);
+  color: var(--text, CanvasText);
+  --space: 24px;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0 auto; max-width: 1280px; padding: 32px; }
+header, .row, .controls { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+header { margin-bottom: 28px; }
+h1 { font-size: 2.3rem; margin: 8px 0; }
+h2 { font-size: 1.15rem; margin: 0 0 16px; }
+p { line-height: 1.6; }
+.brand { color: var(--accent, LinkText); font-weight: 750; letter-spacing: .06em; }
+
+/* Opaque panels keep long evidence readable in every preset */
+section, details {
+  background: var(--panel, Canvas);
+  border: 1px solid var(--line, ButtonBorder);
+  border-radius: var(--radius, 10px);
+  padding: var(--space);
+  margin-bottom: 20px;
+  min-width: 0;
+}
+.grid { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(360px, 1.7fr); gap: 20px; }
+input, select, button { font: inherit; border-radius: var(--radius, 10px); padding: 11px 14px; border: 1px solid var(--line-strong, ButtonBorder); }
+input, select { background: var(--term, Field); color: inherit; max-width: 100%; }
+input[type=password] { width: min(100%, 520px); }
+label { display: grid; gap: 8px; margin-bottom: 16px; }
+.check { display: flex; align-items: center; margin: 16px 0; }
+button { background: var(--neon1, ButtonFace); color: var(--on-brand, ButtonText); cursor: pointer; font-weight: 650; }
+button:hover { background: var(--neon1-hover, ButtonFace); }
+button:active { background: var(--neon1-press, ButtonFace); }
+button.secondary { background: var(--panel-raised, Canvas); color: var(--text, CanvasText); }
+button.secondary:hover, .release:hover { border-color: var(--neon-focus, Highlight); }
 button:disabled { cursor: wait; opacity: .65; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible,
+textarea:focus-visible, #detail-heading:focus-visible { outline: 3px solid var(--neon-focus, Highlight); outline-offset: 3px; }
+
+.badge { border: 1px solid var(--line-strong, ButtonBorder); padding: 6px 12px; border-radius: var(--radius, 10px); }
+.muted, footer { color: var(--muted, CanvasText); }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font: .83rem/1.6 var(--mono, monospace); background: var(--term, Canvas); padding: 14px; border-radius: var(--radius, 10px); max-height: 360px; overflow: auto; }
+.release { width: 100%; text-align: left; display: block; margin: 10px 0; background: var(--panel-raised, Canvas); color: var(--text, CanvasText); }
+.node { border-top: 1px solid var(--line-strong, ButtonBorder); padding: 18px 0; }
+#message, #appearance-status { padding: 12px 0; overflow-wrap: anywhere; }
+.error { color: var(--error, CanvasText); }
+footer { font-size: .8rem; padding: 16px 0; }
+[hidden] { display: none !important; }
+textarea { width: 100%; resize: vertical; padding: 16px; background: var(--term, Field); color: var(--text, FieldText); font: .85rem/1.6 var(--mono, monospace); border: 1px solid var(--line-strong, ButtonBorder); border-radius: var(--radius, 10px); margin-bottom: 16px; }
+summary { cursor: pointer; font-weight: 650; }
+.appearance-settings__advanced { margin-top: 20px; background: var(--panel-raised, Canvas); }
+[data-theme-density=compact] { --space: 16px; }
+[data-theme-density=compact] input, [data-theme-density=compact] select, [data-theme-density=compact] button { padding: 8px 12px; }
+
+@media (max-width: 800px) {
+  body { padding: 16px; }
+  .grid { display: block; }
+  section, details { padding: min(var(--space), 18px); }
+  .controls > label { min-width: 0; max-width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

@@ -47,6 +47,13 @@ Successful application components offer promotion and rollback in the release de
 environment paths and explains missing dependency receipts. Each action reuses the artifact in a new release
 with fresh authority and target checks. There is no native Windows or macOS installer.
 
+Appearance follows the system by default. Open **Appearance** to choose a preset, density and corner radius.
+Advanced controls import and export validated appearance JSON, including optional custom colors. Invalid
+or low-contrast settings leave the current appearance and your draft intact. Changing a preset clears
+custom colors while retaining the selected density and radius. Reset restores the system default.
+Only appearance preferences use browser storage under `deploy-ops.appearance.v1`. Operator tokens stay in
+memory. If storage is unavailable, appearance changes still work for the current session.
+
 The UI and API bind to `127.0.0.1`. Do not reverse-proxy this local operator interface to the Internet.
 Use the separate authority service for authenticated remote workers. Do not serve deployed app files
 from the operator console's origin.

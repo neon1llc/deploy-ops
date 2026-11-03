@@ -1,7 +1,8 @@
 <!doctype html>
 <!-- ui/index.html - Review and operate a trusted local workspace without a frontend build tool. -->
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DeployOps by neon1</title><link rel="stylesheet" href="/assets/style.css"><script src="/assets/app.js" defer></script></head>
+<meta name="color-scheme" content="light dark">
+<title>DeployOps by neon1</title><link rel="stylesheet" href="/assets/style.css"><script type="module" src="/assets/appearance.mjs"></script><script src="/assets/app.js" defer></script></head>
 <body><header><div><span class="brand">neon1</span><h1>DeployOps</h1><p>Infrastructure and applications. One release history.</p></div><span id="mode" class="badge">Locked</span></header>
 <main><section id="unlock"><h2>Open your workspace</h2><p>Paste the token from the local operator token file. It stays in this tab's memory.</p>
 <form id="login"><label for="token">Operator token</label><input id="token" type="password" autocomplete="off" required><button>Unlock</button></form></section>
@@ -16,4 +17,18 @@
 <div class="grid"><section><div class="row"><h2>Releases</h2><button id="refresh" class="secondary">Refresh</button></div><div id="releases"></div></section>
 <section><h2 id="detail-heading" tabindex="-1">Release detail</h2><div id="detail"><p>Select a release to inspect changes and events.</p></div></section></div>
 <details><summary>Workspace configuration</summary><p>Use plain TOML. Keep secrets out of this file. Finish or cancel outstanding releases before saving.</p><label for="config">Deployment workspace</label><textarea id="config" rows="22" spellcheck="false"></textarea><div class="controls"><button id="validate-config" class="secondary">Validate configuration</button><button id="save-config">Save local configuration</button></div></details></div>
-<p id="message" role="status" aria-live="polite"></p></main><footer>DeployOps by neon1 LLC · Local operator console · Cloud actions require a trusted OIDC worker</footer></body></html>
+<p id="message" role="status" aria-live="polite"></p>
+<details class="appearance-settings"><summary>Appearance</summary>
+<p id="appearance-summary" class="muted">Follow your system or choose a preset. Appearance stays separate from deployment settings.</p>
+<form id="appearance-form">
+<div class="controls"><label>Theme<select id="appearance-theme"><option value="system">System</option></select></label>
+<label>Density<select id="appearance-density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
+<label>Corner radius (0–20 px)<input id="appearance-radius" type="number" min="0" max="20" step="1" value="10" required></label></div>
+<button type="submit">Apply appearance</button><button id="appearance-reset" type="button" class="secondary">Reset appearance</button>
+</form>
+<details class="appearance-settings__advanced"><summary>Import, export and custom colors</summary>
+<p>Export the current settings here, or import appearance JSON. Color overrides must preserve readable contrast. Deployment settings and credentials are never included.</p>
+<label for="appearance-json">Appearance JSON</label><textarea id="appearance-json" rows="8" maxlength="8192" spellcheck="false"></textarea>
+<div class="controls"><button id="appearance-export" type="button" class="secondary">Export current appearance</button><button id="appearance-import" type="button">Import appearance</button></div>
+</details><p id="appearance-status" role="status" aria-live="polite"></p></details>
+</main><footer>DeployOps by neon1 LLC · Local operator console · Cloud actions require a trusted OIDC worker</footer></body></html>

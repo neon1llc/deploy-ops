@@ -137,6 +137,9 @@ def test_console_auth_origin_and_same_core(engine):
     token = "t" * 40
     client = TestClient(create_app(engine, token), base_url="http://127.0.0.1:8765")
     assert client.get("/").status_code == 200
+    for asset in ("app.js", "style.css", "appearance.mjs", "theme.mjs"):
+        assert client.get("/assets/" + asset).status_code == 200
+    assert client.get("/assets/operator.token").status_code == 404
     assert client.get("/api/workspace").status_code == 401
     headers = {"Authorization": "Bearer " + token}
     assert client.get("/api/workspace", headers=headers).status_code == 200
