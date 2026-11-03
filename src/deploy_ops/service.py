@@ -66,6 +66,54 @@ class Controller:
             raise Refused("Target or policy changed. Submit a fresh plan")
         return target
 
+    def _output_receipt(self, connection, receipt_id: str, consumer: Target) -> dict:
+        request = self.store.request(connection, receipt_id)
+        receipt = request.get("output_receipt")
+        if not receipt or receipt["producer_target"] not in consumer.receipt_dependencies.values():
+            raise Refused("Receipt producer is not registered for this consumer", 403)
+        producer = self._current(request)
+        from .receipts import aws_scope
+        if (receipt["environment"] != consumer.environment or aws_scope(producer) != aws_scope(consumer)):
+            raise Refused("Receipt environment, account or region does not match this consumer", 403)
+        if (request["status"] != "succeeded" or request.get("receipt_revoked") or request.get("receipt_invalidated_by")
+                or self.now() >= receipt["expires_at"]):
+            raise Refused("Infrastructure receipt is expired, revoked or unresolved")
+        content = {key: value for key, value in receipt.items() if key != "digest"}
+        if fingerprint(content) != receipt["digest"]:
+            raise Refused("Infrastructure receipt content changed")
+        busy = connection.execute("SELECT id FROM requests WHERE target=? AND status IN ('running','uncertain')",
+                                  (receipt["producer_target"],)).fetchone()
+        newer = any(json.loads(row[0]).get("output_receipt", {}).get("generation", 0) > receipt["generation"]
+                    for row in connection.execute("SELECT data FROM requests WHERE target=? AND status='succeeded'",
+                                                  (receipt["producer_target"],)))
+        if busy or newer:
+            raise Refused("Infrastructure has newer or unresolved work. Use a fresh receipt")
+        return receipt
+
+    def _check_receipts(self, connection, target: Target, references: dict):
+        if set(references) != set(target.receipt_dependencies):
+            raise Refused("Provide exactly the registered infrastructure receipt dependencies", 422)
+        for dependency, reference in references.items():
+            receipt = self._output_receipt(connection, reference["id"], target)
+            if receipt["producer_target"] != target.receipt_dependencies[dependency] or receipt["digest"] != reference["digest"]:
+                raise Refused("Infrastructure receipt binding changed")
+
+    def output_receipt(self, receipt_id: str, target_name: str, source: Source) -> dict:
+        target = self.target(target_name)
+        self.check_source(target, source, "execute")
+        with self.store.connect() as connection:
+            return self._output_receipt(connection, receipt_id, target)
+
+    def revoke_receipt(self, receipt_id: str, approver: str) -> dict:
+        with self.store.transaction() as connection:
+            request = self.store.request(connection, receipt_id)
+            if not request.get("output_receipt"):
+                raise Refused("Infrastructure receipt not found", 404)
+            request["receipt_revoked"] = True
+            self.store.save_request(connection, request)
+            self._event(connection, approver, "receipt.revoked", request)
+        return {"id": receipt_id, "revoked": True}
+
     def submit(self, proposal: Proposal, source: Source) -> dict:
         target = self.target(proposal.target)
         self.check_source(target, source, "execute" if proposal.engine == "delivery" else "plan")
@@ -73,6 +121,11 @@ class Controller:
             raise Refused("Workspace differs from its registered delivery contract", 403)
         if proposal.engine not in target.engines:
             raise Refused("This engine is not enabled for the target", 403)
+        if target.receipt_outputs:
+            if proposal.tool_version != "1.10.0":
+                raise Refused("Infrastructure receipt extraction currently supports OpenTofu 1.10.0", 422)
+            if proposal.preview.get("deploy_ops_backend") != target.receipt_outputs.backend.model_dump():
+                raise Refused("Plan must bind the registered infrastructure backend", 422)
         preview = normalize(proposal.engine, target.cloud, proposal.preview)
         manifest = {
             "target": proposal.target, "cloud": target.cloud, "engine": proposal.engine,
@@ -83,6 +136,8 @@ class Controller:
             "estimated_monthly_delta_cents": proposal.estimated_monthly_delta_cents,
             "policy_digest": target.digest,
         }
+        if proposal.receipts:
+            manifest["receipts"] = {key: value.model_dump() for key, value in proposal.receipts.items()}
         digest = fingerprint(manifest)
         now = self.now()
         request = {
@@ -92,6 +147,7 @@ class Controller:
             "approval": None, "execution": None,
         }
         with self.store.transaction() as connection:
+            self._check_receipts(connection, target, manifest.get("receipts", {}))
             previous = connection.execute("SELECT data FROM requests WHERE digest=?", (digest,)).fetchone()
             if previous:
                 return self.public(json.loads(previous["data"]))
@@ -250,6 +306,7 @@ class Controller:
                 raise Refused("Execution must match the approved commit, run, attempt, and initiator", 403)
             if claim.digest != request["digest"] or claim.artifact_digest != request["manifest"]["artifact_digest"]:
                 raise Refused("Artifact or request digest changed")
+            self._check_receipts(connection, target, request["manifest"].get("receipts", {}))
             now = self.now()
             if self.store.paused(connection) or request["status"] != "approved":
                 raise Refused("Request is not available for execution")
@@ -276,7 +333,16 @@ class Controller:
                 "started_at": now, "deadline": deadline, "last_seen": now,
                 "token_hash": hashlib.sha256(token.encode()).hexdigest(),
                 "reported_outcome": None,
+                "source": source.model_dump(),
             }
+            if target.receipt_outputs:
+                # A failed apply can still mutate infrastructure; never revive its predecessor's receipt
+                for row in connection.execute("SELECT data FROM requests WHERE target=?", (request["manifest"]["target"],)).fetchall():
+                    previous = json.loads(row[0])
+                    if previous.get("output_receipt") and not previous.get("receipt_invalidated_by"):
+                        previous["receipt_invalidated_by"] = request_id
+                        self.store.save_request(connection, previous)
+                        self._event(connection, "controller", "receipt.invalidated", previous, execution_id=request_id)
             self.store.save_request(connection, request)
             self._event(connection, f"{source.kind}:{source.actor_id}", "execution.claimed", request,
                         approval_id=request["approval"]["id"], deadline=deadline)
@@ -293,6 +359,7 @@ class Controller:
             "tool_version": manifest["tool_version"], "lock_digest": manifest["lock_digest"],
             "commit": manifest["source"]["sha"], "deadline": request["execution"]["deadline"],
             "cloud": target.cloud, "identity": target.identity, "workdir": target.workdir,
+            "receipt_outputs": target.receipt_outputs.model_dump() if target.receipt_outputs else None,
         }
 
     @staticmethod
@@ -309,6 +376,7 @@ class Controller:
             self._check_execution_token(request, token)
             try:
                 target = self._current(request)
+                self._check_receipts(connection, target, request["manifest"].get("receipts", {}))
                 if request["status"] != "running" or self.store.paused(connection):
                     raise Refused("Execution is no longer authorized")
                 if self.now() >= request["execution"]["deadline"]:
@@ -338,7 +406,35 @@ class Controller:
             self._check_execution_token(request, token)
             execution = request["execution"]
             if execution["reported_outcome"] is not None:
+                if result.infrastructure and execution["reported_outcome"] == result.model_dump() and request.get("output_receipt"):
+                    return self.public(request)
                 raise Refused("An execution outcome was already reported")
+            target = self.settings.targets.get(request["manifest"]["target"])
+            if request["status"] == "running" and request["manifest"].get("receipts"):
+                try:
+                    self._check_receipts(connection, self._current(request), request["manifest"]["receipts"])
+                except Refused:
+                    request.update(status="uncertain", reason="Infrastructure evidence changed during execution")
+            if result.infrastructure:
+                target = self._current(request)
+                if not target.receipt_outputs or result.outcome != "succeeded" or result.exit_code != 0:
+                    raise Refused("Public outputs require a successful configured infrastructure execution", 422)
+                if request["status"] != "running" or self.now() >= execution["deadline"] or self.store.paused(connection):
+                    raise Refused("Uncertain or expired execution cannot issue an infrastructure receipt")
+                self._check_receipts(connection, target, request["manifest"].get("receipts", {}))
+                from .receipts import issue
+                for row in connection.execute("SELECT data FROM requests WHERE target=? AND status='succeeded'",
+                                              (request["manifest"]["target"],)).fetchall():
+                    previous = json.loads(row[0]).get("output_receipt")
+                    if previous and previous["policy_digest"] == target.digest:
+                        evidence = result.infrastructure
+                        if (previous["state_lineage"] != evidence.state_lineage or previous["state_serial"] > evidence.state_serial
+                                or (previous["state_serial"] == evidence.state_serial and previous["state_digest"] != evidence.state_digest)):
+                            raise Refused("Infrastructure state lineage or serial moved backwards or changed unexpectedly")
+                generation = connection.execute("SELECT COALESCE(MAX(sequence), 0) + 1 FROM audit").fetchone()[0]
+                request["output_receipt"] = issue(request, target, result.infrastructure, self.now(), generation)
+            elif target and target.receipt_outputs and result.outcome == "succeeded":
+                raise Refused("Successful infrastructure execution must include its public output receipt", 422)
             execution["reported_outcome"] = result.model_dump()
             execution["finished_at"] = self.now()
             # Expiry, interruption, and controller loss need human reconciliation

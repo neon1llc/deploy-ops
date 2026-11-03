@@ -1,0 +1,30 @@
+# examples/aws-receipts/deploy-ops.toml - Deliver an image using a separate infrastructure execution receipt.
+
+name = "hello"
+
+[repositories.infrastructure]
+path = "infrastructure"
+
+[repositories.application]
+path = "application"
+
+[environments.development]
+provider = "aws"
+
+[components.foundation]
+repository = "infrastructure"
+kind = "infrastructure"
+adapter = "opentofu"
+
+[components.web]
+repository = "application"
+kind = "application"
+adapter = "ecs"
+needs = ["foundation"]
+
+[components.web.options]
+region = "${outputs.foundation.region}"
+cluster = "${outputs.foundation.cluster}"
+service = "${outputs.foundation.service}"
+container = "${outputs.foundation.container}"
+image_repository = "${outputs.foundation.image_repository}"

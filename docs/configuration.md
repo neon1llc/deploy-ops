@@ -85,3 +85,10 @@ signatures still need an independent verification policy before production use.
 
 See [the multi-cloud application workspace](../examples/cloud-app/deploy-ops.toml) and
 [the trusted worker recipe](../integrations/github/README.md).
+
+## Isolated infrastructure outputs
+
+Remote AWS ECS workers can resolve registered infrastructure dependencies through controller-issued receipts.
+The producer registers a typed S3 backend and public output schema; the consumer maps dependency names to
+approved producer targets. See [infrastructure receipts](infrastructure-receipts.md) for the configuration
+examples, workflow inputs, validity checks and recovery behavior. Existing local output bindings are unchanged.

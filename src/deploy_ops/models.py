@@ -58,6 +58,25 @@ class Preview(Model):
     manual_only: bool = False
 
 
+class ReceiptReference(Model):
+    id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    digest: Digest
+
+
+class EcsOutputs(Model):
+    cluster: str = Field(pattern=r"^arn:aws:ecs:[a-z0-9-]+:[0-9]{12}:cluster/[A-Za-z0-9_-]+$")
+    service: str = Field(pattern=r"^arn:aws:ecs:[a-z0-9-]+:[0-9]{12}:service/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+$")
+    container: str = Field(pattern=r"^[A-Za-z0-9_-]{1,255}$")
+    image_repository: str = Field(pattern=r"^[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/[a-z0-9][a-z0-9._/-]+$")
+
+
+class InfrastructureEvidence(Model):
+    state_lineage: str = Field(pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+    state_serial: int = Field(ge=0)
+    state_digest: Digest
+    outputs: EcsOutputs
+
+
 class Proposal(Model):
     target: Slug
     engine: Engine
@@ -67,6 +86,7 @@ class Proposal(Model):
     lock_digest: Digest | None = None
     estimated_monthly_delta_cents: int | None = Field(default=None, ge=-100000000, le=100000000)
     agent: Agent = Field(default_factory=Agent)
+    receipts: dict[str, ReceiptReference] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def require_provider_lock(self):
@@ -95,6 +115,7 @@ class DelegationSpec(Model):
 class Completion(Model):
     outcome: Literal["succeeded", "failed", "aborted"]
     exit_code: int | None = Field(default=None, ge=-255, le=255)
+    infrastructure: InfrastructureEvidence | None = None
 
 
 class Resolution(Model):

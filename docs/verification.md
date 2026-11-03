@@ -1,11 +1,11 @@
 # Verification
 
-**Checked:** 2026-11-03 · **Candidate:** v0.4.0 preview
+**Checked:** 2026-11-03 · **Candidate:** v0.5.0 preview
 
 ## Local execution
 
 A fresh network install of the pinned requirements passed on macOS with Python 3.12.10.
-`make check` passed source, configuration, documentation-link and whitespace checks and all 109 tests.
+`make check` passed source, configuration, documentation-link and whitespace checks and all 141 tests.
 The tests cover approval and claim boundaries, concurrency, identity validation, changed evidence,
 source snapshots, promotion, rollback, process cleanup, notification retries and console access.
 A complete delivery and app-only release also ran from two committed Git repositories while uncommitted
@@ -31,6 +31,8 @@ pending cancellation, bounded delegation, app-only delivery, event history and l
 Promotion and rollback preserved the original static artifact through new approvals. Missing dependency
 receipts were explained without offering an executable control, and polling retained keyboard focus. Browser storage
 contained no credentials. The 390-pixel layout had no horizontal overflow. JavaScript syntax also passed.
+Receipt input errors preserved the draft, local mode refused remote-only receipt authority, and a separate
+fixture console displayed producer, backend, state and validity evidence without exposing raw-state secrets.
 
 Appearance checks exercised all six presets, system preference changes, retained explicit choices, density,
 corner radius, unsaved workspace drafts, invalid and low-contrast import refusal, cross-tab updates,
@@ -55,8 +57,11 @@ resources, subscriptions or access policies were changed during these checks. Gi
 must be inspected separately from local execution.
 
 This focused review is not a production security audit, penetration test, sustained reliability test or
-proof of safety against a compromised runner. Durable verified infrastructure-output exchange between
-isolated cloud workflows remains unfinished. See [security](../SECURITY.md) and
+proof of safety against a compromised runner. Controller-backed receipt exchange passed durable-restart, authenticated-consumer and two-release fixtures,
+including expiry, revocation, policy changes, failed-apply invalidation and backend binding. A real supervised
+subprocess exercised extraction with a synthetic OpenTofu executable. These checks do not qualify OpenTofu
+against S3 or an isolated GitHub-to-AWS journey. Raw state secrets stayed out of receipts and audit records.
+Legacy policy digests and request resubmission identities remain compatible. See [security](../SECURITY.md) and
 [capabilities](capabilities.md) for current boundaries.
 
 ## Reproduce

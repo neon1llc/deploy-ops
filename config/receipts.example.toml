@@ -1,0 +1,49 @@
+# config/receipts.example.toml - Register separate infrastructure and app workflows with public output dependencies.
+# Replace synthetic identities, workflow pins, backend and workspace digest before use.
+
+[targets.infra-development]
+repository = "example/infrastructure"
+repository_id = "201"
+repository_owner_id = "102"
+workflow_ref = "example/authority/.github/workflows/deploy.yml@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+environment = "development"
+planner_environment = "development-plan"
+cloud = "aws"
+engines = ["opentofu"]
+
+[targets.infra-development.identity]
+role_arn = "arn:aws:iam::111111111111:role/infra-executor"
+region = "us-east-1"
+
+[targets.infra-development.planner_identity]
+role_arn = "arn:aws:iam::111111111111:role/infra-planner"
+region = "us-east-1"
+
+[targets.infra-development.receipt_outputs]
+format = "aws-ecs-v1"
+valid_seconds = 3600
+
+[targets.infra-development.receipt_outputs.backend]
+bucket = "example-state-bucket"
+key = "development.tfstate"
+region = "us-east-1"
+
+[targets.hello-development-web]
+repository = "example/application"
+repository_id = "101"
+repository_owner_id = "102"
+workflow_ref = "example/authority/.github/workflows/delivery.yml@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+environment = "development"
+planner_environment = "development-plan"
+cloud = "aws"
+engines = ["delivery"]
+delivery_digest = "0000000000000000000000000000000000000000000000000000000000000000"
+receipt_dependencies = { foundation = "infra-development" }
+
+[targets.hello-development-web.identity]
+role_arn = "arn:aws:iam::111111111111:role/app-executor"
+region = "us-east-1"
+
+[targets.hello-development-web.planner_identity]
+role_arn = "arn:aws:iam::111111111111:role/app-reader"
+region = "us-east-1"

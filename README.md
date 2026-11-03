@@ -1,6 +1,6 @@
 # DeployOps
 
-**0.4.0 preview · by neon1 LLC**
+**0.5.0 preview · by neon1 LLC**
 
 Deploy infrastructure and applications from separate repositories. Choose an environment,
 review exact changes, and track the result through one CLI, local browser console, and audit history.
@@ -19,6 +19,7 @@ The demo builds, deploys, promotes, and HTTP-checks a real local application. It
 |---|---|
 | [Setup](docs/setup.md) | Run the CLI and browser console |
 | [Workflows](docs/workflows.md) | Infrastructure, apps, promotion, and recovery |
+| [Infrastructure receipts](docs/infrastructure-receipts.md) | Reuse AWS infrastructure outputs across isolated app workers |
 | [Capabilities](docs/capabilities.md) | Implemented paths and remaining work |
 | [Architecture](docs/architecture.md) | Components, trust boundaries, and diagrams |
 | [Configuration](docs/configuration.md) | Repositories, environments, adapters, and outputs |

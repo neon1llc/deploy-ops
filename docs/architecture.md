@@ -64,8 +64,10 @@ A local token grants control of the trusted local workspace. It is not a multi-u
 
 The remote delivery worker does not execute repository-defined build hooks, generic workflows, or IaC.
 Its GitHub job could otherwise mint writer credentials while untrusted preparation code runs.
-Cross-repository cloud orchestration must compose separate workers and durable receipts. That is an explicit
-next phase, not a hidden claim that the current local scheduler already supplies it.
+The OpenTofu worker can issue typed AWS ECS output receipts through the existing controller. A separate app
+worker resolves authorized receipts and binds their exact digests into its approval. The controller rechecks
+validity at submission, claim, heartbeat and completion. A later infrastructure claim permanently invalidates
+earlier receipts. See [infrastructure receipts](infrastructure-receipts.md) for the supported backend and limits.
 
 ## State and interruption
 

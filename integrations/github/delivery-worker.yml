@@ -12,6 +12,9 @@ on:
       image:
         type: string
         required: true
+      receipts:
+        type: string
+        default: "{}"
       agent_label:
         type: string
         default: ""
@@ -31,6 +34,7 @@ jobs:
       DEPLOY_OPS_URL: ${{ vars.DEPLOY_OPS_URL }}
       DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
       DEPLOY_IMAGE: ${{ inputs.image }}
+      DEPLOY_RECEIPTS: ${{ inputs.receipts }}
       AGENT_LABEL: ${{ inputs.agent_label }}
     steps:
       # The caller's source is snapshotted, not executed in this credential-bearing job
@@ -52,10 +56,13 @@ jobs:
       - name: Load the operator-owned workspace
         run: |
           set -euo pipefail
-          cp toolkit/examples/cloud-app/deploy-ops.toml workspace/deploy-ops.toml
+          case "$DEPLOY_ENVIRONMENT" in
+            development) cp toolkit/examples/aws-receipts/deploy-ops.toml workspace/deploy-ops.toml ;;
+            *) cp toolkit/examples/cloud-app/deploy-ops.toml workspace/deploy-ops.toml ;;
+          esac
           # Do not download and execute arbitrary installers in the writer job
           case "$DEPLOY_ENVIRONMENT" in
-            aws-development) command -v aws ;;
+            development|aws-development) command -v aws ;;
             azure-staging) command -v az ;;
             gcp-production) command -v gcloud ;;
             *) echo "Unsupported registered environment" >&2; exit 2 ;;
@@ -63,7 +70,9 @@ jobs:
       - name: Prepare, await approval, and deliver
         run: |
           set -euo pipefail
-          deploy-ops --project workspace/deploy-ops.toml run "$DEPLOY_ENVIRONMENT"             --component web --only --image "$DEPLOY_IMAGE" --agent "$AGENT_LABEL" --wait-seconds 1800
+          deploy-ops --project workspace/deploy-ops.toml run "$DEPLOY_ENVIRONMENT" \
+            --component web --only --image "$DEPLOY_IMAGE" --receipts "$DEPLOY_RECEIPTS" \
+            --agent "$AGENT_LABEL" --wait-seconds 1800
       # Use an allowlist. Interrupted stages may leave cloud login caches in their private home
       # Retain evidence for reconciliation, not source, credentials, or an automatically replayable deployment
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

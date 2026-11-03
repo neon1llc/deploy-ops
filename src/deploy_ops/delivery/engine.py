@@ -75,7 +75,8 @@ class Engine:
                 except Refused:
                     continue
                 missing = [dependency for dependency in self.spec.components[name].needs
-                           if not self.ledger.latest_outputs(environment, dependency, self.spec.digest)]
+                           if not isinstance(self.gate, RemoteGate)
+                           and not self.ledger.latest_outputs(environment, dependency, self.spec.digest)]
                 actions.append({"component": name, "environment": environment, "rollback": rollback,
                                 "available": not missing,
                                 "reason": "Deploy dependencies first: " + ", ".join(missing) if missing else ""})
@@ -91,7 +92,14 @@ class Engine:
 
     def create(self, environment: str, component: str | None = None, with_dependencies: bool = True,
                agent: str = "", promote: str | None = None, rollback: bool = False,
-               image: str | None = None) -> dict:
+               image: str | None = None, receipts: dict[str, str] | None = None) -> dict:
+        if receipts is not None and (not isinstance(receipts, dict) or any(not isinstance(key, str) or not isinstance(value, str) for key, value in receipts.items())):
+            raise Refused("Infrastructure receipts must map component names to receipt IDs", 422)
+        receipts = receipts or {}
+        if receipts and (not isinstance(self.gate, RemoteGate) or not component):
+            raise Refused("Infrastructure receipts require one remote application component", 422)
+        if any(not re.fullmatch(r"[0-9a-f]{32}", value) for value in receipts.values()):
+            raise Refused("Infrastructure receipt IDs must be 32 lowercase hexadecimal characters", 422)
         graph = self.describe(environment, component, with_dependencies)
         for node in graph["components"]:
             context = self.gate.context(node["target"])
@@ -106,9 +114,10 @@ class Engine:
             repository = configured.options.get("image_repository")
             if configured.adapter not in {"ecs", "container-apps", "cloud-run", "kubernetes"}:
                 raise Refused("This adapter does not accept a release-time image", 422)
-            if not isinstance(repository, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._:/-]*", repository):
+            reference = isinstance(repository, str) and re.fullmatch(r"\$\{outputs\.[a-z][a-z0-9-]*\.image_repository\}", repository)
+            if not isinstance(repository, str) or (not reference and not re.fullmatch(r"[a-z0-9][a-z0-9._:/-]*", repository)):
                 raise Refused("Configure an exact image_repository before accepting release-time images", 422)
-            if not re.fullmatch(re.escape(repository) + r"@sha256:[0-9a-f]{64}", image):
+            if not re.fullmatch((r"[a-z0-9][a-z0-9._:/-]*" if reference else re.escape(repository)) + r"@sha256:[0-9a-f]{64}", image):
                 raise Refused("The image must be an immutable digest in the configured image_repository", 422)
             artifact_inputs[component] = {"image": image}
         origin = self.ledger.get(promote) if promote else None
@@ -138,7 +147,8 @@ class Engine:
         release = {"id": release_id, "project": self.spec.name, "environment": environment,
                    "config_digest": self.spec.digest, "source_digest": fingerprint(snapshots),
                    "created_at": int(time.time()), "status": "queued", "order": list(nodes), "nodes": nodes,
-                   "agent": agent, "origin_release": promote, "rollback": rollback, "artifact_inputs": artifact_inputs}
+                   "agent": agent, "origin_release": promote, "rollback": rollback, "artifact_inputs": artifact_inputs,
+                   "receipt_inputs": receipts}
         self.ledger.save(release, "release.created", {"environment": environment, "order": list(nodes),
                                                     "actor_kind": "github" if isinstance(self.gate, RemoteGate) else "local"})
         return release
@@ -154,6 +164,16 @@ class Engine:
         private_directory(folder / "home")
         private_directory(folder / "build-home")
         outputs = {key: value["outputs"] for key, value in release["nodes"].items() if value["status"] == "succeeded"}
+        if isinstance(self.gate, RemoteGate):
+            target = target_name(self.spec.name, release["environment"], name)
+            bindings = self.gate.context(target).get("receipt_dependencies", {})
+            inputs = release.get("receipt_inputs", {})
+            if set(bindings) != set(inputs) or set(bindings) != set(component.needs):
+                raise Refused("Provide exactly the infrastructure receipts registered for this application", 422)
+            for dependency, receipt_id in inputs.items():
+                receipt = self.gate.receipt(target, receipt_id)
+                outputs[dependency] = {**receipt["outputs"], "region": receipt["region"]}
+                release["nodes"][name].setdefault("infrastructure_receipts", {})[dependency] = receipt
         for dependency in component.needs:
             if dependency in outputs:
                 continue
@@ -164,6 +184,10 @@ class Engine:
             release["nodes"][name].setdefault("dependency_receipts", {})[dependency] = receipt["receipt"]
         resolved = options(component, environment, release["environment"], outputs)
         resolved.update(release.get("artifact_inputs", {}).get(name, {}))
+        if release.get("artifact_inputs", {}).get(name, {}).get("image"):
+            repository = resolved.get("image_repository", "")
+            if not re.fullmatch(re.escape(repository) + r"@sha256:[0-9a-f]{64}", resolved["image"]):
+                raise Refused("Image does not match the verified infrastructure registry", 422)
 
         def heartbeat():
             current = self.ledger.get(release["id"])
@@ -252,6 +276,12 @@ class Engine:
         credentials = self.gate.credentials(authority)
         context = self._context(release, name, credentials)
         self._build(context, release)
+        receipts = node.get("infrastructure_receipts", {})
+        if receipts:
+            repositories = {receipt["outputs"]["image_repository"] for receipt in receipts.values()}
+            if not any(re.fullmatch(re.escape(repository) + r"@sha256:[0-9a-f]{64}", context.options.get("image", ""))
+                       for repository in repositories):
+                raise Refused("Artifact is not in the target receipt's image repository", 422)
         self._login(context, credentials)
         adapter = REGISTRY[context.component.adapter]
         if release.get("origin_release") and context.component.adapter == "static" and (context.stage / "site").exists():
@@ -266,13 +296,14 @@ class Engine:
         envelope = {"schema_version": 1, "config_digest": self.spec.digest, "adapter": context.component.adapter,
                     "source_digest": digest_tree(context.stage.parent / "source"),
                     "artifact_tree": digest_tree(context.stage), "options": context.options,
-                    "prepared": prepared}
+                    "prepared": prepared, "infrastructure_receipts": receipts}
         path = context.stage.parent / "prepared.json"
         private_json(path, envelope)
         proposal = Proposal(target=target, engine="delivery", artifact_digest=file_digest(path),
                             preview={"config_digest": self.spec.digest, "preview": prepared["preview"]},
                             tool_version=__version__, estimated_monthly_delta_cents=context.component.estimated_monthly_delta_cents,
-                            agent=Agent(label=release["agent"]))
+                            agent=Agent(label=release["agent"]),
+                            receipts={key: {"id": value["id"], "digest": value["digest"]} for key, value in receipts.items()})
         request = self.gate.submit(proposal, release)
         node.update(status="prepared", request_id=request["id"], request_digest=request["digest"],
                     artifact_digest=proposal.artifact_digest, preview=prepared["preview"])

@@ -12,6 +12,11 @@ leases online. Uncertain executions block the target until an operator inspects 
 Production delegation is disabled. The local console uses a random bearer token, loopback binding,
 Host and Origin checks, no CORS, no browser token storage, and a restrictive content security policy.
 
+Infrastructure receipts bind typed public outputs to an authenticated producer execution and the current
+registered policy. Consumers need matching environment, account and region. Exact references are rechecked
+online. These records are not offline signatures or fresh observations of out-of-band backend changes.
+A later infrastructure claim invalidates earlier evidence even if the apply fails.
+
 ## Boundaries that do not exist
 
 Clearing inherited environment variables is not a sandbox. Arbitrary source code, a malicious provider,

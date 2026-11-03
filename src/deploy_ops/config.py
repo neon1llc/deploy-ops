@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
-from .models import Cloud, Engine, Model
+from .models import Cloud, Engine, Model, Slug
 
 # Deny authority changes even when a human approves the request
 BLOCKED_TYPES = [
@@ -62,6 +62,18 @@ class Policy(Model):
         return self
 
 
+class StateBackend(Model):
+    bucket: str = Field(pattern=r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
+    key: str = Field(min_length=1, max_length=512, pattern=r"^[a-zA-Z0-9/_.-]+$")
+    region: str = Field(pattern=r"^[a-z]{2}-[a-z]+-[0-9]$")
+
+
+class ReceiptPolicy(Model):
+    format: Literal["aws-ecs-v1"] = "aws-ecs-v1"
+    backend: StateBackend
+    valid_seconds: int = Field(default=3600, ge=60, le=86400)
+
+
 class Target(Model):
     repository: str = Field(pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
     repository_id: str = Field(pattern=r"^[1-9][0-9]*$")
@@ -80,9 +92,20 @@ class Target(Model):
     identity: dict[str, str]
     planner_identity: dict[str, str]
     policy: Policy = Field(default_factory=Policy)
+    receipt_outputs: ReceiptPolicy | None = None
+    receipt_dependencies: dict[str, Slug] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def check_boundary(self):
+        if self.receipt_outputs or self.receipt_dependencies:
+            if self.cloud != "aws" or not re.fullmatch(r"arn:aws:iam::[0-9]{12}:role/.+", self.identity.get("role_arn", "")):
+                raise ValueError("Infrastructure receipts currently require a registered AWS role")
+            if self.receipt_outputs and self.engines != ["opentofu"]:
+                raise ValueError("Receipt producers currently require the OpenTofu saved-plan path")
+            if self.receipt_dependencies and self.engines != ["delivery"]:
+                raise ValueError("Receipt consumers must use the delivery engine")
+            if any(not re.fullmatch(r"[a-z][a-z0-9-]{0,47}", key) for key in self.receipt_dependencies):
+                raise ValueError("Receipt dependencies must name workspace components")
         if not PINNED_WORKFLOW.fullmatch(self.workflow_ref):
             raise ValueError("Pin the reusable workflow to a full 40-character commit SHA")
         path = PurePosixPath(self.workdir)
@@ -118,7 +141,12 @@ class Target(Model):
 
     @property
     def digest(self) -> str:
-        return fingerprint(self.model_dump())
+        value = self.model_dump()
+        # Optional receipts must not invalidate existing nonreceipt approvals and grants
+        if not self.receipt_outputs and not self.receipt_dependencies:
+            value.pop("receipt_outputs")
+            value.pop("receipt_dependencies")
+        return fingerprint(value)
 
 
 class SlackConfig(Model):
@@ -145,6 +173,10 @@ class Settings(Model):
     def validate_targets(self):
         if not self.targets or any(not re.fullmatch(r"[a-z][a-z0-9-]{0,62}", key) for key in self.targets):
             raise ValueError("Configure at least one target with a lowercase slug")
+        for name, target in self.targets.items():
+            for producer in target.receipt_dependencies.values():
+                if producer == name or producer not in self.targets or not self.targets[producer].receipt_outputs:
+                    raise ValueError("Receipt dependencies must name a registered infrastructure producer")
         return self
 
 

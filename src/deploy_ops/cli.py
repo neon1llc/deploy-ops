@@ -34,6 +34,7 @@ def parser():
         if name == "run":
             command.add_argument("--agent", default="")
             command.add_argument("--image", help="Immutable image in the component's configured image_repository")
+            command.add_argument("--receipts", type=json.loads, default={}, help='Exact infrastructure receipt IDs as JSON: {"foundation":"ID"}')
             command.add_argument("--wait-seconds", type=int, default=0)
     for name in ("resume", "cancel", "events"):
         command = commands.add_parser(name)
@@ -58,6 +59,7 @@ def parser():
         command.add_argument("release")
         command.add_argument("environment")
         command.add_argument("--component", required=True)
+        command.add_argument("--receipts", type=json.loads, default={}, help="Target-specific infrastructure receipt IDs as JSON")
     preview = commands.add_parser("preview", help="Serve a successful static release on loopback until stopped")
     preview.add_argument("release")
     preview.add_argument("--component", required=True)
@@ -109,7 +111,7 @@ def dispatch(args):
     if args.command == "plan":
         return engine.describe(args.environment, args.component, not args.only)
     if args.command == "run":
-        release = engine.create(args.environment, args.component, not args.only, args.agent, image=args.image)
+        release = engine.create(args.environment, args.component, not args.only, args.agent, image=args.image, receipts=args.receipts)
         return advance(engine, release["id"], args.wait_seconds)
     if args.command == "resume":
         return advance(engine, args.release, args.wait_seconds)
@@ -129,7 +131,7 @@ def dispatch(args):
         return engine.gate.delegate(args.environment, args.hours, args.uses)
     if args.command in ("promote", "rollback"):
         release = engine.create(args.environment, args.component, False, promote=args.release,
-                                rollback=args.command == "rollback")
+                                rollback=args.command == "rollback", receipts=args.receipts)
         return advance(engine, release["id"], 0)
     if args.command == "preview":
         from functools import partial

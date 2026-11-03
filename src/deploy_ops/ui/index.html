@@ -9,6 +9,8 @@
 <div id="workspace" hidden><section><div class="row"><h2 id="title">Workspace</h2><button id="lock" class="secondary">Lock</button></div>
 <form id="release-form"><div class="controls"><label>Environment<select id="environment"></select></label><label>Component<select id="component"><option value="">All components</option></select></label></div>
 <label>Immutable image, optional<input id="image" placeholder="registry.example/team/app@sha256:..."></label>
+<label>Infrastructure receipts, optional<input id="receipts" placeholder='{"foundation":"receipt ID"}' spellcheck="false"></label>
+<p class="muted">For remote delivery, supply the target environment's public infrastructure receipt IDs. The controller checks them again before execution.</p>
 <label class="check"><input id="only" type="checkbox"> Reuse recorded dependency outputs</label>
 <div class="controls"><button type="button" id="plan" class="secondary">Preview workflow</button><button type="submit">Prepare release</button></div></form>
 <p class="muted">Preparation runs trusted repository checks and build code. Deployment waits for exact approval unless a bounded grant applies.</p><pre id="plan-output" hidden></pre></section>

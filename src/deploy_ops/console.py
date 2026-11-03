@@ -29,6 +29,7 @@ class Input(BaseModel):
     rollback: bool = False
     note: str = Field(default="", max_length=500)
     configuration: str = Field(default="", max_length=30000)
+    receipts: dict[str, str] = Field(default_factory=dict)
 
 
 def create_app(engine, token: str, port: int = 8765) -> FastAPI:
@@ -152,7 +153,7 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     @app.post("/api/releases", dependencies=[Depends(operator)])
     def run(data: Input):
         release = engine.create(data.environment, data.component, not data.only,
-                                promote=data.origin, rollback=data.rollback, image=data.image)
+                                promote=data.origin, rollback=data.rollback, image=data.image, receipts=data.receipts)
         start(release["id"])
         return release
 

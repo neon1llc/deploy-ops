@@ -99,7 +99,7 @@ def execute(client: Client, lease: dict, artifact: Path, workspace: Path) -> int
     authority = heartbeat()
     if authority["engine"] not in BINARIES:
         raise Refused("Generic manifests use an existing trusted deployment engine, not this runner", 422)
-    result, outcome = None, "aborted"
+    result, outcome, infrastructure = None, "aborted", None
     try:
         binary = executable(authority["engine"])
         directory = workdir(workspace, authority["workdir"], authority["commit"])
@@ -122,6 +122,9 @@ def execute(client: Client, lease: dict, artifact: Path, workspace: Path) -> int
             result = supervised([binary, "init", "-input=false", "-lockfile=readonly", "-no-color"],
                                 directory, env, heartbeat, authority["deadline"])
             if result == 0:
+                if authority.get("receipt_outputs"):
+                    from .receipts import verify_backend
+                    verify_backend(directory, authority["receipt_outputs"]["backend"])
                 # Entra consumes a short-lived assertion when the provider starts
                 if authority["cloud"] == "azure":
                     env.update(clean_environment(temporary, {
@@ -129,11 +132,23 @@ def execute(client: Client, lease: dict, artifact: Path, workspace: Path) -> int
                     }))
                 result = supervised([binary, "apply", "-input=false", "-no-color", str(snapshot)],
                                     directory, env, heartbeat, authority["deadline"])
+            if result == 0 and authority.get("receipt_outputs"):
+                # Raw state stays in this trusted process; only typed public fields cross the boundary
+                from .receipts import extract_state
+                from .delivery.process import Process
+                verify_backend(directory, authority["receipt_outputs"]["backend"])
+                reader = Process(Path(temporary), lambda *_: None, credentials, heartbeat, authority["deadline"])
+                raw = reader.run([binary, "state", "pull"], directory, timeout=60, capture=True)
+                infrastructure = extract_state(raw.encode()).model_dump()
+                heartbeat()
             outcome = "succeeded" if result == 0 else "failed"
     finally:
         # A failed report leaves the target locked until an operator checks the infrastructure
-        client.call("POST", route + "/complete", {"outcome": outcome, "exit_code": result},
+        completed = client.call("POST", route + "/complete", {"outcome": outcome, "exit_code": result,
+                                                  "infrastructure": infrastructure if outcome == "succeeded" else None},
                     execution_token=token)
+    if outcome == "succeeded" and completed["status"] != "succeeded":
+        raise Refused("Execution finished but the controller requires reconciliation")
     return result or 0
 
 
@@ -157,6 +172,9 @@ def plan(client: Client, target: str, engine: str, workspace: Path, output: Path
         env = clean_environment(home, credentials)
         subprocess.run([binary, "init", "-input=false", "-lockfile=readonly", "-no-color"],
                        cwd=directory, env=env, check=True, timeout=300)
+        if context.get("receipt_outputs"):
+            from .receipts import verify_backend
+            verify_backend(directory, context["receipt_outputs"]["backend"])
         if context["cloud"] == "azure":
             env.update(clean_environment(home, {
                 "ARM_OIDC_TOKEN": github_token("api://AzureADTokenExchange")
@@ -167,6 +185,8 @@ def plan(client: Client, target: str, engine: str, workspace: Path, output: Path
         raw = json.loads(subprocess.run([binary, "show", "-json", str(artifact)],
                                        cwd=directory, env=env, check=True, capture_output=True,
                                        text=True, timeout=60).stdout)
+        if context.get("receipt_outputs"):
+            raw["deploy_ops_backend"] = context["receipt_outputs"]["backend"]
         version = json.loads(subprocess.run([binary, "version", "-json"], check=True,
                                             capture_output=True, text=True).stdout)["terraform_version"]
     from .plans import cost_delta

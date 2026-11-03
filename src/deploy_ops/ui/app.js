@@ -35,7 +35,8 @@ async function safe(action) {
   try { await action(); } catch (error) { message(error.message, true); }
 }
 function selection() {
-  return { environment: element("environment").value, component: element("component").value || null, only: element("only").checked, image: element("image").value || null };
+  return { environment: element("environment").value, component: element("component").value || null, only: element("only").checked, image: element("image").value || null,
+    receipts: JSON.parse(element("receipts").value || "{}") };
 }
 async function refresh() {
   const releases = await api("/releases");
@@ -72,6 +73,11 @@ async function show(id) {
   for (const [name, node] of Object.entries(release.nodes)) {
     const area = document.createElement("div"); area.className = "node"; root.append(area);
     text(area, "h3", name + " · " + node.status);
+    if (node.infrastructure_receipts) {
+      text(area, "h4", "Infrastructure evidence");
+      text(area, "p", "Observed public outputs, not a live drift or health check. Expiry and revocation are checked by the controller.");
+      text(area, "pre", JSON.stringify(node.infrastructure_receipts, null, 2));
+    }
     if (node.preview) text(area, "pre", JSON.stringify(node.preview, null, 2));
     if (node.request_digest) text(area, "pre", "Approval digest: " + node.request_digest);
     if (node.status === "waiting") area.append(button("Approve this exact change", async () => {
@@ -89,7 +95,8 @@ async function show(id) {
         if (!action.available) { text(area, "p", label + ": " + action.reason); continue; }
         controls.append(button(label, async () => {
           if (!window.confirm(label + " using the displayed " + name + " artifact? A new release will check authority and target state.")) return;
-          const next = await api("/releases", "POST", { origin: id, component: name, environment: action.environment, rollback: action.rollback, only: true });
+          const next = await api("/releases", "POST", { origin: id, component: name, environment: action.environment, rollback: action.rollback, only: true,
+            receipts: JSON.parse(element("receipts").value || "{}") });
           selected = next.id; message("Artifact reuse requested. Inspect the new release and any required approval."); await refresh();
         }, label + "-" + name));
       }

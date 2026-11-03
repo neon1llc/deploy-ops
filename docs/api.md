@@ -6,6 +6,8 @@ The service expects HTTPS outside loopback. Requests use JSON except for Slack's
 | --- | --- | --- |
 | `GET /healthz` | None | Basic process health |
 | `GET /v1/targets/{target}/plan-context` | GitHub OIDC, planning identity | Read registered planning settings |
+| `GET /v1/targets/{target}/receipts/{id}` | Registered consumer GitHub identity | Resolve an authorized, current infrastructure receipt |
+| `POST /v1/admin/receipts/{id}/revoke` | Operator token | Revoke infrastructure evidence |
 | `POST /v1/requests` | GitHub OIDC, planning identity | Normalize and record a proposal |
 | `GET /v1/requests/{id}` | Registered GitHub identity or operator token | Read a sanitized request |
 | `POST /v1/requests/{id}/claim` | GitHub OIDC, matching executor identity | Claim an approved artifact once |

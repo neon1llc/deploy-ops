@@ -1,6 +1,6 @@
 # Capabilities
 
-This table describes version 0.4.0. "Implemented" describes source behavior. "Live" means it actually ran
+This table describes version 0.5.0. "Implemented" describes source behavior. "Live" means it actually ran
 in this build environment. Mocked provider commands are not cloud integration evidence.
 
 | Capability | Current behavior | Evidence or limit |
@@ -26,7 +26,7 @@ in this build environment. Mocked provider commands are not cloud integration ev
 | Local GUI | Token unlock, config editor, graph preview, run, approval, local delegation, events, promotion and rollback | API tests and real headless Chrome journey on macOS, including keyboard unlock and narrow layout |
 | Appearance | System mode, six presets, validated import/export, density and radius | Real browser checks for drafts, storage failures and narrow layout |
 | Catalog | Curated prior-art and integration metadata | Research only, no automatic installation or subscriptions |
-| Cross-repo cloud coordination | Split-job IaC and native app worker building blocks | Durable cross-workflow receipt exchange not implemented |
+| Cross-repo cloud coordination | Controller-issued typed AWS ECS receipts, pinned S3 backend and independently approved app delivery | Durable restart and two app releases checked with command fixtures; no live AWS |
 | Preview environments and cleanup | Planned contract and acceptance criteria | Not implemented |
 | Drift, canary, blue/green, SBOM enforcement | Research and phased plan | Not implemented |
 | Pulumi/CDK/Bicep/Argo CD/Flux | Can be invoked through a trusted manual local workflow | Native isolated adapters and cloud semantics not implemented |

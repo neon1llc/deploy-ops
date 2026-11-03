@@ -106,7 +106,8 @@ def create_app(settings: Settings, admin_token: str, verifier=None) -> FastAPI:
         target = controller.target(target_name)
         controller.check_source(target, source, "plan")
         return {"cloud": target.cloud, "identity": target.planner_identity,
-                "workdir": target.workdir, "engines": target.engines, "commit": source.sha}
+                "workdir": target.workdir, "engines": target.engines, "commit": source.sha,
+                "receipt_outputs": target.receipt_outputs.model_dump() if target.receipt_outputs else None}
 
     @app.get("/v1/targets/{target_name}/delivery-context")
     def delivery_context(target_name: str, request: Request):
@@ -116,7 +117,16 @@ def create_app(settings: Settings, admin_token: str, verifier=None) -> FastAPI:
         if "delivery" not in target.engines:
             raise Refused("Target does not enable delivery", 403)
         return {"cloud": target.cloud, "identity": target.planner_identity,
-                "config_digest": target.delivery_digest}
+                "config_digest": target.delivery_digest, "receipt_dependencies": target.receipt_dependencies}
+
+    @app.get("/v1/targets/{target_name}/receipts/{receipt_id}")
+    def output_receipt(target_name: str, receipt_id: str, request: Request):
+        return controller.output_receipt(receipt_id, target_name, machine(request))
+
+    @app.post("/v1/admin/receipts/{receipt_id}/revoke")
+    def revoke_receipt(receipt_id: str, request: Request):
+        admin(request)
+        return controller.revoke_receipt(receipt_id, "operator-token")
 
     @app.post("/v1/requests", status_code=201)
     def submit(body: Proposal, request: Request, tasks: BackgroundTasks):

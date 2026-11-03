@@ -86,6 +86,11 @@ def parser() -> argparse.ArgumentParser:
     grant.add_argument("--uses", type=int, required=True)
     revoke = commands.add_parser("revoke")
     revoke.add_argument("delegation_id")
+    receipt = commands.add_parser("receipt", help="Verify a public infrastructure receipt for a registered consumer")
+    receipt.add_argument("receipt_id")
+    receipt.add_argument("--target", required=True)
+    revoke_receipt = commands.add_parser("revoke-receipt")
+    revoke_receipt.add_argument("receipt_id")
     resolve = commands.add_parser("resolve")
     resolve.add_argument("request_id")
     resolve.add_argument("--outcome", choices=["succeeded", "failed", "cancelled"], required=True)
@@ -142,6 +147,10 @@ def _dispatch(args):
         return request
     if args.command == "status":
         return client.call("GET", f"/v1/requests/{args.request_id}", operator=args.operator)
+    if args.command == "receipt":
+        return client.call("GET", f"/v1/targets/{args.target}/receipts/{args.receipt_id}")
+    if args.command == "revoke-receipt":
+        return client.call("POST", f"/v1/admin/receipts/{args.receipt_id}/revoke", operator=True)
     if args.command == "wait":
         ticket = json.loads(args.ticket.read_text())
         if not 1 <= args.seconds <= 86400 or not 1 <= args.poll <= 60:

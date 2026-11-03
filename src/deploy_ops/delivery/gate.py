@@ -96,6 +96,9 @@ class RemoteGate:
     def context(self, target: str) -> dict:
         return self.client.call("GET", f"/v1/targets/{target}/delivery-context")
 
+    def receipt(self, target: str, receipt_id: str) -> dict:
+        return self.client.call("GET", f"/v1/targets/{target}/receipts/{receipt_id}")
+
     def submit(self, proposal: Proposal, release: dict):
         return self.client.call("POST", "/v1/requests", proposal.model_dump())
 
