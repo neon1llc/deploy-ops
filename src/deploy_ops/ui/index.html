@@ -14,6 +14,6 @@
 <section><h2>Bounded local autonomy</h2><p>For non-production local static and directory changes only. Each component receives its own allowance.</p>
 <form id="delegation"><div class="controls"><label>Hours<input id="hours" type="number" min="1" max="12" value="1"></label><label>Uses per component<input id="uses" type="number" min="1" max="100" value="1"></label><button>Grant window</button></div></form></section>
 <div class="grid"><section><div class="row"><h2>Releases</h2><button id="refresh" class="secondary">Refresh</button></div><div id="releases"></div></section>
-<section><h2>Release detail</h2><div id="detail"><p>Select a release to inspect changes and events.</p></div></section></div>
+<section><h2 id="detail-heading" tabindex="-1">Release detail</h2><div id="detail"><p>Select a release to inspect changes and events.</p></div></section></div>
 <details><summary>Workspace configuration</summary><p>Use plain TOML. Keep secrets out of this file. Finish or cancel outstanding releases before saving.</p><label for="config">Deployment workspace</label><textarea id="config" rows="22" spellcheck="false"></textarea><div class="controls"><button id="validate-config" class="secondary">Validate configuration</button><button id="save-config">Save local configuration</button></div></details></div>
 <p id="message" role="status" aria-live="polite"></p></main><footer>DeployOps by neon1 LLC · Local operator console · Cloud actions require a trusted OIDC worker</footer></body></html>

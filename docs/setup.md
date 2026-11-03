@@ -43,7 +43,9 @@ approve exact changes, grant bounded local windows, cancel work, and inspect eve
 
 Saving configuration requires all releases to be finished, cancelled, or reconciled. The previous file
 is retained in `.deploy-ops/previous-workspace.toml`. Remote policy cannot be edited through this console.
-Promotion and rollback are CLI operations in this preview. There is no native Windows or macOS installer.
+Successful application components offer promotion and rollback in the release detail. The core lists declared
+environment paths and explains missing dependency receipts. Each action reuses the artifact in a new release
+with fresh authority and target checks. There is no native Windows or macOS installer.
 
 The UI and API bind to `127.0.0.1`. Do not reverse-proxy this local operator interface to the Internet.
 Use the separate authority service for authenticated remote workers. Do not serve deployed app files

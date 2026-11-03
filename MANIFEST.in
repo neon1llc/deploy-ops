@@ -1,0 +1,12 @@
+# MANIFEST.in - Include the documented source verification and integration paths.
+
+include Makefile Dockerfile compose.yaml action.yml SECURITY.md
+include .dockerignore .editorconfig .gitignore
+include requirements.txt requirements-dev.txt
+recursive-include config *.example.toml
+recursive-include docs *.md *.json
+recursive-include examples *.md *.toml *.json *.tf
+recursive-include integrations *.md *.yml *.yaml *.json *.tf
+recursive-include scripts *.py
+recursive-include tests *.py
+global-exclude __pycache__ *.py[cod]

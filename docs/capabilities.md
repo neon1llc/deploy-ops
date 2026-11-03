@@ -1,6 +1,6 @@
 # Capabilities
 
-This table describes version 0.2.0. "Implemented" describes source behavior. "Live" means it actually ran
+This table describes version 0.3.0. "Implemented" describes source behavior. "Live" means it actually ran
 in this build environment. Mocked provider commands are not cloud integration evidence.
 
 | Capability | Current behavior | Evidence or limit |
@@ -17,13 +17,13 @@ in this build environment. Mocked provider commands are not cloud integration ev
 | Azure Container Apps | Existing Single-mode app, revision health check | Mocked commands, no live Azure |
 | GCP Cloud Run | Existing single-traffic service, new revision, explicit 100% traffic switch | Mocked commands, no live GCP |
 | Kubernetes app | Existing Deployment, JSON patch precondition, rollout and image checks | Mocked commands, no live cluster |
-| Promotion and rollback | Reuse previously built static artifact or immutable image | Static path tested, runtime paths need live tests |
+| Promotion and rollback | Reuse previously built static artifact or immutable image | CLI/API and browser static paths tested, runtime paths need live tests |
 | Generic tool integration | Trusted local prepare/apply/verify argv contract, always manual | Implemented, not a native tool semantic guarantee |
 | Exact approvals and bounded windows | Shared authority controller and transactional claims | Regression and delivery tests |
 | Slack approvals | Signature, workspace and approver validation | Mocked interface tests, no live Slack workspace |
 | Notifications | Durable outbox to JSON webhook, Slack webhook, or ntfy | Mocked HTTP retries and stable event IDs |
 | Paging escalation | External incident system can consume webhooks | Escalation, acknowledgement, and on-call schedule logic are not implemented |
-| Local GUI | Token unlock, config editor, graph preview, run, approval, local delegation, events | API tests and real headless Chrome journey on macOS, including keyboard unlock and narrow layout |
+| Local GUI | Token unlock, config editor, graph preview, run, approval, local delegation, events, promotion and rollback | API tests and real headless Chrome journey on macOS, including keyboard unlock and narrow layout |
 | Catalog | Curated prior-art and integration metadata | Research only, no automatic installation or subscriptions |
 | Cross-repo cloud coordination | Split-job IaC and native app worker building blocks | Durable cross-workflow receipt exchange not implemented |
 | Preview environments and cleanup | Planned contract and acceptance criteria | Not implemented |

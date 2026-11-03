@@ -22,7 +22,9 @@ from deploy_ops.config import load  # noqa: E402
 
 def main() -> int:
     failures = []
-    files = [path for path in ROOT.rglob("*") if path.is_file() and not any(
+    # Setuptools generates these archive metadata files with its own whitespace
+    metadata = {ROOT / "PKG-INFO", ROOT / "setup.cfg"}
+    files = [path for path in ROOT.rglob("*") if path.is_file() and path not in metadata and not any(
         part in {".git", ".venv", "__pycache__", ".pytest_cache", ".state", ".deploy_ops", ".deploy-ops", "build", "dist"}
         or part.endswith(".egg-info") for part in path.relative_to(ROOT).parts
     )]

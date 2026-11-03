@@ -2,6 +2,9 @@
 "use strict";
 let token = "";
 let selected = null;
+let detailKey = "";
+let releaseKey = "";
+let acting = false;
 const element = (id) => document.getElementById(id);
 const message = (text, error = false) => {
   element("message").textContent = text;
@@ -16,9 +19,14 @@ async function api(path, method = "GET", body) {
   if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
   return data;
 }
-function button(label, action) {
+function button(label, action, key = label) {
   const node = document.createElement("button"); node.textContent = label;
-  node.onclick = () => safe(action); return node;
+  node.dataset.key = key;
+  node.onclick = () => safe(async () => {
+    if (acting) return;
+    acting = true; node.disabled = true;
+    try { await action(); } finally { acting = false; node.disabled = false; }
+  }); return node;
 }
 function text(parent, tag, value) {
   const node = document.createElement(tag); node.textContent = value; parent.append(node); return node;
@@ -31,19 +39,33 @@ function selection() {
 }
 async function refresh() {
   const releases = await api("/releases");
-  const root = element("releases"); root.replaceChildren();
-  if (!releases.length) text(root, "p", "No releases yet. Preview the workflow, then prepare one.");
-  for (const release of releases) {
-    const node = button(release.environment + " · " + release.status + " · " + release.id.slice(0, 8), () => show(release.id));
-    node.className = "release"; root.append(node);
+  if (!token) return;
+  const key = JSON.stringify(releases);
+  if (key !== releaseKey) {
+    releaseKey = key;
+    const root = element("releases");
+    const focused = root.contains(document.activeElement) ? document.activeElement.dataset.key : null;
+    root.replaceChildren();
+    if (!releases.length) text(root, "p", "No releases yet. Preview the workflow, then prepare one.");
+    for (const release of releases) {
+      const node = button(release.environment + " · " + release.status + " · " + release.id.slice(0, 8), () => show(release.id), release.id);
+      node.className = "release"; root.append(node);
+      if (node.dataset.key === focused) node.focus({preventScroll: true});
+    }
   }
   if (selected) await show(selected);
 }
 async function show(id) {
   selected = id;
   const data = await api("/releases/" + id);
+  if (selected !== id || !token) return;
+  const key = JSON.stringify(data);
+  if (key === detailKey) return;
+  detailKey = key;
   const release = data.release;
-  const root = element("detail"); root.replaceChildren();
+  const root = element("detail");
+  const focused = root.contains(document.activeElement) ? document.activeElement.dataset.key : null;
+  root.replaceChildren();
   text(root, "p", release.environment + " · " + release.status);
   text(root, "pre", release.id + "\nContract: " + release.config_digest);
   if (release.reason) text(root, "p", release.reason);
@@ -56,8 +78,22 @@ async function show(id) {
       if (!window.confirm("Approve the displayed change for " + name + "?")) return;
       await api("/releases/" + id + "/approve", "POST", { component: name, digest: node.request_digest });
       await api("/releases/" + id + "/resume", "POST", {}); message("Approved. Execution started."); await refresh();
-    }));
+    }, "approve-" + name));
     if (node.status === "succeeded") text(area, "pre", JSON.stringify(node.outputs, null, 2));
+    const actions = data.artifact_actions.filter((action) => action.component === name);
+    if (actions.length) {
+      text(area, "p", "Reuse this exact artifact in a new reviewed release. Rollback restores the application artifact, not database changes.");
+      const controls = document.createElement("div"); controls.className = "controls"; area.append(controls);
+      for (const action of actions) {
+        const label = (action.rollback ? "Rollback in " : "Promote to ") + action.environment;
+        if (!action.available) { text(area, "p", label + ": " + action.reason); continue; }
+        controls.append(button(label, async () => {
+          if (!window.confirm(label + " using the displayed " + name + " artifact? A new release will check authority and target state.")) return;
+          const next = await api("/releases", "POST", { origin: id, component: name, environment: action.environment, rollback: action.rollback, only: true });
+          selected = next.id; message("Artifact reuse requested. Inspect the new release and any required approval."); await refresh();
+        }, label + "-" + name));
+      }
+    }
   }
   if (["waiting", "queued"].includes(release.status)) root.append(button("Resume", async () => {
     await api("/releases/" + id + "/resume", "POST", {}); message("Worker started.");
@@ -72,6 +108,11 @@ async function show(id) {
   }));
   text(root, "h3", "Event history");
   text(root, "pre", data.events.map((event) => new Date(event.time * 1000).toISOString() + " " + event.name + " " + JSON.stringify(event.detail)).join("\n"));
+  // Polling preserves the operator's place when a status update replaces controls
+  if (focused) {
+    const replacement = [...root.querySelectorAll("button")].find((node) => node.dataset.key === focused);
+    (replacement || element("detail-heading")).focus({preventScroll: true});
+  }
 }
 element("login").onsubmit = (event) => { event.preventDefault(); safe(async () => {
   token = element("token").value; element("token").value = "";

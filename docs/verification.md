@@ -1,13 +1,15 @@
 # Verification
 
-**Checked:** 2026-11-03 · **Candidate:** v0.2.0 preview
+**Checked:** 2026-11-03 · **Candidate:** v0.3.0 preview
 
 ## Local execution
 
 A fresh network install of the pinned requirements passed on macOS with Python 3.12.10.
-`make check` passed source, configuration, documentation-link and whitespace checks and all 101 tests.
+`make check` passed source, configuration, documentation-link and whitespace checks and all 109 tests.
 The tests cover approval and claim boundaries, concurrency, identity validation, changed evidence,
 source snapshots, promotion, rollback, process cleanup, notification retries and console access.
+A complete delivery and app-only release also ran from two committed Git repositories while uncommitted
+application changes remained excluded.
 Provider commands and federation responses in these tests are fixtures.
 
 A fresh local demo deployed infrastructure, delivered the application independently, and promoted its
@@ -18,12 +20,16 @@ Focused review reproduced and repaired unreviewed files under previously exclude
 cancellation after approval, and descendants surviving their command's exit. Regression checks exercise
 those failures. Prepared evidence now includes every file, while working-tree exclusions apply only
 before source copying. Local runtime state is also excluded from the container build context.
+Promotion and rollback authenticate the original prepared envelope before reading its source or artifact
+metadata. Rewriting both an artifact and its metadata is refused before a new approval can be requested.
 
 ## Browser and packaging
 
 A headless Chrome 156.0.8078.80 session exercised the actual loopback console: invalid-token refusal,
 keyboard unlock, configuration validation and save, workflow preview, two exact approvals, deployment,
-pending cancellation, bounded delegation, app-only delivery, event history and lock. Browser storage
+pending cancellation, bounded delegation, app-only delivery, event history and lock.
+Promotion and rollback preserved the original static artifact through new approvals. Missing dependency
+receipts were explained without offering an executable control, and polling retained keyboard focus. Browser storage
 remained empty. The 390-pixel layout had no horizontal overflow. JavaScript syntax also passed.
 
 Cancellation during preparation produced an uncertain outcome. After inspecting events and the unchanged
@@ -32,6 +38,8 @@ cancelled cloud operation has stopped.
 
 Both the source distribution and wheel built successfully. Their contents retained Apache-2.0, NOTICE,
 and the prior MIT notice. The installed wheel includes the console, local starter and catalog resources.
+The source distribution includes shared test fixtures, check commands, configuration examples and user
+documentation so the documented checks can run from the extracted archive.
 Pinned requirements are version snapshots, not an independently audited dependency lock or SBOM.
 
 ## Remaining qualification

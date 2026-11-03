@@ -172,18 +172,88 @@ def test_rollback_reuses_a_previous_local_artifact(engine):
 def test_committed_git_sources_are_frozen(engine):
     import subprocess
     source = engine.path.parent / "application"
-    for argv in (["git", "init", "-b", "main"], ["git", "add", "."],
-                 ["git", "-c", "user.name=Test Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "fixture"]):
-        subprocess.run(argv, cwd=source, capture_output=True, check=True)
-    engine.path.write_text(engine.path.read_text().replace('[repositories.application]\npath = "application"\nallow_uncommitted = true',
-                                                         '[repositories.application]\npath = "application"'))
+    for name in ("infrastructure", "application"):
+        for argv in (["git", "init", "-b", "main"], ["git", "add", "."],
+                     ["git", "-c", "user.name=Test Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "fixture"]):
+            subprocess.run(argv, cwd=engine.path.parent / name, capture_output=True, check=True)
+    engine.path.write_text(engine.path.read_text().replace('allow_uncommitted = true', 'allow_uncommitted = false'))
     engine = Engine(engine.path)
     release = engine.create("development")
     snapshot = engine.state / "releases" / release["id"] / "web" / "source" / "index.html"
     before = snapshot.read_bytes()
     (source / "index.html").write_text("dirty uncommitted work")
     assert snapshot.read_bytes() == before
-    assert len(release["nodes"]["web"]["source"]["revision"]) == 40
+    assert all(len(node["source"]["revision"]) == 40 for node in release["nodes"].values())
+    first = finish(engine, release)
+    second = finish(engine, engine.create("development", "web", False))
+    assert first["status"] == second["status"] == "succeeded"
+    assert second["nodes"]["web"]["dependency_receipts"]["foundation"] == first["id"]
+    assert second["nodes"]["web"]["outputs"]["digest"] == first["nodes"]["web"]["outputs"]["digest"]
+
+
+@pytest.mark.parametrize("before_creation", [True, False])
+@pytest.mark.parametrize("rollback", [True, False])
+def test_artifact_reuse_rejects_rewritten_origin_evidence(engine, before_creation, rollback):
+    original = finish(engine, engine.create("development"))
+    finish(engine, engine.create("staging", "foundation"))
+    environment = "development" if rollback else "staging"
+
+    def reuse():
+        return engine.create(environment, "web", False, promote=original["id"], rollback=rollback)
+
+    pending = None if before_creation else reuse()
+    folder = engine.state / "releases" / original["id"] / "web"
+    (folder / "artifacts" / "site" / "index.html").write_text("A substituted artifact")
+    path = folder / "prepared.json"
+    envelope = json.loads(path.read_text())
+    envelope["artifact_tree"] = digest_tree(folder / "artifacts")
+    path.write_text(json.dumps(envelope))
+    if before_creation:
+        with pytest.raises(Refused, match="Reviewed deployment artifact changed"):
+            reuse()
+    else:
+        result = engine.advance(pending["id"])
+        assert result["status"] == "uncertain"
+        assert "Reviewed deployment artifact changed" in result["reason"]
+        assert "request_id" not in result["nodes"]["web"]
+
+
+def test_console_promotes_and_rolls_back_the_same_artifact(engine):
+    original = finish(engine, engine.create("development"))
+    token = "t" * 40
+    client = TestClient(create_app(engine, token), base_url="http://127.0.0.1:8765")
+    headers = {"Authorization": "Bearer " + token}
+    path = "/api/releases/" + original["id"]
+    actions = client.get(path, headers=headers).json()["artifact_actions"]
+    staging = next(action for action in actions if action["environment"] == "staging")
+    assert not staging["available"] and "foundation" in staging["reason"]
+    finish(engine, engine.create("staging", "foundation"))
+    actions = client.get(path, headers=headers).json()["artifact_actions"]
+    assert all(action["available"] for action in actions)
+    for action in actions:
+        response = client.post("/api/releases", headers=headers, json={
+            "origin": original["id"], "component": action["component"],
+            "environment": action["environment"], "rollback": action["rollback"], "only": True,
+        })
+        assert response.status_code == 200
+        release_id = response.json()["id"]
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            release = client.get("/api/releases/" + release_id, headers=headers).json()["release"]
+            if release["status"] == "waiting":
+                break
+            time.sleep(0.02)
+        assert release["status"] == "waiting"
+        node = release["nodes"]["web"]
+        assert client.post("/api/releases/" + release_id + "/approve", headers=headers,
+                           json={"component": "web", "digest": node["request_digest"]}).status_code == 200
+        result = engine.advance(release_id)
+        assert result["status"] == "succeeded"
+        assert result["origin_release"] == original["id"]
+        assert result["nodes"]["web"]["outputs"]["digest"] == original["nodes"]["web"]["outputs"]["digest"]
+    engine.path.write_text(engine.path.read_text().replace('name = "hello"', 'name = "changed"'))
+    changed = Engine(engine.path)
+    assert changed.artifact_actions(original) == []
 
 
 def test_console_config_validation_and_active_release_boundary(engine):
@@ -229,3 +299,16 @@ def test_remote_delivery_refuses_repository_build_hooks(engine):
     engine.gate = object.__new__(RemoteGate)
     with pytest.raises(Refused, match="unprivileged CI"):
         engine._prepare(release, "web")
+
+
+@pytest.mark.parametrize("target_adapter", ["workflow", "compose", "terraform"])
+def test_image_promotion_requires_a_destination_that_consumes_the_artifact(engine, target_adapter):
+    config = engine.spec.model_dump()
+    config["components"]["web"]["adapter"] = "ecs"
+    config["components"]["web"]["targets"]["staging"] = {"adapter": target_adapter}
+    engine.spec = Workspace.model_validate(config)
+    origin = {"config_digest": engine.spec.digest, "environment": "development",
+              "nodes": {"web": {"adapter": "ecs", "status": "succeeded"}}}
+    with pytest.raises(Refused, match="own reviewed promotion"):
+        engine._check_promotion(origin, "staging", "web", False)
+    assert not any(action["environment"] == "staging" for action in engine.artifact_actions(origin))

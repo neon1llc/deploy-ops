@@ -1,5 +1,6 @@
 # src/deploy_ops/delivery/engine.py - Move complete releases through preparation, approval, and verified delivery.
 
+import hashlib
 import json
 import os
 import re
@@ -8,6 +9,7 @@ import time
 import uuid
 from pathlib import Path
 
+from .. import __version__
 from ..client import file_digest, private_json
 from ..config import fingerprint
 from ..errors import Refused
@@ -45,6 +47,48 @@ class Engine:
                                 "needs": self.spec.components[name].needs,
                                 "target": target_name(self.spec.name, environment, name)} for name in order]}
 
+    def _check_promotion(self, origin: dict, environment: str, component: str | None, rollback: bool):
+        configured = self.spec.components.get(component)
+        if not configured or configured.kind != "application":
+            raise Refused("Promotion and rollback require one application component", 422)
+        if origin["config_digest"] != self.spec.digest or origin["nodes"].get(component, {}).get("status") != "succeeded":
+            raise Refused("Promote a successful artifact under the same workspace contract")
+        allowed = self.spec.environments[environment].promote_from
+        if (not rollback and origin["environment"] not in allowed) or (rollback and origin["environment"] != environment):
+            raise Refused("This promotion or rollback path is not declared", 403)
+        source_adapter = origin["nodes"][component]["adapter"]
+        target_adapter = self.spec.component(component, environment).adapter
+        reusable = {"static", "ecs", "container-apps", "cloud-run", "kubernetes"}
+        if source_adapter not in reusable or target_adapter not in reusable:
+            raise Refused("This adapter needs its own reviewed promotion workflow", 422)
+        if (source_adapter == "static") != (target_adapter == "static"):
+            raise Refused("Promotions must preserve artifact kind", 422)
+
+    def artifact_actions(self, release: dict) -> list[dict]:
+        """Describe the same artifact reuse paths accepted by release creation."""
+        actions = []
+        for name in release["nodes"]:
+            for environment in self.spec.environments:
+                rollback = environment == release["environment"]
+                try:
+                    self._check_promotion(release, environment, name, rollback)
+                except Refused:
+                    continue
+                missing = [dependency for dependency in self.spec.components[name].needs
+                           if not self.ledger.latest_outputs(environment, dependency, self.spec.digest)]
+                actions.append({"component": name, "environment": environment, "rollback": rollback,
+                                "available": not missing,
+                                "reason": "Deploy dependencies first: " + ", ".join(missing) if missing else ""})
+        return actions
+
+    def _reviewed_envelope(self, release: dict, name: str) -> dict:
+        # Authenticate the exact bytes we parse, including when reusing an earlier release
+        path = self.state / "releases" / release["id"] / name / "prepared.json"
+        content = path.read_bytes()
+        if hashlib.sha256(content).hexdigest() != release["nodes"][name]["artifact_digest"]:
+            raise Refused("Reviewed deployment artifact changed")
+        return json.loads(content)
+
     def create(self, environment: str, component: str | None = None, with_dependencies: bool = True,
                agent: str = "", promote: str | None = None, rollback: bool = False,
                image: str | None = None) -> dict:
@@ -69,17 +113,7 @@ class Engine:
             artifact_inputs[component] = {"image": image}
         origin = self.ledger.get(promote) if promote else None
         if origin:
-            if not component or self.spec.components[component].kind != "application":
-                raise Refused("Promotion and rollback require one application component", 422)
-            if origin["config_digest"] != self.spec.digest or origin["nodes"].get(component, {}).get("status") != "succeeded":
-                raise Refused("Promote a successful artifact under the same workspace contract")
-            allowed = self.spec.environments[environment].promote_from
-            if (not rollback and origin["environment"] not in allowed) or (rollback and origin["environment"] != environment):
-                raise Refused("This promotion or rollback path is not declared", 403)
-            if (origin["nodes"][component]["adapter"] == "static") != (self.spec.component(component, environment).adapter == "static"):
-                raise Refused("Promotions must preserve artifact kind", 422)
-            if origin["nodes"][component]["adapter"] not in {"static", "ecs", "container-apps", "cloud-run", "kubernetes"}:
-                raise Refused("This adapter needs its own reviewed promotion workflow", 422)
+            self._check_promotion(origin, environment, component, rollback)
         release_id = uuid.uuid4().hex
         root = self.state / "releases" / release_id
         private_directory(root)
@@ -92,7 +126,7 @@ class Engine:
             source = folder / "source"
             if origin and name == component:
                 original = self.state / "releases" / origin["id"] / name
-                envelope = json.loads((original / "prepared.json").read_text())
+                envelope = self._reviewed_envelope(origin, name)
                 if digest_tree(original / "source") != envelope["source_digest"]:
                     raise Refused("Original release source changed. Promotion is not safe")
                 shutil.copytree(original / "source", source, ignore=shutil.ignore_patterns(".terraform"))
@@ -158,9 +192,10 @@ class Engine:
 
     def _build(self, context: Context, release: dict):
         origin = release.get("origin_release")
-        if origin and self.ledger.get(origin)["nodes"].get(context.name, {}).get("status") == "succeeded":
+        previous_release = self.ledger.get(origin) if origin else None
+        if previous_release and previous_release["nodes"].get(context.name, {}).get("status") == "succeeded":
             folder = self.state / "releases" / origin / context.name
-            previous = json.loads((folder / "prepared.json").read_text())
+            previous = self._reviewed_envelope(previous_release, context.name)
             if digest_tree(folder / "artifacts") != previous["artifact_tree"]:
                 raise Refused("Original release artifacts changed. Promotion is not safe")
             if context.component.adapter == "static":
@@ -236,7 +271,7 @@ class Engine:
         private_json(path, envelope)
         proposal = Proposal(target=target, engine="delivery", artifact_digest=file_digest(path),
                             preview={"config_digest": self.spec.digest, "preview": prepared["preview"]},
-                            tool_version="0.2.0", estimated_monthly_delta_cents=context.component.estimated_monthly_delta_cents,
+                            tool_version=__version__, estimated_monthly_delta_cents=context.component.estimated_monthly_delta_cents,
                             agent=Agent(label=release["agent"]))
         request = self.gate.submit(proposal, release)
         node.update(status="prepared", request_id=request["id"], request_digest=request["digest"],
@@ -246,10 +281,7 @@ class Engine:
     def _apply(self, release: dict, name: str, request: dict):
         node = release["nodes"][name]
         folder = self.state / "releases" / release["id"] / name
-        path = folder / "prepared.json"
-        if file_digest(path) != node["artifact_digest"]:
-            raise Refused("Reviewed deployment artifact changed")
-        envelope = json.loads(path.read_text())
+        envelope = self._reviewed_envelope(release, name)
         if envelope["config_digest"] != self.spec.digest or digest_tree(folder / "source") != envelope["source_digest"]:
             raise Refused("Reviewed source or workspace changed")
         if digest_tree(folder / "artifacts") != envelope["artifact_tree"]:

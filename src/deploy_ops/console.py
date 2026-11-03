@@ -141,7 +141,9 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
 
     @app.get("/api/releases/{release_id}", dependencies=[Depends(operator)])
     def detail(release_id: str):
-        return {"release": engine.ledger.get(release_id), "events": engine.ledger.events(release_id)}
+        release = engine.ledger.get(release_id)
+        return {"release": release, "events": engine.ledger.events(release_id),
+                "artifact_actions": engine.artifact_actions(release)}
 
     @app.post("/api/plan", dependencies=[Depends(operator)])
     def plan(data: Input):
