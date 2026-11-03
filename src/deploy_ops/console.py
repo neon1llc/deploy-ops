@@ -181,6 +181,8 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
 
     @app.post("/api/releases/{release_id}/{action}", dependencies=[Depends(operator)])
     def action(release_id: str, action: str, data: Input):
+        if action == "observe":
+            return engine.observe(release_id)
         if action == "approve":
             return engine.approve(release_id, data.component, data.digest)
         if action == "resume":

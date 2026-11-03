@@ -35,6 +35,10 @@ class Engine:
         self.deployments = self.state / "deployments"
         private_directory(self.deployments)
 
+    def observe(self, release_id: str) -> dict:
+        from .observation import observe
+        return observe(self, release_id)
+
     def describe(self, environment: str, component: str | None = None, with_dependencies: bool = True):
         """Inspect the graph without running repository code, builds, or cloud commands."""
         if environment not in self.spec.environments:
@@ -82,10 +86,10 @@ class Engine:
                                 "reason": "Deploy dependencies first: " + ", ".join(missing) if missing else ""})
         return actions
 
-    def _reviewed_envelope(self, release: dict, name: str) -> dict:
+    def _reviewed_envelope(self, release: dict, name: str, reader=None) -> dict:
         # Authenticate the exact bytes we parse, including when reusing an earlier release
         path = self.state / "releases" / release["id"] / name / "prepared.json"
-        content = path.read_bytes()
+        content = reader(path) if reader else path.read_bytes()
         if hashlib.sha256(content).hexdigest() != release["nodes"][name]["artifact_digest"]:
             raise Refused("Reviewed deployment artifact changed")
         return json.loads(content)

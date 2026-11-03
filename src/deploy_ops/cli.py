@@ -41,7 +41,7 @@ def parser():
             command.add_argument("--image", help="Immutable image in the component's configured image_repository")
             command.add_argument("--receipts", type=json.loads, default={}, help='Exact infrastructure receipt IDs as JSON: {"foundation":"ID"}')
             command.add_argument("--wait-seconds", type=int, default=0)
-    for name in ("resume", "cancel", "events"):
+    for name in ("resume", "cancel", "events", "observe"):
         command = commands.add_parser(name)
         command.add_argument("release")
         if name == "resume":
@@ -128,6 +128,8 @@ def dispatch(args):
         return engine.ledger.get(args.release) if args.release else engine.ledger.list()
     if args.command == "events":
         return engine.ledger.events(args.release)
+    if args.command == "observe":
+        return engine.observe(args.release)
     if args.command == "approve":
         return engine.approve(args.release, args.component, args.digest)
     if args.command == "cancel":

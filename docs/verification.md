@@ -1,11 +1,11 @@
 # Verification
 
-**Checked:** 2026-11-03 · **Candidate:** v0.6.0 preview
+**Checked:** 2026-11-03 · **Candidate:** v0.7.0 preview
 
 ## Local execution
 
 A fresh network install of the pinned requirements passed on macOS with Python 3.12.10.
-`make check` passed source, configuration, documentation-link and whitespace checks and all 159 tests.
+`make check` passed source, configuration, documentation-link and whitespace checks and all 177 tests.
 The tests cover approval and claim boundaries, concurrency, identity validation, changed evidence,
 source snapshots, promotion, rollback, process cleanup, notification retries and console access.
 A complete delivery and app-only release also ran from two committed Git repositories while uncommitted
@@ -53,6 +53,13 @@ the prior MIT notice and the bundled theme MIT notice. The installed wheel inclu
 The source distribution includes shared test fixtures, check commands, configuration examples and user
 documentation so the documented checks can run from the extracted archive.
 Pinned requirements are version snapshots, not an independently audited dependency lock or SBOM.
+
+## Local drift observations
+
+Actual filesystem checks covered unchanged deployment, edited and missing files, changed pointers, valid
+supersession, activation order differing from creation order, history beyond 200 releases, unsafe entries,
+unreadable or tampered evidence and concurrent execution. Observations preserved original release status
+and deployed bytes. They record a bounded comparison, not application health or an automatic repair.
 
 ## Remaining qualification
 

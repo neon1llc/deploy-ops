@@ -119,6 +119,25 @@ async function show(id) {
     if (!note) return;
     await api("/releases/" + id + "/recover", "POST", { note }); await refresh();
   }));
+  text(root, "h3", "Deployment observation");
+  text(root, "p", "Compare local deployed files with reviewed evidence. This records an observation and makes no repairs. Cloud and runtime health checks are not included.");
+  root.append(button("Inspect deployed files", async () => {
+    const observation = await api("/releases/" + id + "/observe", "POST", {});
+    if (selected !== id || !token) return;
+    await show(id);
+    if (document.activeElement === document.body) element("detail").querySelector('[data-key="observe"]')?.focus({preventScroll: true});
+    message("Deployment observation: " + observation.status + ". No repairs were made.");
+  }, "observe"));
+  const observation = data.events.filter(event => event.name === "release.observed").at(-1)?.detail;
+  if (observation) {
+    text(root, "p", "Observed " + new Date(observation.observed_at * 1000).toLocaleString() + " · " + observation.status);
+    const list = document.createElement("ul"); root.append(list);
+    for (const [name, result] of Object.entries(observation.components)) {
+      text(list, "li", name + ": " + result.status + (result.reason ? ". " + result.reason : ". " + result.scope));
+    }
+    const evidence = document.createElement("details"); text(evidence, "summary", "Observation evidence");
+    text(evidence, "pre", JSON.stringify(observation, null, 2)); root.append(evidence);
+  }
   text(root, "h3", "Event history");
   text(root, "pre", data.events.map((event) => new Date(event.time * 1000).toISOString() + " " + event.name + " " + JSON.stringify(event.detail)).join("\n"));
   // Polling preserves the operator's place when a status update replaces controls

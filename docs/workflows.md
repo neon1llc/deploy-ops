@@ -97,3 +97,29 @@ Retries are triggered by another flush, not an undisclosed daemon.
 Keep event payloads small. They contain release IDs and event names, not source code, cloud tokens, or
 raw plans. Slack interactive approvals remain in the separate authority service. Paging escalation and
 on-call schedules belong to an external incident system until a tested adapter is added.
+
+## Observe local drift
+
+After a successful local deployment, compare the deployed files with reviewed evidence:
+
+```bash
+deploy-ops observe RELEASE_ID
+```
+
+The console offers **Inspect deployed files** in release detail and retains observations in event history.
+The result includes observation time, component findings and expected/observed digests. It records an audit
+event without changing deployed files, approvals or the original release outcome.
+
+Static observations compare the selected release's retained files and the current activation pointer.
+A later successful activation is shown as `superseded`, while corruption of the older artifact still reports
+`drifted`. Activation order comes from successful execution events, not release creation order. Directory
+observations compare only `resource.json`; nested app deployments are separate components.
+
+`matching` means the inspected file scope matched at that time. `drifted` identifies missing or different
+recorded data. `unknown` means evidence is unreadable, unsafe, changing or blocked by unresolved local
+execution. Other adapters report `unsupported`. File permissions, empty-directory changes, application
+health, cloud state and container runtimes are outside this observation contract.
+
+No repair runs automatically. Inspect a drifted or unknown target and prepare a new exact change only after
+understanding what happened. A matching observation is not a filesystem snapshot or protection against a
+malicious process running as the same OS user.
