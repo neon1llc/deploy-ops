@@ -1,6 +1,6 @@
 # Capabilities
 
-This table describes version 0.9.0. "Implemented" describes source behavior. "Live" means it actually ran
+This table describes version 0.10.0. "Implemented" describes source behavior. "Live" means it actually ran
 in this build environment. Mocked provider commands are not cloud integration evidence.
 
 | Capability | Current behavior | Evidence or limit |
@@ -29,7 +29,7 @@ in this build environment. Mocked provider commands are not cloud integration ev
 | Appearance | System mode, six presets, validated import/export, density and radius | Real browser checks for drafts, storage failures and narrow layout |
 | Catalog | Curated prior-art and integration metadata | Research only, no automatic installation or subscriptions |
 | Cross-repo cloud coordination | Controller-issued typed AWS ECS receipts, pinned S3 backend and independently approved app delivery | Durable restart and two app releases checked with command fixtures; no live AWS |
-| Preview environments and cleanup | Planned contract and acceptance criteria | Not implemented |
+| Isolated static previews | Opt-in local namespaces, owner/expiry, exact manual cleanup, unknown/modified data retention | Local file, concurrency, recovery and browser/HTTP checks; no cloud/runtime cleanup |
 | Local drift observation | Reviewed static files, active pointer and directory marker; records findings without repair | Actual local deployment tests; cloud, Compose and application health not observed |
 | Canary, blue/green, SBOM enforcement | Research and phased plan | Not implemented |
 | Pulumi/CDK/Bicep/Argo CD/Flux | Can be invoked through a trusted manual local workflow | Native isolated adapters and cloud semantics not implemented |

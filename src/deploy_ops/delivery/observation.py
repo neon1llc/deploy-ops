@@ -83,7 +83,7 @@ def activation(engine, pointer: Path):
             if node.get('adapter') == 'static' and node.get('outputs', {}).get('pointer') == str(pointer):
                 envelope = reviewed(engine, release, name)
                 prepared = envelope['prepared']
-                destination = checked_path(engine.deployments, prepared['destination'])
+                destination = checked_path(engine.deployment_root(release), prepared['destination'])
                 if envelope['adapter'] != 'static' or destination / 'current.json' != pointer:
                     raise Refused('Activation evidence differs from its reviewed target')
                 return {'release': release['id'], 'path': str(destination / 'releases' / release['id']),
@@ -92,6 +92,8 @@ def activation(engine, pointer: Path):
 
 
 def local_component(engine, release: dict, name: str) -> dict:
+    if release.get("preview_retiring"):
+        return {"status": "unsupported", "reason": "Preview retirement started; inspect its cleanup and retained-data record instead"}
     node = release['nodes'][name]
     if node.get('status') != 'succeeded':
         return {'status': 'unknown', 'reason': 'This component has no successful execution to compare'}
@@ -102,15 +104,16 @@ def local_component(engine, release: dict, name: str) -> dict:
         if envelope['adapter'] != node['adapter']:
             raise Refused('Reviewed adapter differs from the release')
         prepared = envelope['prepared']
+        deployment_root = engine.deployment_root(release)
         if node['adapter'] == 'directory':
-            marker = checked_path(engine.deployments, f"{release['environment']}/{prepared['name']}/resource.json")
+            marker = checked_path(deployment_root, f"{release['environment']}/{prepared['name']}/resource.json")
             expected = {'name': prepared['name'], 'environment': release['environment']}
             actual = json.loads(read_regular(marker, 65536))
             return {'status': 'matching' if actual == expected else 'drifted', 'scope': 'resource marker only',
                     'expected_digest': fingerprint(expected), 'observed_digest': fingerprint(actual)}
-        destination = checked_path(engine.deployments, prepared['destination'])
-        artifact = checked_path(engine.deployments, destination / 'releases' / release['id'])
-        pointer = checked_path(engine.deployments, destination / 'current.json')
+        destination = checked_path(engine.deployment_root(release), prepared['destination'])
+        artifact = checked_path(deployment_root, destination / 'releases' / release['id'])
+        pointer = checked_path(deployment_root, destination / 'current.json')
         expected = activation(engine, pointer)
         first_pointer = read_regular(pointer, 65536)
         actual = json.loads(first_pointer)

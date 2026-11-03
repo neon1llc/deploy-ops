@@ -45,3 +45,14 @@ Opening accepts `release_id`, `owner`, `note`, `interval_seconds` and `limit`. D
 current `version` and a `note`. Read-only outbox inspection sends nothing. All endpoints use the existing
 console token and origin/host checks; none grants remote paging or deployment authority.
 See [local incidents](incidents.md) for the lifecycle and receiver ordering contract.
+
+
+## Isolated static previews
+
+Release creation accepts `preview_owner`, `preview_hours` and `retain_preview_data` only for an opted-in
+preview environment. `GET /api/previews` lists ownership, expiry and cleanup state. The loopback console
+exposes `POST /api/previews/{release_id}/{action}` with actions `prepare-cleanup`, `approve-cleanup`,
+`cleanup` and `reconcile`. Approval requires `digest`; reconciliation requires an inspection `note` and
+optionally `confirm_removed`. Release detail includes the separate `cleanup_request`. All routes retain
+console authentication and use the shared core. See [static previews](previews.md) for exact safety and
+recovery semantics.

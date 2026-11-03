@@ -1,11 +1,11 @@
 # Verification
 
-**Checked:** 2026-11-03 · **Candidate:** v0.9.0 preview
+**Checked:** 2026-11-03 · **Candidate:** v0.10.0 preview
 
 ## Local execution
 
 A fresh network install of the pinned requirements passed on macOS with Python 3.12.10.
-`make check` passed source, configuration, documentation-link and whitespace checks and all 191 tests.
+`make check` passed source, configuration, documentation-link and whitespace checks and all 207 tests.
 The tests cover approval and claim boundaries, concurrency, identity validation, changed evidence,
 source snapshots, promotion, rollback, process cleanup, notification retries and console access.
 A complete delivery and app-only release also ran from two committed Git repositories while uncommitted
@@ -78,7 +78,7 @@ precondition to fail; the image remained unchanged. Explicit reconciliation foll
 succeeded. The [Kubernetes example](../examples/local-kubernetes/README.md) passed first delivery, app-only
 reuse, same-image promotion and both HTTP probes using an explicit test cluster context override.
 
-The controller Docker image built from the checked source. It served `/healthz` successfully as UID 10001,
+The controller Docker image built from the v0.7 source used for runtime qualification. It served `/healthz` successfully as UID 10001,
 with a read-only root filesystem, dropped capabilities, a persistent state volume and no Docker socket.
 These are local runtime observations, not proof of cloud identity, production isolation, registry publishing,
 sustained availability or managed-cluster compatibility. See the [support matrix](support-matrix.md).
@@ -95,6 +95,21 @@ A real browser opened an incident from a deliberately failed local preparation, 
 notes and keyboard focus through polling, checked an actual 60-second escalation deadline, acknowledged
 and resolved the incident. The original release outcome remained unchanged. The narrow layout and empty
 credential storage checks passed. HTTP transport success does not acknowledge an incident.
+
+## Isolated static preview cleanup
+
+Sixteen focused checks exercise isolated deployment, exact cleanup authority, modified/unknown data
+retention, symlink and artifact refusal, expiry, ordinary policy compatibility, partial cleanup and lost
+completion. Independent review reproduced two recovery races; the shared ledger now refuses live-worker
+recovery and atomically acquires recovery ownership. Both reproductions were rerun successfully. An
+ownership tombstone remains after cleanup, avoiding an interruption window that could lose ownership proof.
+
+The real browser deployed an isolated preview, reviewed and separately approved cleanup, preserved an
+added unknown data file and the ownership marker, and retained the original release outcome/evidence.
+The static server returned HTTP 200 before cleanup execution and HTTP 410 afterwards. Preparing and
+approving cleanup did not delete files or stop serving. Narrow layout and empty credential storage passed.
+An actual v0.9 pending ordinary request was approved and completed under v0.10 with unchanged workspace
+and target policy digests. These are local static checks, not cloud or runtime teardown qualification.
 
 ## Remaining qualification
 

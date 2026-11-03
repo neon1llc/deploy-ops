@@ -36,6 +36,7 @@ class Repository(Record):
 class Environment(Record):
     provider: Literal["local", "aws", "azure", "gcp"]
     production: bool = False
+    preview: bool = False
     variables: dict[str, str] = Field(default_factory=dict)
     promote_from: list[str] = Field(default_factory=list)
 
@@ -99,6 +100,8 @@ class Workspace(Record):
                 if "adapter" in override and override["adapter"] not in ADAPTERS:
                     raise ValueError("Unknown environment adapter")
         for name, environment in self.environments.items():
+            if environment.preview and (environment.production or environment.provider != "local"):
+                raise ValueError("Preview environments must be local and nonproduction")
             if set(environment.promote_from) - self.environments.keys() or name in environment.promote_from:
                 raise ValueError(f"Invalid promotion path for {name}")
         self.order()
@@ -135,7 +138,12 @@ class Workspace(Record):
 
     @property
     def digest(self) -> str:
-        return fingerprint(self.model_dump())
+        data = self.model_dump()
+        # Disabled preview support must not invalidate existing workspace approvals.
+        for environment in data["environments"].values():
+            if not environment["preview"]:
+                environment.pop("preview")
+        return fingerprint(data)
 
 
 def load(path: Path) -> Workspace:

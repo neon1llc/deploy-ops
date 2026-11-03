@@ -35,6 +35,12 @@ class Engine:
         self.deployments = self.state / "deployments"
         private_directory(self.deployments)
 
+    def deployment_root(self, release: dict) -> Path:
+        if release.get("preview"):
+            from .previews import namespace
+            return namespace(self, release)
+        return self.deployments
+
     def observe(self, release_id: str) -> dict:
         from .observation import observe
         return observe(self, release_id)
@@ -52,6 +58,8 @@ class Engine:
                                 "target": target_name(self.spec.name, environment, name)} for name in order]}
 
     def _check_promotion(self, origin: dict, environment: str, component: str | None, rollback: bool):
+        if origin.get("preview") or self.spec.environments[environment].preview:
+            raise Refused("Create a fresh isolated preview; preview promotion and rollback are not supported", 422)
         configured = self.spec.components.get(component)
         if not configured or configured.kind != "application":
             raise Refused("Promotion and rollback require one application component", 422)
@@ -96,7 +104,8 @@ class Engine:
 
     def create(self, environment: str, component: str | None = None, with_dependencies: bool = True,
                agent: str = "", promote: str | None = None, rollback: bool = False,
-               image: str | None = None, receipts: dict[str, str] | None = None) -> dict:
+               image: str | None = None, receipts: dict[str, str] | None = None,
+               preview_owner: str = "", preview_hours: int = 1, retain_preview_data: bool = False) -> dict:
         if receipts is not None and (not isinstance(receipts, dict) or any(not isinstance(key, str) or not isinstance(value, str) for key, value in receipts.items())):
             raise Refused("Infrastructure receipts must map component names to receipt IDs", 422)
         receipts = receipts or {}
@@ -105,6 +114,12 @@ class Engine:
         if any(not re.fullmatch(r"[0-9a-f]{32}", value) for value in receipts.values()):
             raise Refused("Infrastructure receipt IDs must be 32 lowercase hexadecimal characters", 422)
         graph = self.describe(environment, component, with_dependencies)
+        preview_metadata = None
+        if self.spec.environments[environment].preview:
+            from .previews import validate_creation
+            preview_metadata = validate_creation(self, graph, preview_owner, preview_hours, retain_preview_data, with_dependencies)
+        elif preview_owner or retain_preview_data:
+            raise Refused("Declare an opt-in local preview environment first", 422)
         for node in graph["components"]:
             context = self.gate.context(node["target"])
             if context["config_digest"] != self.spec.digest:
@@ -153,6 +168,10 @@ class Engine:
                    "created_at": int(time.time()), "status": "queued", "order": list(nodes), "nodes": nodes,
                    "agent": agent, "origin_release": promote, "rollback": rollback, "artifact_inputs": artifact_inputs,
                    "receipt_inputs": receipts}
+        if preview_metadata:
+            from .previews import initialize
+            release["preview"] = preview_metadata
+            initialize(self, release)
         self.ledger.save(release, "release.created", {"environment": environment, "order": list(nodes),
                                                     "actor_kind": "github" if isinstance(self.gate, RemoteGate) else "local"})
         return release
@@ -181,11 +200,17 @@ class Engine:
         for dependency in component.needs:
             if dependency in outputs:
                 continue
+            if release.get("preview"):
+                raise Refused("Preview dependencies must be deployed in the same isolated release", 422)
             receipt = self.ledger.latest_outputs(release["environment"], dependency, self.spec.digest)
             if not receipt:
                 raise Refused(f"Deploy dependency {dependency} first, or include dependencies", 422)
             outputs[dependency] = receipt["outputs"]
             release["nodes"][name].setdefault("dependency_receipts", {})[dependency] = receipt["receipt"]
+        deployment_root = self.deployment_root(release)
+        if release.get("preview"):
+            from .previews import active
+            active(self, release)
         resolved = options(component, environment, release["environment"], outputs)
         resolved.update(release.get("artifact_inputs", {}).get(name, {}))
         if release.get("artifact_inputs", {}).get(name, {}).get("image"):
@@ -209,7 +234,7 @@ class Engine:
             release["id"], event, {"component": name, **detail}), credentials, heartbeat,
             lease["deadline"] if lease else None)
         return Context(component, name, release["environment"], environment.provider, source,
-                       folder / "artifacts", self.deployments, resolved, process, release["id"])
+                       folder / "artifacts", deployment_root, resolved, process, release["id"])
 
     def _login(self, context: Context, credentials: dict):
         # CLI login caches remain in a per-stage private home, never in the human's home
@@ -409,15 +434,21 @@ class Engine:
 
     def recover(self, release_id: str, note: str):
         """Release a locked target only after the operator has inspected its actual state."""
-        release = self.ledger.get(release_id)
-        if len(note) < 10 or release["status"] not in ("running", "uncertain", "cancel_requested"):
-            raise Refused("Recovery needs an interrupted release and an inspection note", 422)
-        for node in release["nodes"].values():
-            if node["status"] == "preparing":
-                node["status"] = "failed"
-            if node["status"] in ("running", "uncertain") and node.get("request_id"):
-                self.gate.recover(node["request_id"], note)
-                node["status"] = "failed"
-        self.ledger.unlock("release:" + release_id, release_id)
-        release.update(status="failed", reason=note)
-        return self.ledger.save(release, "release.reconciled", {"note": note})
+        if not isinstance(note, str) or not 10 <= len(note.strip()) <= 500:
+            raise Refused("Recovery needs an inspection note of 10 to 500 characters", 422)
+        scope = "release:" + release_id
+        self.ledger.recovery_lock(scope, release_id)
+        try:
+            release = self.ledger.get(release_id)
+            if release["status"] not in ("running", "uncertain", "cancel_requested"):
+                raise Refused("Recovery needs an interrupted release", 422)
+            for node in release["nodes"].values():
+                if node["status"] == "preparing":
+                    node["status"] = "failed"
+                if node["status"] in ("running", "uncertain") and node.get("request_id"):
+                    self.gate.recover(node["request_id"], note)
+                    node["status"] = "failed"
+            release.update(status="failed", reason=note)
+            return self.ledger.save(release, "release.reconciled", {"note": note})
+        finally:
+            self.ledger.unlock(scope, release_id)

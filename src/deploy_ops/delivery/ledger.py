@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -25,6 +26,9 @@ class Ledger:
                 );
                 CREATE TABLE IF NOT EXISTS release_locks (
                     scope TEXT PRIMARY KEY, release_id TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS release_lock_owners (
+                    scope TEXT PRIMARY KEY, owner_pid INTEGER NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS incidents (
                     id TEXT PRIMARY KEY, release_id TEXT NOT NULL UNIQUE,
@@ -82,13 +86,37 @@ class Ledger:
         import sqlite3
         with self.store.transaction() as connection:
             try:
-                connection.execute("INSERT INTO release_locks VALUES (?,?)", (scope, release_id))
+                connection.execute("INSERT INTO release_locks(scope,release_id) VALUES (?,?)", (scope, release_id))
+                connection.execute("INSERT INTO release_lock_owners VALUES (?,?) ON CONFLICT(scope) DO UPDATE SET owner_pid=excluded.owner_pid", (scope, os.getpid()))
             except sqlite3.IntegrityError as error:
                 raise Refused("Another release owns this target. Reconcile interrupted work before retrying") from error
 
+    def recovery_lock(self, scope: str, release_id: str):
+        """Replace only an observed dead worker's lock, atomically with acquiring recovery ownership."""
+        with self.store.transaction() as connection:
+            row = connection.execute("SELECT l.release_id,o.owner_pid FROM release_locks l "
+                                     "LEFT JOIN release_lock_owners o ON o.scope=l.scope WHERE l.scope=?", (scope,)).fetchone()
+            if row:
+                pid = row["owner_pid"]
+                if row["release_id"] != release_id or not isinstance(pid, int) or pid < 2:
+                    raise Refused("Lock ownership is unknown; inspect the legacy worker before recovery")
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    pass
+                except OSError as error:
+                    raise Refused("Worker liveness cannot be verified; recovery is blocked") from error
+                else:
+                    raise Refused("The worker process still exists; stop it before reconciliation")
+                connection.execute("DELETE FROM release_locks WHERE scope=?", (scope,))
+            connection.execute("INSERT INTO release_locks(scope,release_id) VALUES (?,?)", (scope, release_id))
+            connection.execute("INSERT INTO release_lock_owners VALUES (?,?) ON CONFLICT(scope) DO UPDATE SET owner_pid=excluded.owner_pid", (scope, os.getpid()))
+
     def unlock(self, scope: str, release_id: str):
         with self.store.transaction() as connection:
-            connection.execute("DELETE FROM release_locks WHERE scope=? AND release_id=?", (scope, release_id))
+            removed = connection.execute("DELETE FROM release_locks WHERE scope=? AND release_id=?", (scope, release_id))
+            if removed.rowcount:
+                connection.execute("DELETE FROM release_lock_owners WHERE scope=?", (scope,))
 
     def latest_outputs(self, environment: str, component: str, config_digest: str) -> dict | None:
         for release in self.list():

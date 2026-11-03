@@ -12,6 +12,11 @@
 <label>Infrastructure receipts, optional<input id="receipts" placeholder='{"foundation":"receipt ID"}' spellcheck="false"></label>
 <p class="muted">For remote delivery, supply the target environment's public infrastructure receipt IDs. The controller checks them again before execution.</p>
 <label class="check"><input id="only" type="checkbox"> Reuse recorded dependency outputs</label>
+<fieldset id="preview-options" hidden><legend>Isolated static preview</legend>
+<label for="preview-owner">Preview owner</label><input id="preview-owner" maxlength="200">
+<label for="preview-hours">Expires after hours (1–72)</label><input id="preview-hours" type="number" min="1" max="72" value="1">
+<label class="check"><input id="preview-retain" type="checkbox"> Retain deployed files when retiring</label>
+<p>Each preview gets a new namespace and deploys its own dependencies. Expiry marks cleanup due; it never deletes files. Cleanup requires a separate exact approval.</p></fieldset>
 <div class="controls"><button type="button" id="plan" class="secondary">Preview workflow</button><button type="submit">Prepare release</button></div></form>
 <p class="muted">Preparation runs trusted repository checks and build code. Deployment waits for exact approval unless a bounded grant applies.</p><pre id="plan-output" hidden></pre></section>
 <section><h2>Bounded local autonomy</h2><p>For non-production local static and directory changes only. Each component receives its own allowance.</p>

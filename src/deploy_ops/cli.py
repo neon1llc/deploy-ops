@@ -41,6 +41,9 @@ def parser():
             command.add_argument("--image", help="Immutable image in the component's configured image_repository")
             command.add_argument("--receipts", type=json.loads, default={}, help='Exact infrastructure receipt IDs as JSON: {"foundation":"ID"}')
             command.add_argument("--wait-seconds", type=int, default=0)
+            command.add_argument("--preview-owner", default="")
+            command.add_argument("--preview-hours", type=int, default=1)
+            command.add_argument("--retain-preview-data", action="store_true")
     for name in ("resume", "cancel", "events", "observe"):
         command = commands.add_parser(name)
         command.add_argument("release")
@@ -65,6 +68,17 @@ def parser():
         command.add_argument("environment")
         command.add_argument("--component", required=True)
         command.add_argument("--receipts", type=json.loads, default={}, help="Target-specific infrastructure receipt IDs as JSON")
+    previews = commands.add_parser("previews", help="Inspect isolated static previews and exact cleanup")
+    preview_actions = previews.add_subparsers(dest="preview_action", required=True)
+    preview_actions.add_parser("list")
+    for name in ("prepare-cleanup", "approve-cleanup", "cleanup", "reconcile"):
+        command = preview_actions.add_parser(name)
+        command.add_argument("release")
+        if name == "approve-cleanup":
+            command.add_argument("--digest", required=True)
+        if name == "reconcile":
+            command.add_argument("--note", required=True)
+            command.add_argument("--confirm-removed", action="store_true")
     preview = commands.add_parser("preview", help="Serve a successful static release on loopback until stopped")
     preview.add_argument("release")
     preview.add_argument("--component", required=True)
@@ -136,7 +150,9 @@ def dispatch(args):
     if args.command == "plan":
         return engine.describe(args.environment, args.component, not args.only)
     if args.command == "run":
-        release = engine.create(args.environment, args.component, not args.only, args.agent, image=args.image, receipts=args.receipts)
+        release = engine.create(args.environment, args.component, not args.only, args.agent, image=args.image, receipts=args.receipts,
+                                preview_owner=args.preview_owner, preview_hours=args.preview_hours,
+                                retain_preview_data=args.retain_preview_data)
         return advance(engine, release["id"], args.wait_seconds)
     if args.command == "resume":
         return advance(engine, args.release, args.wait_seconds)
@@ -160,6 +176,17 @@ def dispatch(args):
         release = engine.create(args.environment, args.component, False, promote=args.release,
                                 rollback=args.command == "rollback", receipts=args.receipts)
         return advance(engine, release["id"], 0)
+    if args.command == "previews":
+        from .delivery.previews import list_previews, prepare_cleanup, approve_cleanup, execute_cleanup, reconcile_cleanup
+        if args.preview_action == "list":
+            return list_previews(engine)
+        if args.preview_action == "prepare-cleanup":
+            return prepare_cleanup(engine, args.release)
+        if args.preview_action == "approve-cleanup":
+            return approve_cleanup(engine, args.release, args.digest)
+        if args.preview_action == "cleanup":
+            return execute_cleanup(engine, args.release)
+        return reconcile_cleanup(engine, args.release, args.note, args.confirm_removed)
     if args.command == "preview":
         from functools import partial
         from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -168,8 +195,25 @@ def dispatch(args):
         node = release["nodes"].get(args.component, {})
         if node.get("status") != "succeeded" or node.get("adapter") != "static" or not 1024 <= args.port <= 65535:
             raise Refused("Choose a successful static component and an unprivileged port", 422)
-        site = inside(engine.deployments, node["outputs"]["path"])
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), partial(SimpleHTTPRequestHandler, directory=str(site)))
+        if release.get("preview"):
+            from .delivery.previews import active
+            active(engine, release)
+        site = inside(engine.deployment_root(release), node["outputs"]["path"])
+        class PreviewHandler(SimpleHTTPRequestHandler):
+            def send_head(self):
+                if release.get("preview"):
+                    from .delivery.previews import active
+                    try:
+                        active(engine, engine.ledger.get(release["id"]))
+                    except (Refused, OSError):
+                        self.send_error(410, "Preview expired or retired")
+                        return None
+                requested = Path(self.translate_path(self.path)).resolve()
+                if not requested.is_relative_to(site):
+                    self.send_error(403, "Path leaves the preview")
+                    return None
+                return super().send_head()
+        server = ThreadingHTTPServer(("127.0.0.1", args.port), partial(PreviewHandler, directory=str(site)))
         print(f"Static release: http://127.0.0.1:{args.port} | Ctrl-C stops this preview")
         try:
             server.serve_forever()

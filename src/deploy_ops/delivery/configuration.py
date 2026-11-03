@@ -12,7 +12,7 @@ from .spec import ADAPTERS, Component, Environment, Repository, Workspace
 
 FIELDS = {
     "repositories": (Repository, ("path", "revision", "allow_uncommitted")),
-    "environments": (Environment, ("provider", "production", "promote_from")),
+    "environments": (Environment, ("provider", "production", "preview", "promote_from")),
     "components": (Component, ("repository", "kind", "adapter", "path", "needs", "timeout_seconds")),
 }
 

@@ -39,6 +39,10 @@ class Input(BaseModel):
     interval_seconds: int = Field(default=900, ge=60, le=86400)
     limit: int = Field(default=3, ge=1, le=5)
     version: int | None = Field(default=None, ge=1)
+    preview_owner: str = Field(default="", max_length=200)
+    preview_hours: int = Field(default=1, ge=1, le=72)
+    retain_preview_data: bool = False
+    confirm_removed: bool = False
 
 
 def create_app(engine, token: str, port: int = 8765) -> FastAPI:
@@ -187,7 +191,9 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     @app.get("/api/releases/{release_id}", dependencies=[Depends(operator)])
     def detail(release_id: str):
         release = engine.ledger.get(release_id)
+        cleanup = release.get("cleanup", {})
         return {"release": release, "events": engine.ledger.events(release_id),
+                "cleanup_request": engine.gate.status(cleanup["request_id"]) if cleanup.get("request_id") else None,
                 "artifact_actions": engine.artifact_actions(release)}
 
     @app.post("/api/plan", dependencies=[Depends(operator)])
@@ -205,7 +211,9 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         with mutex:
             current_contract()
             release = engine.create(data.environment, data.component, not data.only,
-                                    promote=data.origin, rollback=data.rollback, image=data.image, receipts=data.receipts)
+                                    promote=data.origin, rollback=data.rollback, image=data.image, receipts=data.receipts,
+                                    preview_owner=data.preview_owner, preview_hours=data.preview_hours,
+                                    retain_preview_data=data.retain_preview_data)
         start(release["id"])
         return release
 
@@ -226,6 +234,24 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
                     raise Refused("Stop the active worker before reconciling")
             return engine.recover(release_id, data.note)
         raise Refused("Unknown release action", 404)
+
+    @app.get("/api/previews", dependencies=[Depends(operator)])
+    def previews():
+        from .delivery.previews import list_previews
+        return list_previews(engine)
+
+    @app.post("/api/previews/{release_id}/{action}", dependencies=[Depends(operator)])
+    def preview_action(release_id: str, action: str, data: Input):
+        from .delivery.previews import prepare_cleanup, approve_cleanup, execute_cleanup, reconcile_cleanup
+        if action == "prepare-cleanup":
+            return prepare_cleanup(engine, release_id)
+        if action == "approve-cleanup":
+            return approve_cleanup(engine, release_id, data.digest)
+        if action == "cleanup":
+            return execute_cleanup(engine, release_id)
+        if action == "reconcile":
+            return reconcile_cleanup(engine, release_id, data.note, data.confirm_removed)
+        raise Refused("Unknown preview action", 404)
 
     @app.post("/api/delegations", dependencies=[Depends(operator)])
     def delegate(data: Input):

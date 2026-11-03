@@ -2,6 +2,7 @@
 "use strict";
 let token = "";
 let selected = null;
+let workspaceConfiguration = null;
 let detailKey = "";
 let releaseKey = "";
 let acting = false;
@@ -46,7 +47,10 @@ async function safe(action) {
 }
 function selection() {
   return { environment: element("environment").value, component: element("component").value || null, only: element("only").checked, image: element("image").value || null,
-    receipts: JSON.parse(element("receipts").value || "{}") };
+    receipts: JSON.parse(element("receipts").value || "{}"),
+    ...(workspaceConfiguration?.environments[element("environment").value]?.preview ? {
+      preview_owner: element("preview-owner").value, preview_hours: Number(element("preview-hours").value),
+      retain_preview_data: element("preview-retain").checked} : {}) };
 }
 async function refresh() {
   const releases = await api("/releases");
@@ -59,7 +63,8 @@ async function refresh() {
     root.replaceChildren();
     if (!releases.length) text(root, "p", "No releases yet. Preview the workflow, then prepare one.");
     for (const release of releases) {
-      const node = button(release.environment + " · " + release.status + " · " + release.id.slice(0, 8), () => show(release.id), release.id);
+      const previewState = release.preview ? " · preview " + (release.cleanup?.status || (Date.now() >= release.preview.expires_at * 1000 ? "cleanup due" : "active")) : "";
+      const node = button(release.environment + " · " + release.status + previewState + " · " + release.id.slice(0, 8), () => show(release.id), release.id);
       node.className = "release"; root.append(node);
       if (node.dataset.key === focused) node.focus({preventScroll: true});
     }
@@ -81,6 +86,7 @@ async function show(id) {
   text(root, "p", release.environment + " · " + release.status);
   text(root, "pre", release.id + "\nContract: " + release.config_digest);
   if (release.reason) text(root, "p", release.reason);
+  if (release.preview) renderPreview(root, data);
   for (const [name, node] of Object.entries(release.nodes)) {
     const area = document.createElement("div"); area.className = "node"; root.append(area);
     text(area, "h3", name + " · " + node.status);
@@ -131,7 +137,8 @@ async function show(id) {
   }, "track-incident"));
   text(root, "h3", "Deployment observation");
   text(root, "p", "Compare local deployed files with reviewed evidence. This records an observation and makes no repairs. Cloud and runtime health checks are not included.");
-  root.append(button("Inspect deployed files", async () => {
+  if (release.preview_retiring) text(root, "p", "Preview retirement has started. Inspect the cleanup and retained-data report above; ordinary deployment drift comparison no longer applies.");
+  else root.append(button("Inspect deployed files", async () => {
     const observation = await api("/releases/" + id + "/observe", "POST", {});
     if (selected !== id || !token) return;
     await show(id);
@@ -160,6 +167,7 @@ element("login").onsubmit = (event) => { event.preventDefault(); safe(async () =
   token = element("token").value; element("token").value = "";
   const data = await api("/workspace");
   element("unlock").hidden = true; element("workspace").hidden = false;
+  workspaceConfiguration = data.configuration;
   element("title").textContent = data.configuration.name;
   element("mode").textContent = data.mode;
   element("config").value = data.toml;
@@ -170,6 +178,7 @@ element("login").onsubmit = (event) => { event.preventDefault(); safe(async () =
   for (const name of Object.keys(data.configuration.environments)) {
     const option = document.createElement("option"); option.value = name; option.textContent = name; element("environment").append(option);
   }
+  configurePreviewFields();
   element("component").replaceChildren(new Option("All components", ""));
   for (const name of Object.keys(data.configuration.components)) element("component").append(new Option(name, name));
   message("Unlocked. Tokens are cleared when this tab reloads."); await refresh();
@@ -355,3 +364,64 @@ element("incident-tick").onclick = () => incidentAction(element("incident-panel"
   const result = await api("/incidents/tick", "POST", {});
   if (token) incidentMessage(result.escalated.length + " escalation signals queued. Delivery requires a separate notification flush.");
 });
+
+
+function configurePreviewFields() {
+  const preview = Boolean(workspaceConfiguration?.environments[element("environment").value]?.preview);
+  element("preview-options").hidden = !preview;
+  element("preview-owner").required = preview;
+  element("preview-hours").required = preview;
+}
+element("environment").onchange = configurePreviewFields;
+function renderPreview(root, data) {
+  const release = data.release;
+  const id = release.id;
+  text(root, "h3", "Isolated static preview");
+  text(root, "p", "Owner: " + release.preview.owner + " · expires " + new Date(release.preview.expires_at * 1000).toLocaleString() +
+    (Date.now() >= release.preview.expires_at * 1000 ? " · cleanup due" : "") + ". Expiry never deletes files.");
+  text(root, "p", release.preview.retain_data ? "Retention requested: deployed files will remain." : "Only verified generated files may be removed. Unknown or modified data stays.");
+  text(root, "p", "The ownership record, source, artifacts and audit remain after retirement. Preparing a cleanup plan does not delete files.");
+  const cleanup = release.cleanup;
+  async function act(action, body, status) {
+    await api("/previews/" + id + "/" + action, "POST", body);
+    if (selected !== id || !token) return;
+    await show(id);
+    if (document.activeElement === document.body) element("detail-heading").focus({preventScroll: true});
+    message(status);
+  }
+  if (["succeeded", "failed", "cancelled"].includes(release.status) && (!cleanup || cleanup.status === "reconciled")) {
+    root.append(button("Prepare preview cleanup", () => act("prepare-cleanup", {}, "Cleanup prepared. Review exact removals and retained data before approving."), "prepare-cleanup"));
+  }
+  if (!cleanup) return;
+  text(root, "p", "Cleanup: " + cleanup.status + ". Original deployment outcome: " + release.status + ".");
+  if (cleanup.reason) text(root, "p", "Cleanup needs inspection: " + cleanup.reason);
+  if (cleanup.plan) {
+    text(root, "p", cleanup.plan.delete.length + " generated files selected for removal · " + cleanup.plan.retain.length + " retained entries.");
+    const evidence = document.createElement("details");
+    text(evidence, "summary", "Exact cleanup and retention plan");
+    text(evidence, "pre", JSON.stringify(cleanup.plan, null, 2)); root.append(evidence);
+  }
+  const request = data.cleanup_request;
+  if (request) text(root, "pre", "Cleanup approval: " + request.status + "\nDigest: " + request.digest);
+  if (cleanup.status === "waiting" && request?.status === "pending") {
+    root.append(button("Approve exact preview cleanup", async () => {
+      if (!window.confirm("Approve only the displayed preview file removals? Retained source, artifacts, audit and listed data remain.")) return;
+      await act("approve-cleanup", {digest: request.digest}, "Cleanup approved. Execution is a separate action.");
+    }, "approve-cleanup"));
+  }
+  if (cleanup.status === "waiting" && request?.status === "approved") {
+    root.append(button("Execute approved preview cleanup", async () => {
+      await act("cleanup", {}, "Preview retirement recorded. Inspect the retained-data result.");
+    }, "execute-cleanup"));
+  }
+  if (["preparing", "waiting", "running", "uncertain"].includes(cleanup.status)) {
+    root.append(button("Inspect and reconcile cleanup", async () => {
+      const note = window.prompt("Stop any worker, inspect the owned preview namespace, and describe what remains:");
+      if (!note) return;
+      const removed = window.prompt("Type removed only if you inspected and confirmed the entire owned namespace is absent. Leave blank to prepare a new plan for remaining files:", "");
+      if (removed === null) return;
+      if (removed !== "" && removed !== "removed") throw new Error("Use removed or leave the inspection choice blank.");
+      await act("reconcile", {note, confirm_removed: removed === "removed"}, "Cleanup inspection recorded. Original deployment outcome is unchanged.");
+    }, "reconcile-cleanup"));
+  }
+}
