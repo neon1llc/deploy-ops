@@ -1,0 +1,22 @@
+# .dockerignore - Exclude local secrets and generated state from image builds.
+
+.git
+.venv
+.state
+.deploy_ops
+.deploy-ops
+**/.deploy-ops
+.env*
+config/controller.toml
+**/__pycache__
+**/*.token
+**/*.pem
+**/*.key
+**/*.tfstate*
+**/plan.bin
+**/plan.json
+**/lease.json
+.pytest_cache
+build
+dist
+*.egg-info

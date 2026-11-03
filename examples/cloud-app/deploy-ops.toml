@@ -1,0 +1,45 @@
+# examples/cloud-app/deploy-ops.toml - Deliver an existing application through three explicit runtime adapters.
+# Copy this operator-reviewed contract beside an application checkout, then replace the example identifiers.
+
+schema_version = 1
+name = "example"
+
+[repositories.application]
+path = "application"
+revision = "HEAD"
+
+[environments.aws-development]
+provider = "aws"
+[environments.azure-staging]
+provider = "azure"
+promote_from = ["aws-development"]
+[environments.gcp-production]
+provider = "gcp"
+production = true
+promote_from = ["azure-staging"]
+
+# Build and publish elsewhere without cloud writer access. Supply an immutable digest with --image.
+[components.web]
+repository = "application"
+kind = "application"
+adapter = "ecs"
+[components.web.options]
+image_repository = "ghcr.io/neon1llc/example-app"
+
+[components.web.targets.aws-development]
+region = "us-east-1"
+cluster = "example-development"
+service = "web"
+container = "web"
+
+[components.web.targets.azure-staging]
+adapter = "container-apps"
+name = "example-staging"
+resource_group = "example-staging"
+subscription_id = "00000000-0000-0000-0000-000000000000"
+
+[components.web.targets.gcp-production]
+adapter = "cloud-run"
+name = "example-production"
+project_id = "replace-project-id"
+region = "us-central1"

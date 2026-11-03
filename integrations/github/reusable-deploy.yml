@@ -1,0 +1,121 @@
+# integrations/github/reusable-deploy.yml - Plan and apply through independent authorization.
+# Install as .github/workflows/deploy.yml in a protected authority repository.
+# Replace both TOOLKIT_COMMIT_SHA values with a reviewed, existing source commit.
+
+name: Guarded deployment
+on:
+  workflow_call:
+    inputs:
+      target:
+        type: string
+        required: true
+      plan_environment:
+        type: string
+        required: true
+      environment:
+        type: string
+        required: true
+      engine:
+        type: string
+        default: opentofu
+      agent_label:
+        type: string
+        default: ""
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: deploy-ops-${{ github.repository_id }}-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    # Raw saved plans can contain secrets. This artifact transport is private-repository only
+    if: github.event.repository.private == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    environment: ${{ inputs.plan_environment }}
+    env:
+      DEPLOY_OPS_URL: ${{ vars.DEPLOY_OPS_URL }}
+      TARGET: ${{ inputs.target }}
+      ENGINE: ${{ inputs.engine }}
+      AGENT_LABEL: ${{ inputs.agent_label }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+      - uses: neon1llc/deploy-ops@TOOLKIT_COMMIT_SHA
+      - if: inputs.engine == 'opentofu'
+        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: "1.10.0"
+          tofu_wrapper: false
+      - if: inputs.engine == 'terraform'
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: "1.12.2"
+          terraform_wrapper: false
+      # The controller chooses the planning identity and working directory
+      - name: Plan and request approval
+        run: |
+          set -euo pipefail
+          deploy-ops gate plan --target "$TARGET" --engine "$ENGINE" \
+            --agent-label "$AGENT_LABEL" --out .deploy_ops
+      - name: Wait for approval
+        run: deploy-ops gate wait --ticket .deploy_ops/ticket.json --seconds 1800
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: guarded-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .deploy_ops/plan.bin
+            .deploy_ops/ticket.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  apply:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ inputs.environment }}
+    env:
+      DEPLOY_OPS_URL: ${{ vars.DEPLOY_OPS_URL }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+      - uses: neon1llc/deploy-ops@TOOLKIT_COMMIT_SHA
+      - if: inputs.engine == 'opentofu'
+        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: "1.10.0"
+          tofu_wrapper: false
+      - if: inputs.engine == 'terraform'
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: "1.12.2"
+          terraform_wrapper: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: guarded-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .deploy_ops
+      - name: Claim this exact plan once
+        run: |
+          deploy-ops gate claim --ticket .deploy_ops/ticket.json \
+            --artifact .deploy_ops/plan.bin --out .deploy_ops/lease.json
+      # Cloud credentials are obtained inside execute, only after an online lease check
+      - name: Apply with a supervised lease
+        run: |
+          deploy-ops gate execute --lease .deploy_ops/lease.json \
+            --artifact .deploy_ops/plan.bin
+      - name: Remove local artifacts
+        if: always()
+        run: rm -rf -- .deploy_ops

@@ -1,0 +1,29 @@
+# integrations/github/caller.yml - Call a reviewed authority workflow from an application repository.
+# Keep the target mapping under branch protection and replace WORKFLOW_COMMIT_SHA.
+
+name: Deploy
+on:
+  workflow_dispatch:
+    inputs:
+      cloud:
+        description: Registered development target
+        type: choice
+        options: [aws, azure, gcp]
+        required: true
+      engine:
+        description: Existing IaC engine
+        type: choice
+        options: [opentofu, terraform]
+        required: true
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  deploy:
+    uses: neon1llc/deploy-ops/.github/workflows/deploy.yml@WORKFLOW_COMMIT_SHA
+    with:
+      target: neon1-${{ inputs.cloud }}-dev
+      plan_environment: ${{ inputs.cloud }}-dev-plan
+      environment: ${{ inputs.cloud }}-dev
+      engine: ${{ inputs.engine }}
+      agent_label: ""

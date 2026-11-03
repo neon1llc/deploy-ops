@@ -1,0 +1,30 @@
+# config/delivery.example.toml - Bind the native application worker to an operator-reviewed workspace.
+# Replace every placeholder and register each actual target independently. No real access is configured here.
+
+audience = "deploy-ops"
+database = "../.state/delivery.db"
+allowed_hosts = ["localhost", "127.0.0.1", "deploy-ops.example.com"]
+
+[targets.example-aws-development-web]
+repository = "neon1llc/example-app"
+repository_id = "111111111"
+repository_owner_id = "222222222"
+ref = "refs/heads/main"
+workflow_ref = "neon1llc/deploy-ops/.github/workflows/delivery.yml@0000000000000000000000000000000000000000"
+environment = "aws-development"
+planner_environment = "aws-development-plan"
+cloud = "aws"
+engines = ["delivery"]
+delivery_digest = "0000000000000000000000000000000000000000000000000000000000000000"
+
+# The planner may describe the existing app. Only the claimed execution receives the writer identity.
+[targets.example-aws-development-web.planner_identity]
+role_arn = "arn:aws:iam::111111111111:role/deploy-ops-app-reader"
+region = "us-east-1"
+[targets.example-aws-development-web.identity]
+role_arn = "arn:aws:iam::111111111111:role/deploy-ops-app-writer"
+region = "us-east-1"
+
+[targets.example-aws-development-web.policy]
+allow_delegation = false
+require_cost_estimate = true

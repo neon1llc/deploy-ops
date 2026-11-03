@@ -1,0 +1,96 @@
+# config/controller.example.toml - Register cloud targets outside contributor-controlled repositories.
+# Copy to controller.toml, replace the example identities, and keep that file private.
+
+# These sample numeric IDs and zero workflow pins cannot authorize a real workflow
+# The controller stores normalized change metadata, not raw plan values
+
+audience = "deploy-ops"
+database = "../.state/deploy_ops.db"
+allowed_hosts = ["localhost", "127.0.0.1", "deploy-ops.example.com"]
+request_seconds = 3600
+approval_seconds = 1800
+execution_seconds = 900
+delegation_hours = 8
+max_body_bytes = 2000000
+
+[slack]
+team_id = "T_REPLACE"
+app_id = "A_REPLACE"
+channel_id = "C_REPLACE"
+
+# Use numeric GitHub IDs, not names or labels supplied by an agent
+[slack.approvers]
+U_REPLACE = "16650553"
+
+[targets.neon1-aws-dev]
+repository = "neon1llc/example-app"
+repository_id = "111111111"
+repository_owner_id = "222222222"
+ref = "refs/heads/main"
+workflow_ref = "neon1llc/deploy-ops/.github/workflows/deploy.yml@0000000000000000000000000000000000000000"
+environment = "aws-dev"
+planner_environment = "aws-dev-plan"
+cloud = "aws"
+engines = ["terraform", "opentofu", "manifest"]
+workdir = "infra/aws"
+
+[targets.neon1-aws-dev.identity]
+role_arn = "arn:aws:iam::111111111111:role/deploy-ops-executor"
+region = "us-east-1"
+
+[targets.neon1-aws-dev.planner_identity]
+role_arn = "arn:aws:iam::111111111111:role/deploy-ops-planner"
+region = "us-east-1"
+
+# Enable delegation only after testing the cloud role's resource-level limits
+# Unknown estimates, computed values, output changes, and unknown resource types wait for review
+[targets.neon1-aws-dev.policy]
+allow_delegation = false
+auto_types = ["aws_ecs_service"]
+auto_actions = ["update"]
+max_changes = 3
+max_uses = 3
+max_total_changes = 6
+require_cost_estimate = true
+max_monthly_delta_cents = 500
+max_total_monthly_delta_cents = 1000
+
+[targets.neon1-azure-dev]
+repository = "neon1llc/example-app"
+repository_id = "111111111"
+repository_owner_id = "222222222"
+workflow_ref = "neon1llc/deploy-ops/.github/workflows/deploy.yml@0000000000000000000000000000000000000000"
+environment = "azure-dev"
+planner_environment = "azure-dev-plan"
+cloud = "azure"
+workdir = "infra/azure"
+
+[targets.neon1-azure-dev.identity]
+client_id = "11111111-1111-1111-1111-111111111111"
+tenant_id = "22222222-2222-2222-2222-222222222222"
+subscription_id = "33333333-3333-3333-3333-333333333333"
+
+[targets.neon1-azure-dev.planner_identity]
+client_id = "44444444-4444-4444-4444-444444444444"
+tenant_id = "22222222-2222-2222-2222-222222222222"
+subscription_id = "33333333-3333-3333-3333-333333333333"
+
+[targets.neon1-gcp-dev]
+repository = "neon1llc/example-app"
+repository_id = "111111111"
+repository_owner_id = "222222222"
+workflow_ref = "neon1llc/deploy-ops/.github/workflows/deploy.yml@0000000000000000000000000000000000000000"
+environment = "gcp-dev"
+planner_environment = "gcp-dev-plan"
+cloud = "gcp"
+workdir = "infra/gcp"
+
+[targets.neon1-gcp-dev.identity]
+workload_identity_provider = "projects/123456789/locations/global/workloadIdentityPools/deploy-ops/providers/executor"
+service_account = "deploy-ops-executor@example-project.iam.gserviceaccount.com"
+project_id = "example-project"
+
+[targets.neon1-gcp-dev.planner_identity]
+workload_identity_provider = "projects/123456789/locations/global/workloadIdentityPools/deploy-ops/providers/planner"
+service_account = "deploy-ops-planner@example-project.iam.gserviceaccount.com"
+project_id = "example-project"

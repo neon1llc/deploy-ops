@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "address": "application/web",
+      "resource_type": "deployment_manifest",
+      "action": "update"
+    }
+  ],
+  "findings": [],
+  "manual_only": true
+}

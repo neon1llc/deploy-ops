@@ -1,0 +1,38 @@
+# pyproject.toml - Package the shared deployment core, CLI, and local operator console.
+
+[build-system]
+requires = ["setuptools>=77,<83"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neon1-deploy-ops"
+version = "0.2.0"
+description = "Infrastructure and application delivery with exact approvals and bounded authority"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "licenses/*"]
+authors = [{name = "neon1 LLC"}]
+dependencies = [
+  "fastapi>=0.115,<1",
+  "httpx>=0.27,<1",
+  "pydantic>=2.10,<3",
+  "PyJWT[crypto]>=2.10,<3",
+  "uvicorn>=0.34,<1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "PyYAML>=6,<7"]
+
+[project.scripts]
+deploy-ops = "deploy_ops.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+deploy_ops = ["ui/*", "templates/local/*", "templates/local/application/*", "templates/local/infrastructure/*", "catalog.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

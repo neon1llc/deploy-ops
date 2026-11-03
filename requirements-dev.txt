@@ -1,0 +1,9 @@
+# requirements-dev.txt - Add the small test and repository-check toolset.
+
+-r requirements.txt
+iniconfig==2.3.0
+packaging==25.0
+pluggy==1.6.0
+Pygments==2.20.0
+pytest==9.0.2
+PyYAML==6.0.3

@@ -1,0 +1,11 @@
+{
+  "use_default": false,
+  "include_claim_keys": [
+    "repo",
+    "repository_id",
+    "repository_owner_id",
+    "ref",
+    "context",
+    "job_workflow_ref"
+  ]
+}

@@ -1,0 +1,289 @@
+{
+  "schema_version": 1,
+  "updated": "2026-11-02",
+  "automatic_installation": false,
+  "entries": [
+    {
+      "id": "local-starter",
+      "kind": "starter",
+      "status": "local-verified",
+      "providers": [
+        "local"
+      ],
+      "adapters": [
+        "directory",
+        "static"
+      ],
+      "command": "deploy-ops init DIRECTORY"
+    },
+    {
+      "id": "saved-iac",
+      "kind": "integration",
+      "status": "contract-tested",
+      "providers": [
+        "aws",
+        "azure",
+        "gcp",
+        "local"
+      ],
+      "adapters": [
+        "opentofu",
+        "terraform"
+      ],
+      "boundary": "Cloud IaC uses the separate plan/apply gate workflow"
+    },
+    {
+      "id": "native-apps",
+      "kind": "integration",
+      "status": "mock-tested",
+      "providers": [
+        "aws",
+        "azure",
+        "gcp",
+        "local"
+      ],
+      "adapters": [
+        "ecs",
+        "container-apps",
+        "cloud-run",
+        "kubernetes",
+        "compose"
+      ],
+      "boundary": "Runtime-specific options and live qualification required"
+    },
+    {
+      "id": "ansible--ansible",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/ansible/ansible",
+      "license": "GPL-3.0-or-later",
+      "stars_display": "71.2k",
+      "copied_code": false
+    },
+    {
+      "id": "coollabsio--coolify",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/coollabsio/coolify",
+      "license": "Apache-2.0",
+      "stars_display": "65.5k",
+      "copied_code": false
+    },
+    {
+      "id": "hashicorp--terraform",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/hashicorp/terraform",
+      "license": "BUSL-1.1",
+      "stars_display": "50.3k",
+      "copied_code": false
+    },
+    {
+      "id": "aquasecurity--trivy",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/aquasecurity/trivy",
+      "license": "Apache-2.0",
+      "stars_display": "38.9k",
+      "copied_code": false
+    },
+    {
+      "id": "Dokploy--dokploy",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/Dokploy/dokploy",
+      "license": "Mixed Apache-2.0 and proprietary",
+      "stars_display": "38.2k",
+      "copied_code": false
+    },
+    {
+      "id": "backstage--backstage",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/backstage/backstage",
+      "license": "Apache-2.0",
+      "stars_display": "34.8k",
+      "copied_code": false
+    },
+    {
+      "id": "dokku--dokku",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/dokku/dokku",
+      "license": "MIT",
+      "stars_display": "32.2k",
+      "copied_code": false
+    },
+    {
+      "id": "opentofu--opentofu",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/opentofu/opentofu",
+      "license": "MPL-2.0",
+      "stars_display": "30.7k",
+      "copied_code": false
+    },
+    {
+      "id": "pulumi--pulumi",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/pulumi/pulumi",
+      "license": "Apache-2.0",
+      "stars_display": "25.8k",
+      "copied_code": false
+    },
+    {
+      "id": "argoproj--argo-cd",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/argoproj/argo-cd",
+      "license": "Apache-2.0",
+      "stars_display": "24.5k",
+      "copied_code": false
+    },
+    {
+      "id": "getsops--sops",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/getsops/sops",
+      "license": "MPL-2.0",
+      "stars_display": "23.6k",
+      "copied_code": false
+    },
+    {
+      "id": "caronc--apprise",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/caronc/apprise",
+      "license": "BSD-2-Clause",
+      "stars_display": "17.7k",
+      "copied_code": false
+    },
+    {
+      "id": "argoproj--argo-workflows",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/argoproj/argo-workflows",
+      "license": "Apache-2.0",
+      "stars_display": "17.1k",
+      "copied_code": false
+    },
+    {
+      "id": "dagger--dagger",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/dagger/dagger",
+      "license": "Apache-2.0",
+      "stars_display": "16.6k",
+      "copied_code": false
+    },
+    {
+      "id": "GoogleContainerTools--skaffold",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/GoogleContainerTools/skaffold",
+      "license": "Apache-2.0",
+      "stars_display": "15.9k",
+      "copied_code": false
+    },
+    {
+      "id": "caprover--caprover",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/caprover/caprover",
+      "license": "Custom modified Apache-derived terms",
+      "stars_display": "15.2k",
+      "copied_code": false
+    },
+    {
+      "id": "open-policy-agent--opa",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/open-policy-agent/opa",
+      "license": "Apache-2.0",
+      "stars_display": "12.4k",
+      "copied_code": false
+    },
+    {
+      "id": "crossplane--crossplane",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/crossplane/crossplane",
+      "license": "Apache-2.0",
+      "stars_display": "12.2k",
+      "copied_code": false
+    },
+    {
+      "id": "tilt-dev--tilt",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/tilt-dev/tilt",
+      "license": "Apache-2.0",
+      "stars_display": "10.1k",
+      "copied_code": false
+    },
+    {
+      "id": "runatlantis--atlantis",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/runatlantis/atlantis",
+      "license": "Apache-2.0",
+      "stars_display": "9.3k",
+      "copied_code": false
+    },
+    {
+      "id": "fluxcd--flux2",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/fluxcd/flux2",
+      "license": "Apache-2.0",
+      "stars_display": "8.5k",
+      "copied_code": false
+    },
+    {
+      "id": "GoogleCloudPlatform--cloud-foundation-fabric",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/GoogleCloudPlatform/cloud-foundation-fabric",
+      "license": "Apache-2.0",
+      "stars_display": "2.1k",
+      "copied_code": false
+    },
+    {
+      "id": "Azure--azure-dev",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/Azure/azure-dev",
+      "license": "MIT",
+      "stars_display": "571",
+      "copied_code": false
+    },
+    {
+      "id": "towardsthecloud--aws-cdk-starter-kit",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/towardsthecloud/aws-cdk-starter-kit",
+      "license": "Apache-2.0",
+      "stars_display": "96",
+      "copied_code": false
+    },
+    {
+      "id": "towardsthecloud--aws-toolbox",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/towardsthecloud/aws-toolbox",
+      "license": "MIT",
+      "stars_display": "12",
+      "copied_code": false
+    },
+    {
+      "id": "towardsthecloud--aws-terraform-starter-kit",
+      "kind": "prior-art",
+      "status": "research-only",
+      "source": "https://github.com/towardsthecloud/aws-terraform-starter-kit",
+      "license": "Apache-2.0",
+      "stars_display": "8",
+      "copied_code": false
+    }
+  ]
+}

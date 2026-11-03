@@ -1,0 +1,19 @@
+<!doctype html>
+<!-- ui/index.html - Review and operate a trusted local workspace without a frontend build tool. -->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeployOps by neon1</title><link rel="stylesheet" href="/assets/style.css"><script src="/assets/app.js" defer></script></head>
+<body><header><div><span class="brand">neon1</span><h1>DeployOps</h1><p>Infrastructure and applications. One release history.</p></div><span id="mode" class="badge">Locked</span></header>
+<main><section id="unlock"><h2>Open your workspace</h2><p>Paste the token from the local operator token file. It stays in this tab's memory.</p>
+<form id="login"><label for="token">Operator token</label><input id="token" type="password" autocomplete="off" required><button>Unlock</button></form></section>
+<div id="workspace" hidden><section><div class="row"><h2 id="title">Workspace</h2><button id="lock" class="secondary">Lock</button></div>
+<form id="release-form"><div class="controls"><label>Environment<select id="environment"></select></label><label>Component<select id="component"><option value="">All components</option></select></label></div>
+<label>Immutable image, optional<input id="image" placeholder="registry.example/team/app@sha256:..."></label>
+<label class="check"><input id="only" type="checkbox"> Reuse recorded dependency outputs</label>
+<div class="controls"><button type="button" id="plan" class="secondary">Preview workflow</button><button type="submit">Prepare release</button></div></form>
+<p class="muted">Preparation runs trusted repository checks and build code. Deployment waits for exact approval unless a bounded grant applies.</p><pre id="plan-output" hidden></pre></section>
+<section><h2>Bounded local autonomy</h2><p>For non-production local static and directory changes only. Each component receives its own allowance.</p>
+<form id="delegation"><div class="controls"><label>Hours<input id="hours" type="number" min="1" max="12" value="1"></label><label>Uses per component<input id="uses" type="number" min="1" max="100" value="1"></label><button>Grant window</button></div></form></section>
+<div class="grid"><section><div class="row"><h2>Releases</h2><button id="refresh" class="secondary">Refresh</button></div><div id="releases"></div></section>
+<section><h2>Release detail</h2><div id="detail"><p>Select a release to inspect changes and events.</p></div></section></div>
+<details><summary>Workspace configuration</summary><p>Use plain TOML. Keep secrets out of this file. Finish or cancel outstanding releases before saving.</p><label for="config">Deployment workspace</label><textarea id="config" rows="22" spellcheck="false"></textarea><div class="controls"><button id="validate-config" class="secondary">Validate configuration</button><button id="save-config">Save local configuration</button></div></details></div>
+<p id="message" role="status" aria-live="polite"></p></main><footer>DeployOps by neon1 LLC · Local operator console · Cloud actions require a trusted OIDC worker</footer></body></html>

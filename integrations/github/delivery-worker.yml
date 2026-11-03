@@ -1,0 +1,78 @@
+# integrations/github/delivery-worker.yml - Deliver prebuilt images from a protected reusable workflow.
+# Install as .github/workflows/delivery.yml after reviewing the workspace and replacing the source pins.
+# This recipe has not run on GitHub. Its cloud CLIs and trust configuration need live qualification.
+
+name: DeployOps application delivery
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      image:
+        type: string
+        required: true
+      agent_label:
+        type: string
+        default: ""
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: deploy-ops-app-${{ github.repository_id }}-${{ inputs.environment }}
+  cancel-in-progress: false
+jobs:
+  deliver:
+    if: github.event.repository.private == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    environment: ${{ inputs.environment }}
+    env:
+      DEPLOY_OPS_URL: ${{ vars.DEPLOY_OPS_URL }}
+      DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+      DEPLOY_IMAGE: ${{ inputs.image }}
+      AGENT_LABEL: ${{ inputs.agent_label }}
+    steps:
+      # The caller's source is snapshotted, not executed in this credential-bearing job
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          path: workspace/application
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: neon1llc/deploy-ops
+          ref: TOOLKIT_COMMIT_SHA
+          path: toolkit
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+      - uses: neon1llc/deploy-ops@TOOLKIT_COMMIT_SHA
+      - name: Load the operator-owned workspace
+        run: |
+          set -euo pipefail
+          cp toolkit/examples/cloud-app/deploy-ops.toml workspace/deploy-ops.toml
+          # Do not download and execute arbitrary installers in the writer job
+          case "$DEPLOY_ENVIRONMENT" in
+            aws-development) command -v aws ;;
+            azure-staging) command -v az ;;
+            gcp-production) command -v gcloud ;;
+            *) echo "Unsupported registered environment" >&2; exit 2 ;;
+          esac
+      - name: Prepare, await approval, and deliver
+        run: |
+          set -euo pipefail
+          deploy-ops --project workspace/deploy-ops.toml run "$DEPLOY_ENVIRONMENT"             --component web --only --image "$DEPLOY_IMAGE" --agent "$AGENT_LABEL" --wait-seconds 1800
+      # Use an allowlist. Interrupted stages may leave cloud login caches in their private home
+      # Retain evidence for reconciliation, not source, credentials, or an automatically replayable deployment
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: deployment-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            workspace/.deploy-ops/state.db
+            workspace/.deploy-ops/state.db-wal
+            workspace/.deploy-ops/releases/**/prepared.json
+          include-hidden-files: true
+          retention-days: 1

@@ -1,0 +1,23 @@
+# requirements.txt - Exact runtime versions used by the local verification run.
+# Install these before installing this project. These are version pins, not wheel hashes.
+
+annotated-doc==0.0.4
+annotated-types==0.8.0
+anyio==4.13.0
+certifi==2026.5.20
+cffi==2.0.0
+click==8.1.8
+cryptography==46.0.4
+fastapi==0.128.2
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.17
+pycparser==3.0
+pydantic==2.13.5
+pydantic_core==2.46.5
+PyJWT==2.13.0
+starlette==0.50.0
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+uvicorn==0.48.0

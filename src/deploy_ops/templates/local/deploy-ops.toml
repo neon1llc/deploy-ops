@@ -1,0 +1,40 @@
+# deploy-ops.toml - Join separate infrastructure and application sources in a local workspace.
+
+schema_version = 1
+name = "hello"
+
+# These are separate source roots. Use committed Git repositories for real projects.
+[repositories.infrastructure]
+path = "infrastructure"
+allow_uncommitted = true
+
+[repositories.application]
+path = "application"
+allow_uncommitted = true
+
+[environments.development]
+provider = "local"
+
+[environments.staging]
+provider = "local"
+promote_from = ["development"]
+
+[components.foundation]
+repository = "infrastructure"
+kind = "infrastructure"
+adapter = "directory"
+[components.foundation.options]
+name = "hello"
+
+# Only public infrastructure outputs cross the repository boundary.
+[components.web]
+repository = "application"
+kind = "application"
+adapter = "static"
+needs = ["foundation"]
+[components.web.build]
+checks = [["python3", "check.py"]]
+command = ["python3", "build.py"]
+[components.web.options]
+directory = "dist"
+destination = "${outputs.foundation.path}"

@@ -1,0 +1,28 @@
+# integrations/slack/manifest.yaml - Register the approval surface in your own Slack workspace.
+# Replace the callback URL before creating the app.
+
+display_information:
+  name: DeployOps
+  description: Review deployment plans and bounded work windows
+features:
+  bot_user:
+    display_name: DeployOps
+    always_online: false
+  slash_commands:
+    - command: /deploy-ops
+      description: Review pending changes or manage a work window
+      usage_hint: "pending | show ID | delegate TARGET HOURS USES | revoke ID | stop | resume"
+      url: https://deploy-ops.example.com/v1/slack
+      should_escape: false
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - commands
+settings:
+  interactivity:
+    is_enabled: true
+    request_url: https://deploy-ops.example.com/v1/slack
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

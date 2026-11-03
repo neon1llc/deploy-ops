@@ -1,0 +1,30 @@
+# compose.yaml - Bind the single-node controller to loopback until a TLS proxy is configured.
+
+services:
+  controller:
+    build: .
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      DEPLOY_OPS_ADMIN_TOKEN: ${DEPLOY_OPS_ADMIN_TOKEN:?Set a random operator token}
+      DEPLOY_OPS_SLACK_SIGNING_SECRET: ${DEPLOY_OPS_SLACK_SIGNING_SECRET:-}
+      DEPLOY_OPS_SLACK_BOT_TOKEN: ${DEPLOY_OPS_SLACK_BOT_TOKEN:-}
+    volumes:
+      - ./config/controller.toml:/config/controller.toml:ro
+      - controller-state:/state
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/healthz', timeout=2)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  controller-state:

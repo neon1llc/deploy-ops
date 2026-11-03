@@ -1,0 +1,15 @@
+# action.yml - Install the pinned DeployOps client inside a trusted workflow.
+
+name: DeployOps client
+description: Install the client from this action's pinned source revision
+runs:
+  using: composite
+  steps:
+    # GITHUB_ACTION_PATH identifies this action, not the caller's checkout
+    - shell: bash
+      env:
+        TOOLKIT_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        python -m pip install -r "$TOOLKIT_PATH/requirements.txt"
+        python -m pip install --no-deps "$TOOLKIT_PATH"
