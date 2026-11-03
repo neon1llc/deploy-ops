@@ -18,6 +18,24 @@
 <form id="delegation"><div class="controls"><label>Hours<input id="hours" type="number" min="1" max="12" value="1"></label><label>Uses per component<input id="uses" type="number" min="1" max="100" value="1"></label><button>Grant window</button></div></form></section>
 <div class="grid"><section><div class="row"><h2>Releases</h2><button id="refresh" class="secondary">Refresh</button></div><div id="releases"></div></section>
 <section><h2 id="detail-heading" tabindex="-1">Release detail</h2><div id="detail"><p>Select a release to inspect changes and events.</p></div></section></div>
+<details id="incident-panel"><summary>Local incidents</summary>
+<p>Track a failed or uncertain release without changing its deployment outcome. Owners are local labels. Escalations queue signals; they do not contact another responder or start a background scheduler.</p>
+<form id="incident-open-form">
+<label for="incident-release">Failed or uncertain release ID</label><input id="incident-release" name="release" required pattern="[0-9a-f]{32}" maxlength="32" autocapitalize="off" spellcheck="false">
+<label for="incident-owner">Responsible team or person</label><input id="incident-owner" name="owner" required maxlength="500">
+<div class="controls"><label for="incident-interval">Escalation interval (seconds)<input id="incident-interval" name="interval" type="number" min="60" max="86400" value="900" required></label>
+<label for="incident-limit">Maximum escalation level<input id="incident-limit" name="limit" type="number" min="1" max="5" value="3" required></label></div>
+<label for="incident-open-note">What needs investigation?</label><textarea id="incident-open-note" name="note" rows="3" required maxlength="500"></textarea>
+<button type="submit">Open local incident</button></form>
+<h3>Incident history</h3><div id="incidents"></div>
+<h3 id="incident-heading" tabindex="-1">Selected incident</h3><p id="incident-detail">Select an incident to inspect its current state.</p>
+<form id="incident-decision-form"><label for="incident-note">Decision and evidence</label><textarea id="incident-note" name="note" rows="3" required maxlength="500"></textarea>
+<div class="controls"><button id="incident-acknowledge" name="action" value="acknowledge" type="submit">Acknowledge</button><button id="incident-resolve" name="action" value="resolve" type="submit">Resolve</button></div></form>
+<p>Acknowledgement stops escalation. Resolution records your decision; it does not repair or reconcile the deployment. Notes stay in the local audit. Keep secrets out of them.</p>
+<button id="incident-tick" type="button" class="secondary">Check due escalations</button>
+<h3>Workspace notification outbox</h3><p id="notification-status"></p>
+<p>Delivery is separate from acknowledgement. Use <code>deploy-ops notify --status</code> to inspect or <code>deploy-ops notify</code> to send through your configured endpoint. This outbox has one destination, not a recipient schedule.</p>
+<p id="incident-status" role="status" aria-live="polite" tabindex="-1"></p></details>
 <details><summary>Workspace configuration</summary><p>Edit existing repositories, environments and components below. Advanced options stay in the TOML draft. Keep secrets out of this file. Finish or cancel outstanding releases before saving.</p>
 <button id="load-forms" type="button" class="secondary">Load forms from current draft</button>
 <form id="config-form" action="/api/config/patch" method="post">

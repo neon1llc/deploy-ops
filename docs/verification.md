@@ -1,11 +1,11 @@
 # Verification
 
-**Checked:** 2026-11-03 · **Candidate:** v0.8.0 preview
+**Checked:** 2026-11-03 · **Candidate:** v0.9.0 preview
 
 ## Local execution
 
 A fresh network install of the pinned requirements passed on macOS with Python 3.12.10.
-`make check` passed source, configuration, documentation-link and whitespace checks and all 177 tests.
+`make check` passed source, configuration, documentation-link and whitespace checks and all 191 tests.
 The tests cover approval and claim boundaries, concurrency, identity validation, changed evidence,
 source snapshots, promotion, rollback, process cleanup, notification retries and console access.
 A complete delivery and app-only release also ran from two committed Git repositories while uncommitted
@@ -63,7 +63,7 @@ and deployed bytes. They record a bounded comparison, not application health or 
 
 ## Disposable container and cluster execution
 
-The same 177 tests passed on Linux with Python 3.14.4. Real execution used Docker Engine 29.1.3,
+The v0.7 runtime base passed all 177 tests on Linux with Python 3.14.4. Real execution used Docker Engine 29.1.3,
 Compose 2.40.3, kind 0.31.0 and Kubernetes/kubectl 1.35.0 in a disposable Ubuntu 26.04 VM with no host
 filesystem mounts or SSH agent forwarding. The existing host Docker context and other VMs were unchanged.
 
@@ -82,6 +82,19 @@ The controller Docker image built from the checked source. It served `/healthz` 
 with a read-only root filesystem, dropped capabilities, a persistent state volume and no Docker socket.
 These are local runtime observations, not proof of cloud identity, production isolation, registry publishing,
 sustained availability or managed-cluster compatibility. See the [support matrix](support-matrix.md).
+
+## Local incident lifecycle
+
+Fourteen focused checks cover restart, duplicate opening, immutable policy, stale decisions, direct
+resolution, concurrent escalation, acknowledgement racing escalation, notification supersession,
+concurrent delivery outcomes and the transactional attempt limit. A forced out-of-order delivery sent
+resolved version 2 before opened version 1; a receiver applying only newer versions retained resolution.
+This demonstrates the receiver contract with a fixture, not an external pager integration.
+
+A real browser opened an incident from a deliberately failed local preparation, retained investigation
+notes and keyboard focus through polling, checked an actual 60-second escalation deadline, acknowledged
+and resolved the incident. The original release outcome remained unchanged. The narrow layout and empty
+credential storage checks passed. HTTP transport success does not acknowledge an incident.
 
 ## Remaining qualification
 

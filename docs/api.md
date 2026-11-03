@@ -35,3 +35,13 @@ The API has no shell endpoint, credential export endpoint, public registration r
 An operator can reject a pending or approved request before execution is claimed, including after its
 approval expires. Rejection and claiming use the same transaction boundary. Once execution starts,
 inspect and reconcile its outcome instead of treating rejection as a rollback.
+
+
+## Local incident operations
+
+The authenticated loopback console exposes `GET/POST /api/incidents`, `POST /api/incidents/tick`,
+`POST /api/incidents/{id}/acknowledge`, `POST /api/incidents/{id}/resolve` and `GET /api/notifications`.
+Opening accepts `release_id`, `owner`, `note`, `interval_seconds` and `limit`. Decisions require the
+current `version` and a `note`. Read-only outbox inspection sends nothing. All endpoints use the existing
+console token and origin/host checks; none grants remote paging or deployment authority.
+See [local incidents](incidents.md) for the lifecycle and receiver ordering contract.

@@ -1,6 +1,6 @@
 # DeployOps
 
-**0.8.0 preview · by neon1 LLC**
+**0.9.0 preview · by neon1 LLC**
 
 Deploy infrastructure and applications from separate repositories. Choose an environment,
 review exact changes, and track the result through one CLI, local browser console, and audit history.
@@ -26,6 +26,7 @@ The demo builds, deploys, promotes, and HTTP-checks a real local application. It
 | [Research](docs/research/prior-art.md) | Star-sorted prior art, licensing, and reuse decisions |
 | [Roadmap](docs/roadmap.md) | Small, complete next increments |
 | [Verification](docs/verification.md) | What actually ran |
+| [Local incidents](docs/incidents.md) | Track response and escalation separately from notification delivery |
 | [Support matrix](docs/support-matrix.md) | Checked OS, runtime and provider boundaries |
 | [Security](SECURITY.md) | Limits that matter before cloud access |
 | [Development](docs/development.md) | Commands, comments, and ownership |

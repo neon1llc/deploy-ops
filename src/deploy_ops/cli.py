@@ -69,7 +69,23 @@ def parser():
     preview.add_argument("release")
     preview.add_argument("--component", required=True)
     preview.add_argument("--port", type=int, default=8000)
+    incidents = commands.add_parser("incidents", help="Track local incidents separately from deployment outcomes")
+    actions = incidents.add_subparsers(dest="incident_action", required=True)
+    actions.add_parser("list")
+    actions.add_parser("tick")
+    opening = actions.add_parser("open")
+    opening.add_argument("release")
+    opening.add_argument("--owner", required=True)
+    opening.add_argument("--note", required=True)
+    opening.add_argument("--interval-seconds", type=int, default=900)
+    opening.add_argument("--limit", type=int, default=3)
+    for name in ("acknowledge", "resolve"):
+        action = actions.add_parser(name)
+        action.add_argument("incident")
+        action.add_argument("--version", type=int, required=True)
+        action.add_argument("--note", required=True)
     notify = commands.add_parser("notify")
+    notify.add_argument("--status", action="store_true", help="Inspect the outbox without sending")
     notify.add_argument("--url", default=os.environ.get("DEPLOY_OPS_NOTIFY_URL"))
     notify.add_argument("--kind", choices=["json", "slack", "ntfy"], default="json")
     ui = commands.add_parser("ui")
@@ -162,8 +178,19 @@ def dispatch(args):
         finally:
             server.server_close()
         return {"status": "preview-stopped"}
+    if args.command == "incidents":
+        from .delivery.incidents import list_incidents, open_incident, tick, transition
+        if args.incident_action == "list":
+            return list_incidents(engine.ledger)
+        if args.incident_action == "tick":
+            return tick(engine.ledger)
+        if args.incident_action == "open":
+            return open_incident(engine.ledger, args.release, args.owner, args.note, args.interval_seconds, args.limit)
+        return transition(engine.ledger, args.incident, args.incident_action, args.version, args.note)
     if args.command == "notify":
-        from .delivery.notify import flush
+        from .delivery.notify import flush, status
+        if args.status:
+            return status(engine.ledger)
         if not args.url:
             raise Refused("Set DEPLOY_OPS_NOTIFY_URL or pass --url", 422)
         return flush(engine.ledger, args.url, args.kind)

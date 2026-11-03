@@ -5,6 +5,10 @@ let selected = null;
 let detailKey = "";
 let releaseKey = "";
 let acting = false;
+let selectedIncident = null;
+let incidentRecords = [];
+let incidentKey = "";
+let incidentBusy = false;
 let savedSourceHash = "";
 let savedToml = "";
 let reviewedConfiguration = null;
@@ -61,6 +65,7 @@ async function refresh() {
     }
   }
   if (selected) await show(selected);
+  await refreshIncidents();
 }
 async function show(id) {
   selected = id;
@@ -119,6 +124,11 @@ async function show(id) {
     if (!note) return;
     await api("/releases/" + id + "/recover", "POST", { note }); await refresh();
   }));
+  if (["failed", "uncertain"].includes(release.status)) root.append(button("Track a local incident", async () => {
+    element("incident-release").value = id;
+    element("incident-panel").open = true;
+    element("incident-owner").focus();
+  }, "track-incident"));
   text(root, "h3", "Deployment observation");
   text(root, "p", "Compare local deployed files with reviewed evidence. This records an observation and makes no repairs. Cloud and runtime health checks are not included.");
   root.append(button("Inspect deployed files", async () => {
@@ -265,3 +275,83 @@ element("config-form").onsubmit = (event) => {
     } finally { element("config-controls").disabled = false; element("load-forms").disabled = false; }
   });
 };
+
+
+// Incident forms stay mounted while polling, so a new event cannot discard an operator's note.
+async function refreshIncidents() {
+  const [records, outbox] = await Promise.all([api("/incidents"), api("/notifications")]);
+  if (!token) return;
+  incidentRecords = records;
+  const key = JSON.stringify(records);
+  if (key !== incidentKey) {
+    incidentKey = key;
+    const root = element("incidents");
+    const focused = root.contains(document.activeElement) ? document.activeElement.dataset.key : null;
+    root.replaceChildren();
+    if (!records.length) text(root, "p", "No local incidents have been opened.");
+    for (const record of records) {
+      const control = button(record.status + " · " + record.owner + " · " + record.id.slice(0, 8), async () => {
+        selectedIncident = record.id; renderIncident();
+      }, record.id);
+      control.className = "release"; root.append(control);
+      if (control.dataset.key === focused) control.focus({preventScroll: true});
+    }
+  }
+  renderIncident();
+  element("notification-status").textContent = outbox.pending + " pending · " + outbox.delivered + " HTTP accepted · " + outbox.superseded + " superseded · " + outbox.exhausted + " exhausted (" + outbox.attempt_limit + " attempts).";
+}
+function renderIncident() {
+  const record = incidentRecords.find(item => item.id === selectedIncident);
+  element("incident-decision-form").hidden = !record || record.status === "resolved";
+  if (!record) return;
+  element("incident-detail").textContent = record.id + " · " + record.status + " · owner: " + record.owner + " · version " + record.version +
+    " · escalation level " + record.level + "/" + record.limit + " · " + (record.next_escalation_at ?
+      "next due " + new Date(record.next_escalation_at * 1000).toLocaleString() : "no further escalation scheduled") + ". Release: " + record.release_id;
+  element("incident-acknowledge").hidden = record.status === "acknowledged";
+}
+async function incidentAction(form, action) {
+  if (incidentBusy) return;
+  incidentBusy = true;
+  const buttons = [...form.querySelectorAll("button")];
+  buttons.forEach(control => { control.disabled = true; });
+  try {
+    await action();
+    await refresh();
+  } catch (error) {
+    element("incident-status").textContent = error.message;
+    element("incident-status").className = "error";
+  } finally {
+    incidentBusy = false; buttons.forEach(control => { control.disabled = false; });
+    if (document.activeElement === document.body) element("incident-status").focus({preventScroll: true});
+  }
+}
+function incidentMessage(value) {
+  element("incident-status").textContent = value; element("incident-status").className = "";
+}
+element("incident-open-form").onsubmit = event => {
+  event.preventDefault();
+  incidentAction(event.currentTarget, async () => {
+    const record = await api("/incidents", "POST", {release_id: element("incident-release").value,
+      owner: element("incident-owner").value, note: element("incident-open-note").value,
+      interval_seconds: Number(element("incident-interval").value), limit: Number(element("incident-limit").value)});
+    if (!token) return;
+    selectedIncident = record.id;
+    incidentMessage("Incident recorded. Its notification is queued separately; no responder has been contacted by this action.");
+  });
+};
+element("incident-decision-form").onsubmit = event => {
+  event.preventDefault();
+  const action = event.submitter?.value;
+  const record = incidentRecords.find(item => item.id === selectedIncident);
+  const note = element("incident-note").value;
+  incidentAction(event.currentTarget, async () => {
+    if (!record || !action) throw new Error("Select an incident and a decision first.");
+    const updated = await api("/incidents/" + record.id + "/" + action, "POST", {version: record.version, note});
+    if (!token) return;
+    incidentMessage("Incident " + updated.status + ". Deployment outcome is unchanged.");
+  });
+};
+element("incident-tick").onclick = () => incidentAction(element("incident-panel"), async () => {
+  const result = await api("/incidents/tick", "POST", {});
+  if (token) incidentMessage(result.escalated.length + " escalation signals queued. Delivery requires a separate notification flush.");
+});

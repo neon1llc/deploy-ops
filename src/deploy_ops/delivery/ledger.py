@@ -26,6 +26,10 @@ class Ledger:
                 CREATE TABLE IF NOT EXISTS release_locks (
                     scope TEXT PRIMARY KEY, release_id TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS incidents (
+                    id TEXT PRIMARY KEY, release_id TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL, data TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS notifications (
                     id INTEGER PRIMARY KEY AUTOINCREMENT, payload TEXT NOT NULL,
                     sent INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0

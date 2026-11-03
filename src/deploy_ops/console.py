@@ -34,6 +34,11 @@ class Input(BaseModel):
     name: str = ""
     values: dict = Field(default_factory=dict)
     source_hash: str = ""
+    release_id: str = ""
+    owner: str = Field(default="", max_length=500)
+    interval_seconds: int = Field(default=900, ge=60, le=86400)
+    limit: int = Field(default=3, ge=1, le=5)
+    version: int | None = Field(default=None, ge=1)
 
 
 def create_app(engine, token: str, port: int = 8765) -> FastAPI:
@@ -149,6 +154,31 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
                                           {"old_digest": engine.spec.digest, "new_digest": proposed.digest})
             engine = Engine(engine.path, engine.state)
         return {"digest": engine.spec.digest, "status": "saved", "reload": True}
+
+    @app.get("/api/notifications", dependencies=[Depends(operator)])
+    def notifications():
+        from .delivery.notify import status
+        return status(engine.ledger)
+
+    @app.get("/api/incidents", dependencies=[Depends(operator)])
+    def incidents():
+        from .delivery.incidents import list_incidents
+        return list_incidents(engine.ledger)
+
+    @app.post("/api/incidents", dependencies=[Depends(operator)])
+    def open_incident(data: Input):
+        from .delivery.incidents import open_incident
+        return open_incident(engine.ledger, data.release_id, data.owner, data.note, data.interval_seconds, data.limit)
+
+    @app.post("/api/incidents/tick", dependencies=[Depends(operator)])
+    def tick_incidents():
+        from .delivery.incidents import tick
+        return tick(engine.ledger)
+
+    @app.post("/api/incidents/{incident_id}/{action}", dependencies=[Depends(operator)])
+    def incident_action(incident_id: str, action: str, data: Input):
+        from .delivery.incidents import transition
+        return transition(engine.ledger, incident_id, action, data.version, data.note)
 
     @app.get("/api/releases", dependencies=[Depends(operator)])
     def releases():

@@ -1,6 +1,6 @@
 # Capabilities
 
-This table describes version 0.8.0. "Implemented" describes source behavior. "Live" means it actually ran
+This table describes version 0.9.0. "Implemented" describes source behavior. "Live" means it actually ran
 in this build environment. Mocked provider commands are not cloud integration evidence.
 
 | Capability | Current behavior | Evidence or limit |
@@ -22,7 +22,8 @@ in this build environment. Mocked provider commands are not cloud integration ev
 | Exact approvals and bounded windows | Shared authority controller and transactional claims | Regression and delivery tests |
 | Slack approvals | Signature, workspace and approver validation | Mocked interface tests, no live Slack workspace |
 | Notifications | Durable outbox to JSON webhook, Slack webhook, or ntfy | Mocked HTTP retries and stable event IDs |
-| Paging escalation | External incident system can consume webhooks | Escalation, acknowledgement, and on-call schedule logic are not implemented |
+| Local incidents | Explicit opening, owner label, versioned acknowledgement/resolution and bounded escalation signals | Durable/concurrent CLI/API checks and real browser; no external pager or on-call schedule |
+| External paging | JSON receiver can consume complete incident snapshots | Native pager adapter, authenticated remote acknowledgement and recipient routing remain unfinished |
 | Local GUI | Token unlock, config editor, graph preview, run, approval, local delegation, events, promotion and rollback | API tests and real headless Chrome journey on macOS, including keyboard unlock and narrow layout |
 | Guided configuration | Schema-derived existing-entry forms, comment-preserving TOML drafts, diff and stale-save refusal | Shared CLI/API tests; provider options and new entries remain TOML |
 | Appearance | System mode, six presets, validated import/export, density and radius | Real browser checks for drafts, storage failures and narrow layout |
