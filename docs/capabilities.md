@@ -1,6 +1,6 @@
 # Capabilities
 
-This table describes version 0.7.0. "Implemented" describes source behavior. "Live" means it actually ran
+This table describes version 0.8.0. "Implemented" describes source behavior. "Live" means it actually ran
 in this build environment. Mocked provider commands are not cloud integration evidence.
 
 | Capability | Current behavior | Evidence or limit |
@@ -10,14 +10,14 @@ in this build environment. Mocked provider commands are not cloud integration ev
 | Environments and overrides | Provider, production flag, variables, component target options | Schema and engine checks |
 | Local deployment | Directory infrastructure and versioned static artifact deployment | Live filesystem and HTTP checks |
 | Build and test | Trusted local argv checks/build hooks | Live Python example, no shell interpolation |
-| OCI build/publish | Docker Buildx metadata produces immutable image reference | Implemented, Docker unavailable here |
-| Docker Compose | Rendered digest-pinned images, bounded host features, health wait | Implemented, runtime not exercised |
+| OCI build/publish | Docker Buildx metadata produces immutable image reference | Command-contract checks; registry build/publish not exercised |
+| Docker Compose | Rendered digest-pinned images, bounded host features, health wait | Real Docker/Compose first and app-only delivery, HTTP and health checks |
 | Terraform/OpenTofu | Saved plan, tool and lock checks, state contract, named public outputs | Existing gate tests and new command-contract fixtures |
 | AWS ECS app | Existing service, clone task definition, exact image, waiter, revision check | Mocked commands, no live AWS |
 | Azure Container Apps | Existing Single-mode app, revision health check | Mocked commands, no live Azure |
 | GCP Cloud Run | Existing single-traffic service, new revision, explicit 100% traffic switch | Mocked commands, no live GCP |
-| Kubernetes app | Existing Deployment, JSON patch precondition, rollout and image checks | Mocked commands, no live cluster |
-| Promotion and rollback | Reuse previously built static artifact or immutable image | CLI/API and browser static paths tested, runtime paths need live tests |
+| Kubernetes app | Existing Deployment, JSON patch precondition, rollout and image checks | Real disposable kind cluster: rollout, app-only, promotion, rollback and stale-target refusal |
+| Promotion and rollback | Reuse previously built static artifact or immutable image | Real static and local Kubernetes paths; cloud runtime paths remain unqualified |
 | Generic tool integration | Trusted local prepare/apply/verify argv contract, always manual | Implemented, not a native tool semantic guarantee |
 | Exact approvals and bounded windows | Shared authority controller and transactional claims | Regression and delivery tests |
 | Slack approvals | Signature, workspace and approver validation | Mocked interface tests, no live Slack workspace |

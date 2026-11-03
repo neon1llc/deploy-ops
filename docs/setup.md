@@ -2,7 +2,7 @@
 
 ## Install and run
 
-Use Python 3.11 or newer. The latest local verification used Python 3.12.10 on macOS.
+Use Python 3.11 or newer. Local verification used Python 3.12.10 on macOS and Python 3.14.4 on Linux.
 Start with the commands in the [README](../README.md). The version-pinned requirements
 record this environment. They are not an independently audited dependency lock or an SBOM.
 
@@ -79,7 +79,13 @@ They do not install cloud CLIs or mount the Docker socket. Set the controller da
 The service runs as UID 10001. Ensure mounted configuration is readable by that user and keep the token secret.
 
 The local console currently runs from the Python package. A thin desktop wrapper is a later packaging choice,
-not a second implementation. The local source and wheel journeys were checked on macOS. Windows and the container runtime still need platform verification.
+not a second implementation. Source and wheel journeys were checked on macOS; the test suite and container execution also passed on
+Linux. Windows remains unqualified. See the [support matrix](support-matrix.md) for exact versions and limits.
+
+For real application delivery on a disposable engine or cluster, copy the [Compose example](../examples/local-compose/README.md)
+or [Kubernetes example](../examples/local-kubernetes/README.md) from the source archive. Both document
+first deployment, app-only reuse, exact approvals and scoped cleanup. Kubernetes also covers promotion.
+The foundation component is a local marker; cluster or engine setup is an explicit prerequisite.
 
 ## Exit codes and local preview
 

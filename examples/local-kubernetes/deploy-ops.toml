@@ -1,0 +1,43 @@
+# deploy-ops.toml - Update existing local Kubernetes Deployments with exact image approvals.
+
+name = "kubernetes-example"
+
+[repositories.infrastructure]
+path = "infrastructure"
+allow_uncommitted = true
+
+[repositories.application]
+path = "application"
+allow_uncommitted = true
+
+[environments.development]
+provider = "local"
+
+[environments.staging]
+provider = "local"
+promote_from = ["development"]
+
+[components.foundation]
+repository = "infrastructure"
+kind = "infrastructure"
+adapter = "directory"
+
+[components.foundation.options]
+name = "kubernetes-example"
+
+[components.web]
+repository = "application"
+kind = "application"
+adapter = "kubernetes"
+needs = ["foundation"]
+
+[components.web.options]
+context = "kind-deployops-local"
+namespace = "deployops-local"
+deployment = "web-development"
+container = "web"
+image_repository = "python"
+image = "python@sha256:7984cf56ceaddebe4fefeb75d64000b9f45d8b77b11a09b24524da6cdc3af0c8"
+
+[components.web.targets.staging]
+deployment = "web-staging"

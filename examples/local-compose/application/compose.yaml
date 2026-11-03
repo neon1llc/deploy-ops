@@ -1,0 +1,26 @@
+# compose.yaml - Serve an example page with bounded container resources and no host mounts.
+
+services:
+  web:
+    image: python@sha256:7984cf56ceaddebe4fefeb75d64000b9f45d8b77b11a09b24524da6cdc3af0c8
+    command:
+      - sh
+      - -c
+      - mkdir -p /tmp/site && echo 'DeployOps local container' > /tmp/site/index.html && exec python -m http.server 8080 --bind 0.0.0.0 --directory /tmp/site
+    user: "65534:65534"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:18080:8080"
+    mem_limit: 128m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

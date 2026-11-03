@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-11-02",
+  "updated": "2026-11-03",
   "automatic_installation": false,
   "entries": [
     {
@@ -39,17 +39,56 @@
       "providers": [
         "aws",
         "azure",
-        "gcp",
-        "local"
+        "gcp"
       ],
       "adapters": [
         "ecs",
         "container-apps",
-        "cloud-run",
-        "kubernetes",
-        "compose"
+        "cloud-run"
       ],
       "boundary": "Runtime-specific options and live qualification required"
+    },
+    {
+      "id": "local-kubernetes",
+      "kind": "starter",
+      "status": "local-verified",
+      "providers": [
+        "local"
+      ],
+      "adapters": [
+        "directory",
+        "kubernetes"
+      ],
+      "source": "examples/local-kubernetes",
+      "license": "Apache-2.0",
+      "schema": "deploy-ops schema",
+      "versions_checked": "kind0.31.0 / Kubernetes1.35.0 / kubectl1.35.0",
+      "permissions": "Dedicated kubeconfig via DEPLOY_OPS_KUBECONFIG_FILE; local cluster setup separately requires Docker",
+      "costs": "Local compute and image downloads; no hosted service required",
+      "health_evidence": "Rollout and exact image checks plus HTTP200, promotion, rollback and stale-target refusal",
+      "cleanup": "Explicit scoped cleanup in the example README; retain delivery evidence",
+      "boundary": "Foundation is a local marker; runtime setup is a separate prerequisite. External tools and images retain their own licenses."
+    },
+    {
+      "id": "local-compose",
+      "kind": "starter",
+      "status": "local-verified",
+      "providers": [
+        "local"
+      ],
+      "adapters": [
+        "directory",
+        "compose"
+      ],
+      "source": "examples/local-compose",
+      "license": "Apache-2.0",
+      "schema": "deploy-ops schema",
+      "versions_checked": "Docker29.1.3 / Compose2.40.3",
+      "permissions": "Access to a disposable Docker engine and Compose; no cloud credentials",
+      "costs": "Local compute and image downloads; no hosted service required",
+      "health_evidence": "Container health and HTTP200 before and after app-only update",
+      "cleanup": "Explicit scoped cleanup in the example README; retain delivery evidence",
+      "boundary": "Foundation is a local marker; runtime setup is a separate prerequisite. External tools and images retain their own licenses."
     },
     {
       "id": "ansible--ansible",

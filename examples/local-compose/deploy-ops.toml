@@ -1,0 +1,32 @@
+# deploy-ops.toml - Deliver a digest-pinned container through a separate local infrastructure dependency.
+
+name = "compose-example"
+
+[repositories.infrastructure]
+path = "infrastructure"
+allow_uncommitted = true
+
+[repositories.application]
+path = "application"
+allow_uncommitted = true
+
+[environments.development]
+provider = "local"
+
+[components.foundation]
+repository = "infrastructure"
+kind = "infrastructure"
+adapter = "directory"
+
+[components.foundation.options]
+name = "compose-example"
+
+[components.web]
+repository = "application"
+kind = "application"
+adapter = "compose"
+needs = ["foundation"]
+
+[components.web.options]
+file = "compose.yaml"
+project = "deployops-local-example"

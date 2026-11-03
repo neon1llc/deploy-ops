@@ -1,0 +1,2 @@
+# Keep the dedicated cluster credential out of source control.
+local.kubeconfig

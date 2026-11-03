@@ -1,6 +1,6 @@
 # Verification
 
-**Checked:** 2026-11-03 · **Candidate:** v0.7.0 preview
+**Checked:** 2026-11-03 · **Candidate:** v0.8.0 preview
 
 ## Local execution
 
@@ -61,9 +61,31 @@ supersession, activation order differing from creation order, history beyond 200
 unreadable or tampered evidence and concurrent execution. Observations preserved original release status
 and deployed bytes. They record a bounded comparison, not application health or an automatic repair.
 
+## Disposable container and cluster execution
+
+The same 177 tests passed on Linux with Python 3.14.4. Real execution used Docker Engine 29.1.3,
+Compose 2.40.3, kind 0.31.0 and Kubernetes/kubectl 1.35.0 in a disposable Ubuntu 26.04 VM with no host
+filesystem mounts or SSH agent forwarding. The existing host Docker context and other VMs were unchanged.
+
+Compose deployed a digest-pinned, nonroot application, waited for health, then delivered an app-only
+content update without reapplying the foundation. HTTP returned 200 with each expected body. The exact
+[Compose example](../examples/local-compose/README.md) also passed both releases and scoped cleanup.
+
+Kubernetes updated an existing Deployment, reused foundation evidence for an app-only image change,
+promoted the same image to staging and rolled development back through a new approval. Both scoped
+Services returned HTTP 200. A real API mutation between preparation and apply caused the resource-version
+precondition to fail; the image remained unchanged. Explicit reconciliation followed by a fresh request
+succeeded. The [Kubernetes example](../examples/local-kubernetes/README.md) passed first delivery, app-only
+reuse, same-image promotion and both HTTP probes using an explicit test cluster context override.
+
+The controller Docker image built from the checked source. It served `/healthz` successfully as UID 10001,
+with a read-only root filesystem, dropped capabilities, a persistent state volume and no Docker socket.
+These are local runtime observations, not proof of cloud identity, production isolation, registry publishing,
+sustained availability or managed-cluster compatibility. See the [support matrix](support-matrix.md).
+
 ## Remaining qualification
 
-Live AWS, Azure, GCP, Slack, Kubernetes, Docker and Terraform/OpenTofu journeys remain unqualified.
+Live AWS, Azure, GCP, Slack, registry build/publish and Terraform/OpenTofu journeys remain unqualified.
 Installed command availability does not establish account access or working integrations. No live cloud
 resources, subscriptions or access policies were changed during these checks. GitHub Actions results
 must be inspected separately from local execution.
