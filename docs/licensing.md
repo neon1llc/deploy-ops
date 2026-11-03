@@ -34,3 +34,8 @@ proprietary portions. Neither "free to download" nor a high star count grants un
 
 Review [the research ledger](research/prior-art.md) before adopting or copying code. Preserve the upstream
 license and notices when required. Optional thanks are welcome but do not create new downstream obligations.
+
+Guided configuration uses [TOMLKit](https://github.com/python-poetry/tomlkit/tree/a0b15ebb09167ede584fc36ad5362fc3039b0530)
+0.15.2 as a normal MIT-licensed dependency. It preserves TOML structure and comments while the existing
+workspace model validates the edited contract. No TOMLKit implementation is copied into DeployOps; its
+package retains its own license. Review upgrades and rerun draft-preservation tests before changing the pin.

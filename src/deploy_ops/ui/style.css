@@ -52,6 +52,11 @@ footer { font-size: .8rem; padding: 16px 0; }
 [hidden] { display: none !important; }
 textarea { width: 100%; resize: vertical; padding: 16px; background: var(--term, Field); color: var(--text, FieldText); font: .85rem/1.6 var(--mono, monospace); border: 1px solid var(--line-strong, ButtonBorder); border-radius: var(--radius, 10px); margin-bottom: 16px; }
 summary { cursor: pointer; font-weight: 650; }
+fieldset { min-width: 0; border: 1px solid var(--line-strong, ButtonBorder); border-radius: var(--radius, 10px); margin-block: 16px; padding: 16px; }
+#config-form label { margin-block-start: 16px; margin-block-end: 8px; }
+#config-form input:not([type=checkbox]), #config-form select { width: 100%; min-height: 48px; }
+#config-form .check { min-height: 48px; gap: 12px; }
+#config-form button { min-height: 48px; }
 .appearance-settings__advanced { margin-top: 20px; background: var(--panel-raised, Canvas); }
 [data-theme-density=compact] { --space: 16px; }
 [data-theme-density=compact] input, [data-theme-density=compact] select, [data-theme-density=compact] button { padding: 8px 12px; }

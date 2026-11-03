@@ -5,6 +5,12 @@ let selected = null;
 let detailKey = "";
 let releaseKey = "";
 let acting = false;
+let savedSourceHash = "";
+let savedToml = "";
+let reviewedConfiguration = null;
+let formSource = "";
+let formContract = null;
+const formDrafts = new Map();
 const element = (id) => document.getElementById(id);
 const message = (text, error = false) => {
   element("message").textContent = text;
@@ -128,6 +134,9 @@ element("login").onsubmit = (event) => { event.preventDefault(); safe(async () =
   element("title").textContent = data.configuration.name;
   element("mode").textContent = data.mode;
   element("config").value = data.toml;
+  savedSourceHash = data.source_hash;
+  savedToml = data.toml;
+  formSource = data.toml; formContract = data; formDrafts.clear(); fillConfigNames();
   element("environment").replaceChildren();
   for (const name of Object.keys(data.configuration.environments)) {
     const option = document.createElement("option"); option.value = name; option.textContent = name; element("environment").append(option);
@@ -151,11 +160,89 @@ setInterval(() => { if (token) safe(refresh); }, 4000);
 
 // Configuration is operator-owned. Saving cannot grant cloud authority or alter the remote controller.
 element("validate-config").onclick = () => safe(async () => {
-  const result = await api("/config/validate", "POST", { configuration: element("config").value });
+  const source = element("config").value;
+  const result = await api("/config/validate", "POST", { configuration: source });
+  if (element("config").value !== source) throw new Error("Draft changed while validating. Validate again.");
+  element("config-diff").textContent = result.diff || "No changes."; reviewedConfiguration = source;
   message("Valid workspace. Dependency order: " + result.order.join(" → ") + ". Digest: " + result.digest);
 });
 element("save-config").onclick = () => safe(async () => {
+  const source = element("config").value;
+  if (source !== savedToml && source !== reviewedConfiguration) {
+    element("validate-config").click();
+    message("Validate and review all changes below, then save the configuration."); return;
+  }
   if (!window.confirm("Save this local workspace? The previous file is retained in local state.")) return;
-  await api("/config/save", "POST", { configuration: element("config").value });
+  await api("/config/save", "POST", { configuration: element("config").value, source_hash: savedSourceHash });
   token = ""; location.reload();
 });
+
+function formKey() { return element("config-section").value + "/" + element("config-name").value; }
+function fillConfigNames() {
+  const section = element("config-section").value;
+  element("config-name").replaceChildren(...Object.keys(formContract.configuration[section]).map(name => new Option(name, name)));
+  fillConfigFields();
+}
+function fillConfigFields() {
+  const section = element("config-section").value, name = element("config-name").value;
+  const current = formDrafts.get(formKey()) || structuredClone(formContract.configuration[section][name]);
+  formDrafts.set(formKey(), current);
+  const root = element("config-fields"); root.replaceChildren();
+  for (const [key, field] of Object.entries(formContract.forms[section])) {
+    const id = "setting-" + key;
+    if (field.type === "array") {
+      const group = document.createElement("fieldset"); text(group, "legend", field.title); root.append(group);
+      for (const choice of field.items.enum.filter(value => value !== name)) {
+        const label = document.createElement("label"); label.className = "check";
+        const input = document.createElement("input"); input.type = "checkbox"; input.name = key; input.value = choice;
+        input.id = id + "-" + choice; label.htmlFor = input.id; input.checked = current[key].includes(choice);
+        input.onchange = () => { current[key] = [...group.querySelectorAll("input:checked")].map(item => item.value); };
+        label.append(input, document.createTextNode(choice)); group.append(label);
+      }
+      if (!group.querySelector("input")) text(group, "p", "No other entries available.");
+      continue;
+    }
+    const label = document.createElement("label"); label.htmlFor = id; label.textContent = field.title; root.append(label);
+    const input = document.createElement(field.enum ? "select" : "input"); input.id = id; input.name = key;
+    if (field.enum) input.append(...field.enum.map(value => new Option(value, value)));
+    else input.type = field.type === "boolean" ? "checkbox" : field.type === "integer" ? "number" : "text";
+    if (field.type === "boolean") { input.checked = current[key]; label.className = "check"; label.append(input); }
+    else {
+      input.value = current[key]; input.required = true;
+      if (field.minimum !== undefined) input.min = field.minimum;
+      if (field.maximum !== undefined) input.max = field.maximum;
+      input.spellcheck = false; input.autocapitalize = "off"; input.setAttribute("autocorrect", "off"); root.append(input);
+    }
+    input.oninput = () => { current[key] = field.type === "boolean" ? input.checked : field.type === "integer" ? Number(input.value) : input.value; };
+  }
+}
+element("config-section").onchange = fillConfigNames;
+element("config-name").onchange = fillConfigFields;
+element("load-forms").onclick = () => safe(async () => {
+  const source = element("config").value;
+  const result = await api("/config/inspect", "POST", {configuration: source});
+  if (element("config").value !== source) throw new Error("Draft changed while loading. Load forms again.");
+  formContract = result; formSource = source; formDrafts.clear(); fillConfigNames();
+  element("config-status").textContent = "Forms loaded from the current draft. Applying fields does not save the file.";
+});
+element("config-form").onsubmit = (event) => {
+  event.preventDefault();
+  safe(async () => {
+    const source = element("config").value;
+    if (source !== formSource) throw new Error("TOML draft changed. Load forms from the current draft before applying fields.");
+    const section = element("config-section").value, name = element("config-name").value;
+    const current = formDrafts.get(formKey());
+    const values = Object.fromEntries(Object.keys(formContract.forms[section]).map(key => [key, current[key]]));
+    element("config-controls").disabled = true;
+    element("load-forms").disabled = true;
+    try {
+      const result = await api("/config/patch", "POST", {configuration: source, section, name, values});
+      if (element("config").value !== source) throw new Error("Draft changed while applying. Your text was preserved; reload forms to retry.");
+      element("config").value = result.toml; formSource = result.toml; formContract = result;
+      element("config-diff").textContent = result.diff || "No changes.";
+      element("config-status").textContent = "Fields applied to the draft. Review the diff, then save the local configuration.";
+    } catch (error) {
+      element("config-status").textContent = error.message; element("config-status").focus(); throw error;
+    } finally { element("config-controls").disabled = false; element("load-forms").disabled = false; }
+  });
+};

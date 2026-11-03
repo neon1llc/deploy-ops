@@ -30,6 +30,10 @@ class Input(BaseModel):
     note: str = Field(default="", max_length=500)
     configuration: str = Field(default="", max_length=30000)
     receipts: dict[str, str] = Field(default_factory=dict)
+    section: str = ""
+    name: str = ""
+    values: dict = Field(default_factory=dict)
+    source_hash: str = ""
 
 
 def create_app(engine, token: str, port: int = 8765) -> FastAPI:
@@ -98,8 +102,9 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
 
     @app.get("/api/workspace", dependencies=[Depends(operator)])
     def workspace():
-        return {"configuration": engine.spec.model_dump(), "digest": engine.spec.digest,
-                "toml": engine.path.read_text(),
+        from .delivery.configuration import inspect
+        source = engine.path.read_text()
+        return {**inspect(source), "toml": source,
                 "mode": "remote-controller" if engine.gate.__class__.__name__ == "RemoteGate" else "local-operator"}
 
     @app.post("/api/config/{action}", dependencies=[Depends(operator)])
@@ -107,21 +112,30 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         nonlocal engine
         from .delivery.spec import Workspace
         from .delivery.engine import Engine
+        from .delivery.configuration import difference, inspect, patch, source_hash
         from pydantic import ValidationError
+        if action == "inspect":
+            return inspect(data.configuration)
+        if action == "patch":
+            return patch(data.configuration, data.section, data.name, data.values)
         try:
             proposed = Workspace.model_validate(tomllib.loads(data.configuration))
         except (ValueError, ValidationError) as error:
             raise Refused(str(error), 422) from error
         if action == "validate":
-            return {"digest": proposed.digest, "order": proposed.order(), "status": "valid"}
+            return {"digest": proposed.digest, "order": proposed.order(), "status": "valid",
+                    "diff": difference(engine.path.read_text(), data.configuration)}
         if action != "save" or engine.gate.__class__.__name__ != "LocalGate":
             raise Refused("Only local operators may save a local workspace here", 403)
         with mutex:
+            current = engine.path.read_text()
+            if data.source_hash != source_hash(current):
+                raise Refused("The workspace changed since it was loaded. Preserve your draft and reload before saving")
             active = any(item["status"] not in ("succeeded", "failed", "cancelled") for item in engine.ledger.list())
             if workers or active:
                 raise Refused("Finish, cancel, or reconcile outstanding releases before changing configuration")
             backup = engine.state / "previous-workspace.toml"
-            backup.write_text(engine.path.read_text())
+            backup.write_text(current)
             backup.chmod(0o600)
             pending = engine.path.with_suffix(".pending")
             if pending.exists():
@@ -148,12 +162,20 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
 
     @app.post("/api/plan", dependencies=[Depends(operator)])
     def plan(data: Input):
+        current_contract()
         return engine.describe(data.environment, data.component, not data.only)
+
+    def current_contract():
+        from .delivery.configuration import inspect
+        if inspect(engine.path.read_text())["digest"] != engine.spec.digest:
+            raise Refused("Workspace changed outside this console. Review and save it here, or restart before preparing releases")
 
     @app.post("/api/releases", dependencies=[Depends(operator)])
     def run(data: Input):
-        release = engine.create(data.environment, data.component, not data.only,
-                                promote=data.origin, rollback=data.rollback, image=data.image, receipts=data.receipts)
+        with mutex:
+            current_contract()
+            release = engine.create(data.environment, data.component, not data.only,
+                                    promote=data.origin, rollback=data.rollback, image=data.image, receipts=data.receipts)
         start(release["id"])
         return release
 
@@ -177,7 +199,9 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     def delegate(data: Input):
         if engine.gate.__class__.__name__ != "LocalGate":
             raise Refused("Manage remote delegation through the separate operator controller", 403)
-        return engine.gate.delegate(data.environment, data.hours, data.uses)
+        with mutex:
+            current_contract()
+            return engine.gate.delegate(data.environment, data.hours, data.uses)
 
     return app
 

@@ -18,7 +18,18 @@
 <form id="delegation"><div class="controls"><label>Hours<input id="hours" type="number" min="1" max="12" value="1"></label><label>Uses per component<input id="uses" type="number" min="1" max="100" value="1"></label><button>Grant window</button></div></form></section>
 <div class="grid"><section><div class="row"><h2>Releases</h2><button id="refresh" class="secondary">Refresh</button></div><div id="releases"></div></section>
 <section><h2 id="detail-heading" tabindex="-1">Release detail</h2><div id="detail"><p>Select a release to inspect changes and events.</p></div></section></div>
-<details><summary>Workspace configuration</summary><p>Use plain TOML. Keep secrets out of this file. Finish or cancel outstanding releases before saving.</p><label for="config">Deployment workspace</label><textarea id="config" rows="22" spellcheck="false"></textarea><div class="controls"><button id="validate-config" class="secondary">Validate configuration</button><button id="save-config">Save local configuration</button></div></details></div>
+<details><summary>Workspace configuration</summary><p>Edit existing repositories, environments and components below. Advanced options stay in the TOML draft. Keep secrets out of this file. Finish or cancel outstanding releases before saving.</p>
+<button id="load-forms" type="button" class="secondary">Load forms from current draft</button>
+<form id="config-form" action="/api/config/patch" method="post">
+<fieldset id="config-controls"><legend>Guided settings</legend>
+<label for="config-section">Settings group</label><select id="config-section" name="section"><option value="repositories">Repositories</option><option value="environments">Environments</option><option value="components">Components</option></select>
+<label for="config-name">Entry</label><select id="config-name" name="name"></select>
+<div id="config-fields"></div><button type="submit">Apply fields to draft</button></fieldset>
+</form><p id="config-status" role="status" aria-live="polite" tabindex="-1"></p>
+<p class="muted">Provider and tool choices do not translate advanced options or grant cloud credentials. Review environment overrides in TOML before deployment.</p>
+<label for="config">Deployment workspace</label><textarea id="config" rows="22" spellcheck="false"></textarea>
+<div class="controls"><button id="validate-config" class="secondary">Validate configuration</button><button id="save-config">Save local configuration</button></div>
+<h3>Changes to review</h3><pre id="config-diff">No changes reviewed yet.</pre></details></div>
 <p id="message" role="status" aria-live="polite"></p>
 <details class="appearance-settings"><summary>Appearance</summary>
 <p id="appearance-summary" class="muted">Follow your system or choose a preset. Appearance stays separate from deployment settings.</p>

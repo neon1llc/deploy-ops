@@ -26,6 +26,11 @@ def parser():
     commands.add_parser("doctor")
     commands.add_parser("catalog")
     commands.add_parser("schema")
+    config = commands.add_parser("config", help="Inspect or edit a configuration draft without saving it")
+    config.add_argument("action", choices=["inspect", "patch"])
+    config.add_argument("--section", choices=["repositories", "environments", "components"])
+    config.add_argument("--name")
+    config.add_argument("--values", type=json.loads, default={})
     for name in ("plan", "run"):
         command = commands.add_parser(name)
         command.add_argument("environment")
@@ -106,6 +111,10 @@ def dispatch(args):
     if args.command == "catalog":
         from importlib.resources import files
         return json.loads(files("deploy_ops").joinpath("catalog.json").read_text())
+    if args.command == "config":
+        from .delivery.configuration import inspect, patch
+        source = args.project.read_text()
+        return inspect(source) if args.action == "inspect" else patch(source, args.section, args.name, args.values)
     from .delivery.engine import Engine
     engine = Engine(args.project, args.state, args.controller)
     if args.command == "plan":

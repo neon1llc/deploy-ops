@@ -92,3 +92,32 @@ Remote AWS ECS workers can resolve registered infrastructure dependencies throug
 The producer registers a typed S3 backend and public output schema; the consumer maps dependency names to
 approved producer targets. See [infrastructure receipts](infrastructure-receipts.md) for the configuration
 examples, workflow inputs, validity checks and recovery behavior. Existing local output bindings are unchanged.
+
+## Guided edits and review
+
+The console's **Workspace configuration** panel edits existing repositories, environments and components.
+Choose the entry, adjust its fields, then **Apply fields to draft**. This preserves other form drafts,
+comments, build settings, provider options and environment overrides. It changes the visible TOML draft,
+not the saved file. Advanced settings and new entries remain available through TOML.
+
+Changing a provider or tool does not translate existing provider options. Review those options and any
+per-environment adapter overrides before deployment. The whole workspace is validated, including references,
+dependency cycles and path restrictions. Form choices and defaults come from the shared workspace schema.
+
+Use **Validate configuration** to inspect the complete diff before **Save local configuration**. A save
+retains the previous file in local state, refuses outstanding releases and rejects stale file revisions.
+If another tab or editor changed the saved file, preserve your draft before reloading and reconciling it.
+This detects observed conflicts; it is not a filesystem lock against unrelated applications.
+Remote-controller consoles can prepare and validate drafts but cannot save controller or workspace authority.
+
+The CLI uses the same draft editor, without writing the source file:
+
+```bash
+deploy-ops --project deploy-ops.toml config inspect
+deploy-ops --project deploy-ops.toml config patch --section components --name web \
+  --values '{"timeout_seconds":900}'
+```
+
+The JSON result contains the updated `toml`, a unified `diff`, validated fields and the contract digest.
+Review and save the desired draft through the console or your normal editor. Configuration output can
+contain repository paths and options; do not publish it without checking its contents.

@@ -1,6 +1,6 @@
 # DeployOps
 
-**0.5.0 preview · by neon1 LLC**
+**0.6.0 preview · by neon1 LLC**
 
 Deploy infrastructure and applications from separate repositories. Choose an environment,
 review exact changes, and track the result through one CLI, local browser console, and audit history.

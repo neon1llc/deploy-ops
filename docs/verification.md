@@ -1,11 +1,11 @@
 # Verification
 
-**Checked:** 2026-11-03 · **Candidate:** v0.5.0 preview
+**Checked:** 2026-11-03 · **Candidate:** v0.6.0 preview
 
 ## Local execution
 
 A fresh network install of the pinned requirements passed on macOS with Python 3.12.10.
-`make check` passed source, configuration, documentation-link and whitespace checks and all 141 tests.
+`make check` passed source, configuration, documentation-link and whitespace checks and all 159 tests.
 The tests cover approval and claim boundaries, concurrency, identity validation, changed evidence,
 source snapshots, promotion, rollback, process cleanup, notification retries and console access.
 A complete delivery and app-only release also ran from two committed Git repositories while uncommitted
@@ -38,6 +38,11 @@ Appearance checks exercised all six presets, system preference changes, retained
 corner radius, unsaved workspace drafts, invalid and low-contrast import refusal, cross-tab updates,
 appearance-only export and storage, reset, and blocked-storage fallback. The narrow layout was inspected
 visually. Appearance settings use their own storage key and do not contain operator credentials.
+
+Guided configuration checks covered schema-derived controls, form drafts retained across panels, preserved
+TOML comments and advanced settings, explicit diff review, no automatic save, raw-editor conflicts, late
+responses, backups and stale-tab refusal. CLI/API draft parity, dependency validation and concurrent
+release/save boundaries passed focused tests. The editor does not translate provider-specific options.
 
 Cancellation during preparation produced an uncertain outcome. After inspecting events and the unchanged
 deployment pointer, explicit reconciliation allowed further work. That result does not prove that a

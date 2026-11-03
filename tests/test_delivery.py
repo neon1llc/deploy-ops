@@ -264,11 +264,13 @@ def test_console_config_validation_and_active_release_boundary(engine):
     client = TestClient(create_app(engine, token), base_url="http://127.0.0.1:8765")
     headers = {"Authorization": "Bearer " + token}
     config = engine.path.read_text()
+    from deploy_ops.delivery.configuration import source_hash
+    save = {"configuration": config, "source_hash": source_hash(config)}
     assert client.post("/api/config/validate", headers=headers, json={"configuration": config}).status_code == 200
-    assert client.post("/api/config/save", headers=headers, json={"configuration": config}).status_code == 200
+    assert client.post("/api/config/save", headers=headers, json=save).status_code == 200
     assert (engine.state / "previous-workspace.toml").exists()
     engine.create("development")
-    assert client.post("/api/config/save", headers=headers, json={"configuration": config}).status_code == 409
+    assert client.post("/api/config/save", headers=headers, json=save).status_code == 409
     assert client.post("/api/config/validate", headers=headers, json={"configuration": "invalid = ["}).status_code == 422
 
 
