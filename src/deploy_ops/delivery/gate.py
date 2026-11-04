@@ -14,7 +14,7 @@ from ..models import Claim, Completion, Decision, DelegationSpec, Proposal, Reso
 from ..service import Controller
 from ..store import Store
 from .spec import Workspace
-from .access import binding, check_preview, credentials, load_access
+from .access import binding, check_paths, check_preview, credentials, load_access
 
 
 # Keep long target labels bounded without losing their distinguishing suffix
@@ -28,8 +28,10 @@ class LocalGate:
     """Local mode records operator authority. It does not impersonate GitHub OIDC."""
 
     # Register only local environments with bounded local policies
-    def __init__(self, spec: Workspace, store: Store, access_file: Path | None = None):
+    def __init__(self, spec: Workspace, store: Store, access_file: Path | None = None,
+                 source_roots: list[Path] | None = None):
         targets = {}
+        self.source_roots = source_roots or []
         self.access_file = access_file
         self.access = None
         self.access_error = "No local cloud grant configured"
@@ -60,7 +62,8 @@ class LocalGate:
                         engines=["delivery"], identity=identity, planner_identity=identity, delivery_digest=spec.digest,
                         allow_local_operator=True, local_cloud=True,
                         # Exact grant resource types replace the generic denylist for this reviewed scope
-                        policy=Policy(blocked_types=[], allow_delegation=False, require_cost_estimate=False,
+                        policy=Policy(blocked_types=[], auto_actions=[action for action in ("create", "update") if action in grant.actions],
+                                      allow_delegation=False, require_cost_estimate=False,
                                       allowed_actions=grant.actions, max_changes=grant.max_changes),
                     )
                 continue
@@ -103,7 +106,9 @@ class LocalGate:
         current = load_access(self.access_file, self.spec.digest)
         if current != self.access:
             raise Refused("Local cloud grant changed; reopen the worker and prepare fresh evidence", 403)
-        return self.grants[target]
+        grant = self.grants[target]
+        check_paths(grant, self.source_roots)
+        return grant
 
     # Reuse the controller's evidence and policy checks locally
     def submit(self, proposal: Proposal, release: dict):

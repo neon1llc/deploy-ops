@@ -1,0 +1,37 @@
+# examples/gcp-receipts/deploy-ops.toml - Release Cloud Run images using a separate native infrastructure receipt.
+
+
+# Match the operator-registered application target and protected workflow
+name = "hello"
+
+# The application workflow satisfies this dependency through authenticated receipts
+[repositories.infrastructure]
+path = "infrastructure"
+
+# Snapshot application source without executing its build hooks in the writer job
+[repositories.application]
+path = "application"
+
+# Keep the example bounded to a deliberately registered development environment
+[environments.gcp-development]
+provider = "gcp"
+
+# The separate protected workflow may use either registered saved-plan engine
+[components.foundation]
+repository = "infrastructure"
+kind = "infrastructure"
+adapter = "opentofu"
+
+# Reuse successful infrastructure evidence for subsequent app-only releases
+[components.web]
+repository = "application"
+kind = "application"
+adapter = "cloud-run"
+needs = ["foundation"]
+
+# Resolve all cloud destination fields from the verified public receipt
+[components.web.options]
+project_id = "${outputs.foundation.project}"
+region = "${outputs.foundation.region}"
+name = "${outputs.foundation.name}"
+image_repository = "${outputs.foundation.image_repository}"

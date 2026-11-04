@@ -43,10 +43,11 @@ workflow is protected and no contributor code runs there. The job can request bo
 identities. Cloud IAM does not independently know that the application controller granted approval.
 An independent identity broker or provider-enforced approval boundary is a further hardening step.
 
-The release ledger is local to the runner. This preview does not exchange signed infrastructure-output
-receipts between independent workflow runs. Supply operator-reviewed target identifiers for native app
-jobs. The local workspace demonstrates dependency-aware infrastructure and app orchestration. Durable,
-verified cross-job receipts are the next implementation step, not a completed cloud feature.
+The release ledger is local to each runner. The controller can issue typed AWS ECS and GCP Cloud Run
+public-output receipts for separately authenticated application workers. Consumers recheck exact references
+online; these are controller records, not portable offline signatures. See
+[receipt configuration](../../docs/infrastructure-receipts.md). Cross-worker cloud behavior has fixture
+coverage and native offline backend checks; a live protected-workflow journey remains unqualified.
 
 Runtime health means the adapter's documented provider readiness check. Add external application probes
 before production qualification. No example automatically rolls back a database or destructive IaC change.

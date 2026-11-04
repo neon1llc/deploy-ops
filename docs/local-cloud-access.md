@@ -1,6 +1,6 @@
 # Local cloud qualification
 
-The local operator can use an existing AWS IAM-user profile or GCP service-account credential for
+The local operator can use an existing AWS IAM-user profile, GCP service-account credential or Azure service-principal certificate for
 explicitly scoped, nonproduction runs. Federated CI workers continue to use the remote OIDC controller.
 The two routes retain different identity and trust boundaries.
 
@@ -60,11 +60,40 @@ that file. The execution process reads the active project through gcloud before 
 APIs, billing linkage and runtime permissions still need separate qualification. No API is enabled
 and no billing account is linked automatically. Native gcloud must be installed separately.
 
-Local cloud grants allow CloudFormation, frozen CDK assemblies, ECS and Cloud Run. They do not allow
+For Azure, use `provider = "azure"`, `adapters = ["arm", "bicep", "container-apps"]` and this identity section:
+
+```toml
+[environments.staging.identity]
+cloud = "AzureCloud"
+tenant_id = "22222222-2222-2222-2222-222222222222"
+client_id = "33333333-3333-3333-3333-333333333333"
+subscription_id = "11111111-1111-1111-1111-111111111111"
+resource_group = "deployment-test"
+certificate_file = "/secure/deployment-test.pem"
+```
+
+The service principal, certificate and resource group must already exist. Give that principal only
+its required permissions on the approved group; DeployOps does not create identities, assign roles
+or register providers. The certificate file must contain its private key and public certificate in
+PEM format, as required by [Azure CLI certificate authentication](https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli-service-principal).
+The file must be owner-only and outside the workspace and all source repositories. The worker
+passes only its path to native `az login --certificate`; it does not read or print the private key.
+Certificate validity and the shorter batch grant expiry are separate limits.
+
+Azure CLI uses a private configuration directory beneath the component worker's temporary home.
+It selects `AzureCloud` explicitly, disables dynamic extension installation, and checks the enabled
+subscription, tenant, service-principal client ID and resource-group ID before preview or execution.
+Install required native tools and extensions separately. Workspace `subscription_id` and
+`resource_group` must match the grant; ARM/Bicep `tenant_id` must also match. Sovereign clouds, human
+login reuse and client-secret authentication are outside this local route. ARM/Bicep still require
+frozen JSON, incremental deployment and a fresh matching what-if before execution. Removing Azure
+deployment history does not remove resources; use a separately reviewed cleanup operation.
+
+Local cloud grants allow CloudFormation, frozen CDK assemblies, ECS, Cloud Run, ARM/Bicep and Container Apps. They do not allow
 arbitrary workflows, Terraform/OpenTofu programs, build commands or synthesis commands. Those require
 the existing isolated planning/execution workflow. Build in a separate credentialless environment
-and provide frozen templates, assemblies or digest-pinned images. Azure currently uses its federated
-route; this local grant does not introduce Azure credentials or roles.
+and provide frozen templates, assemblies or digest-pinned images. Federated Azure execution continues
+to use its separate OIDC identity and workflow boundary.
 
 The same controller records cloud target identity, manual approval, one-shot claim, expiry and
 reconciliation. Local grants never enable delegation or production. Every credentialed command checks

@@ -1,0 +1,73 @@
+# config/gcp-receipts.example.toml - Register isolated GCP infrastructure and application workers.
+# Replace every synthetic identity, commit, backend and workspace digest before use.
+
+
+# Separate native planning and execution while sharing one reviewed state destination
+[targets.gcp-infrastructure]
+repository = "example/infrastructure"
+repository_id = "201"
+repository_owner_id = "102"
+workflow_ref = "example/authority/.github/workflows/deploy.yml@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+environment = "gcp-development"
+planner_environment = "gcp-development-plan"
+cloud = "gcp"
+engines = ["opentofu", "terraform"]
+workdir = "infrastructure"
+receipt_region = "us-central1"
+
+# Require a manual decision for the single bounded service without inventing a cost estimate
+[targets.gcp-infrastructure.policy]
+require_cost_estimate = false
+allow_delegation = false
+max_changes = 1
+
+# Both identities must already exist with distinct read and write permissions
+[targets.gcp-infrastructure.identity]
+workload_identity_provider = "projects/123456789/locations/global/workloadIdentityPools/example/providers/github"
+service_account = "infra-executor@example-project.iam.gserviceaccount.com"
+project_id = "example-project"
+
+[targets.gcp-infrastructure.planner_identity]
+workload_identity_provider = "projects/123456789/locations/global/workloadIdentityPools/example/providers/github"
+service_account = "infra-reader@example-project.iam.gserviceaccount.com"
+project_id = "example-project"
+
+# Bind issuance to one GCS state object and a short validity window
+[targets.gcp-infrastructure.receipt_outputs]
+format = "gcp-cloud-run-v1"
+valid_seconds = 3600
+
+[targets.gcp-infrastructure.receipt_outputs.backend]
+bucket = "example-state-bucket"
+prefix = "development/cloud-run"
+
+# Application releases must supply the exact receipt issued by this producer
+[targets.hello-gcp-development-web]
+repository = "example/application"
+repository_id = "101"
+repository_owner_id = "102"
+workflow_ref = "example/authority/.github/workflows/delivery.yml@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+environment = "gcp-development"
+planner_environment = "gcp-development-plan"
+cloud = "gcp"
+engines = ["delivery"]
+receipt_region = "us-central1"
+delivery_digest = "0000000000000000000000000000000000000000000000000000000000000000"
+receipt_dependencies = { foundation = "gcp-infrastructure" }
+
+# App revision changes remain manual and cannot alter IAM or service-account authority
+[targets.hello-gcp-development-web.policy]
+require_cost_estimate = false
+allow_delegation = false
+max_changes = 1
+
+# App workers do not inherit the infrastructure writer's permissions
+[targets.hello-gcp-development-web.identity]
+workload_identity_provider = "projects/123456789/locations/global/workloadIdentityPools/example/providers/github"
+service_account = "app-executor@example-project.iam.gserviceaccount.com"
+project_id = "example-project"
+
+[targets.hello-gcp-development-web.planner_identity]
+workload_identity_provider = "projects/123456789/locations/global/workloadIdentityPools/example/providers/github"
+service_account = "app-reader@example-project.iam.gserviceaccount.com"
+project_id = "example-project"

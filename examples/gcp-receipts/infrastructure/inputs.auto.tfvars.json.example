@@ -1,0 +1,8 @@
+{
+  "project": "example-project",
+  "region": "us-central1",
+  "name": "deploy-ops-web",
+  "runtime_service_account": "web-runtime@example-project.iam.gserviceaccount.com",
+  "image_repository": "us-central1-docker.pkg.dev/example-project/apps/web",
+  "initial_image_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+}

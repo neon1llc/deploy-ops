@@ -79,12 +79,22 @@ class EcsOutputs(Model):
     image_repository: str = Field(pattern=r"^[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/[a-z0-9][a-z0-9._/-]+$")
 
 
+# Keep Cloud Run destinations explicit and independent from runtime credentials
+class CloudRunOutputs(Model):
+    project: str = Field(pattern=r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
+    region: str = Field(pattern=r"^[a-z]+-[a-z]+[0-9]+$")
+    name: str = Field(pattern=r"^[a-z](?:[a-z0-9-]{0,47}[a-z0-9])?$")
+    image_repository: str = Field(pattern=(
+        r"^[a-z]+-[a-z]+[0-9]+-docker\.pkg\.dev/[a-z][a-z0-9-]{4,28}[a-z0-9]/"
+        r"[a-z][a-z0-9_-]*/[a-z0-9][a-z0-9._/-]*$"))
+
+
 # Bind public outputs to one observed state version
 class InfrastructureEvidence(Model):
     state_lineage: str = Field(pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
     state_serial: int = Field(ge=0)
     state_digest: Digest
-    outputs: EcsOutputs
+    outputs: EcsOutputs | CloudRunOutputs
 
 
 # Bind the reviewed plan to artifact, tool and optional dependency evidence

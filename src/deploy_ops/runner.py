@@ -17,6 +17,7 @@ from .client import Client, file_digest, github_token, private_json
 from .clouds import environment
 from .errors import Refused
 from .models import Agent, Proposal
+from .receipts import controlled_backend, verify_tool
 
 # Support only engines with a saved-plan execution contract
 BINARIES = {"terraform": "terraform", "opentofu": "tofu"}
@@ -119,7 +120,10 @@ def execute(client: Client, lease: dict, artifact: Path, workspace: Path) -> int
                                             capture_output=True, text=True).stdout)["terraform_version"]
         if version != authority["tool_version"]:
             raise Refused("The planning and execution tool versions differ")
-        with tempfile.TemporaryDirectory(prefix="deploy_ops-") as temporary:
+        if authority.get("receipt_outputs"):
+            verify_tool(authority["receipt_outputs"]["format"], authority["engine"], version)
+        with (tempfile.TemporaryDirectory(prefix="deploy_ops-") as temporary,
+              controlled_backend(directory, authority.get("receipt_outputs")) as initialization):
             snapshot = Path(temporary) / "approved.plan"
             # Hash the copy that will actually be applied, closing a source-file replacement race
             shutil.copyfile(artifact, snapshot)
@@ -129,7 +133,7 @@ def execute(client: Client, lease: dict, artifact: Path, workspace: Path) -> int
             with httpx.Client(timeout=10, follow_redirects=False) as http:
                 credentials = environment(authority["cloud"], authority["identity"], github_token, request_id, http)
             env = clean_environment(temporary, credentials)
-            result = supervised([binary, "init", "-input=false", "-lockfile=readonly", "-no-color"],
+            result = supervised([binary, "init", "-input=false", "-lockfile=readonly", "-no-color", *initialization],
                                 directory, env, heartbeat, authority["deadline"])
             if result == 0:
                 if authority.get("receipt_outputs"):
@@ -149,7 +153,7 @@ def execute(client: Client, lease: dict, artifact: Path, workspace: Path) -> int
                 verify_backend(directory, authority["receipt_outputs"]["backend"])
                 reader = Process(Path(temporary), lambda *_: None, credentials, heartbeat, authority["deadline"])
                 raw = reader.run([binary, "state", "pull"], directory, timeout=60, capture=True)
-                infrastructure = extract_state(raw.encode()).model_dump()
+                infrastructure = extract_state(raw.encode(), authority["receipt_outputs"]["format"]).model_dump()
                 heartbeat()
             outcome = "succeeded" if result == 0 else "failed"
     finally:
@@ -176,13 +180,18 @@ def plan(client: Client, target: str, engine: str, workspace: Path, output: Path
     lock = directory / ".terraform.lock.hcl"
     if not lock.is_file():
         raise Refused("Commit a reviewed .terraform.lock.hcl before using this workflow", 422)
+    version = json.loads(subprocess.run([binary, "version", "-json"], check=True,
+                                        capture_output=True, text=True).stdout)["terraform_version"]
+    if context.get("receipt_outputs"):
+        verify_tool(context["receipt_outputs"]["format"], engine, version)
     # Keep planning credentials separate from the approved execution identity
-    with tempfile.TemporaryDirectory(prefix="deploy_ops-plan-") as home:
+    with (tempfile.TemporaryDirectory(prefix="deploy_ops-plan-") as home,
+          controlled_backend(directory, context.get("receipt_outputs")) as initialization):
         with httpx.Client(timeout=10, follow_redirects=False) as http:
             credentials = environment(context["cloud"], context["identity"], github_token,
                                       "plan-" + context["commit"][:12], http)
         env = clean_environment(home, credentials)
-        subprocess.run([binary, "init", "-input=false", "-lockfile=readonly", "-no-color"],
+        subprocess.run([binary, "init", "-input=false", "-lockfile=readonly", "-no-color", *initialization],
                        cwd=directory, env=env, check=True, timeout=300)
         if context.get("receipt_outputs"):
             from .receipts import verify_backend
@@ -199,8 +208,6 @@ def plan(client: Client, target: str, engine: str, workspace: Path, output: Path
                                        text=True, timeout=60).stdout)
         if context.get("receipt_outputs"):
             raw["deploy_ops_backend"] = context["receipt_outputs"]["backend"]
-        version = json.loads(subprocess.run([binary, "version", "-json"], check=True,
-                                            capture_output=True, text=True).stdout)["terraform_version"]
     from .plans import cost_delta
     cost = cost_delta(json.loads(cost_file.read_text())) if cost_file else None
     proposal = Proposal(target=target, engine=engine, artifact_digest=file_digest(artifact),

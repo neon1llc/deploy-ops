@@ -280,7 +280,7 @@ def test_backend_selection_is_checked_before_receipt_execution(tmp_path, change)
 def test_nonreceipt_target_keeps_legacy_policy_digest():
     from deploy_ops.config import fingerprint
     target = sample_target()
-    original = target.model_dump(exclude={"receipt_outputs", "receipt_dependencies", "local_cloud"})
+    original = target.model_dump(exclude={"receipt_outputs", "receipt_dependencies", "local_cloud", "receipt_region"})
     assert target.digest == fingerprint(original)
 
 

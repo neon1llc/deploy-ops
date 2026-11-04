@@ -83,9 +83,9 @@ class Controller:
         if not receipt or receipt["producer_target"] not in consumer.receipt_dependencies.values():
             raise Refused("Receipt producer is not registered for this consumer", 403)
         producer = self._current(request)
-        from .receipts import aws_scope
-        if (receipt["environment"] != consumer.environment or aws_scope(producer) != aws_scope(consumer)):
-            raise Refused("Receipt environment, account or region does not match this consumer", 403)
+        from .receipts import scope
+        if (receipt["environment"] != consumer.environment or scope(producer) != scope(consumer)):
+            raise Refused("Receipt environment, cloud scope or region does not match this consumer", 403)
         if (request["status"] != "succeeded" or request.get("receipt_revoked") or request.get("receipt_invalidated_by")
                 or self.now() >= receipt["expires_at"]):
             raise Refused("Infrastructure receipt is expired, revoked or unresolved")
@@ -137,8 +137,8 @@ class Controller:
         if proposal.engine not in target.engines:
             raise Refused("This engine is not enabled for the target", 403)
         if target.receipt_outputs:
-            if proposal.tool_version != "1.10.0":
-                raise Refused("Infrastructure receipt extraction currently supports OpenTofu 1.10.0", 422)
+            from .receipts import verify_tool
+            verify_tool(target.receipt_outputs.format, proposal.engine, proposal.tool_version)
             if proposal.preview.get("deploy_ops_backend") != target.receipt_outputs.backend.model_dump():
                 raise Refused("Plan must bind the registered infrastructure backend", 422)
         preview = normalize(proposal.engine, target.cloud, proposal.preview)

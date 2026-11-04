@@ -41,7 +41,8 @@ class Engine:
                 access.is_relative_to((self.path.parent / repository.path).resolve())
                 for repository in self.spec.repositories.values())):
             raise Refused("Keep local cloud access grants outside workspace and source repositories", 422)
-        self.gate = RemoteGate(controller) if controller else LocalGate(self.spec, self.ledger.store, access)
+        self.gate = RemoteGate(controller) if controller else LocalGate(self.spec, self.ledger.store, access,
+            [self.path.parent, *[(self.path.parent / repository.path).resolve() for repository in self.spec.repositories.values()]])
         self.deployments = self.state / "deployments"
         private_directory(self.deployments)
 
@@ -322,6 +323,8 @@ class Engine:
             grant = self.gate.grant(target_name(self.spec.name, context.environment, context.name))
             if grant:
                 verify(context, grant)
+                if grant.provider == "azure":
+                    return
         # CLI login caches remain in a per-stage private home, never in the human's home
         if context.component.adapter in {"container-apps", "arm", "bicep"}:
             context.command(["az", "login", "--service-principal", "--username", credentials["ARM_CLIENT_ID"],

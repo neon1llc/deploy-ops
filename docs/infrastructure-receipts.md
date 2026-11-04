@@ -5,9 +5,11 @@ application worker supplies the resulting execution ID when preparing delivery. 
 producer identity, target, policy, expiry and revocation before accepting or executing the application change.
 The application can then release again without another infrastructure apply.
 
-This path currently supports OpenTofu 1.10.0, an S3 backend in the default workspace, and the `aws-ecs-v1`
-output schema. It has local controller and provider-command fixture evidence. It has not run against AWS.
-Terraform, alternate backends, cross-account delivery and other output schemas are not qualified here.
+The AWS contract supports OpenTofu 1.10.0, an S3 backend in the default workspace, and `aws-ecs-v1`
+outputs. The [GCP contract](../examples/gcp-receipts/README.md) supports OpenTofu 1.10.0 or Terraform 1.12.2,
+a GCS backend in the default workspace, and `gcp-cloud-run-v1` outputs. Both have local controller and
+provider-command fixture evidence. The complete receipt handoff has not run against live AWS or GCP.
+Other backends, cross-account/project delivery and other output schemas are not qualified here.
 
 ## Register the contract
 
@@ -43,8 +45,8 @@ state lineage/serial, then records its receipt atomically with completion. The r
 request ID from the ticket. Repeating identical completion returns the same receipt. Different evidence
 cannot replace it.
 
-Build and push the application image in a separate job without cloud writer identity or permission to mint
-cloud OIDC credentials. Pass its immutable ECR digest into the trusted application workflow. That worker
+Build and push the application image in a separate job with only its required registry permissions and no
+infrastructure writer identity. Pass its immutable ECR digest into the trusted application workflow. That worker
 uses the approved workspace and never executes repository build hooks.
 
 ```bash
@@ -64,7 +66,8 @@ observation time and validity alongside the prepared change.
 
 The protected [application workflow](../integrations/github/delivery-worker.yml) accepts a JSON `receipts`
 input and selects the reviewed receipt workspace for `development`. Its other named environments keep the
-cloud-app example without receipt dependencies. Review these fixed mappings and register their exact contract
+cloud-app example without receipt dependencies, except `gcp-development`, which selects the GCP receipt workspace.
+Review these fixed mappings and register their exact contract
 before installation. Do not place producer execution tokens in app jobs or workflow outputs.
 
 ## Invalidation and recovery
@@ -92,3 +95,23 @@ bytes or version ID. A valid receipt proves a trusted worker's observation and c
 It does not detect out-of-band infrastructure drift or prove current health. The ECS adapter still reads
 the service revision before applying and checks convergence afterwards. Stronger live backend observations,
 image provenance enforcement and external application probes remain unfinished.
+
+## GCP contract
+
+Use [the GCP controller example](../config/gcp-receipts.example.toml) and
+[the complete GCP workspace](../examples/gcp-receipts/README.md). Both producer and consumer register an explicit
+`receipt_region`, matching project identities and environment. The typed public outputs are `project`, `region`,
+`name` and `image_repository`; the image repository must be a regional Artifact Registry image path in that project.
+
+The operator registers a GCS bucket and canonical prefix. Before obtaining credentials, the runner writes a
+temporary native override containing only that backend. It refuses competing source overrides and uses
+`init -reconfigure` to avoid migrating source-selected cached state. The generated file is removed after the run.
+Native backend metadata is then checked before planning, applying and state extraction. Explicit credentials,
+custom endpoints, impersonation, encryption overrides and unknown metadata fields are refused. Environment-based
+short-lived credentials are not stored in the native backend configuration in the two qualified tool versions.
+
+This uses the existing isolated OIDC plan/apply workflow and its distinct planning/execution identities. It does
+not enable Terraform/OpenTofu in local cloud grants. The state digest describes the `state pull` representation,
+not a GCS object generation; a receipt remains a trusted worker observation and must be followed by live service
+readback. GCS backend locking is used by the native engine, and backend access must be scoped separately from
+application delivery.

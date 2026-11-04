@@ -58,13 +58,14 @@ jobs:
           set -euo pipefail
           case "$DEPLOY_ENVIRONMENT" in
             development) cp toolkit/examples/aws-receipts/deploy-ops.toml workspace/deploy-ops.toml ;;
+            gcp-development) cp toolkit/examples/gcp-receipts/deploy-ops.toml workspace/deploy-ops.toml ;;
             *) cp toolkit/examples/cloud-app/deploy-ops.toml workspace/deploy-ops.toml ;;
           esac
           # Do not download and execute arbitrary installers in the writer job
           case "$DEPLOY_ENVIRONMENT" in
             development|aws-development) command -v aws ;;
             azure-staging) command -v az ;;
-            gcp-production) command -v gcloud ;;
+            gcp-development|gcp-production) command -v gcloud ;;
             *) echo "Unsupported registered environment" >&2; exit 2 ;;
           esac
       - name: Prepare, await approval, and deliver

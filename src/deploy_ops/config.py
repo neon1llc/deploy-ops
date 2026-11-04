@@ -79,11 +79,32 @@ class StateBackend(Model):
     region: str = Field(pattern=r"^[a-z]{2}-[a-z]+-[0-9]$")
 
 
+# Bind GCS state to one canonical prefix in the default workspace
+class GcsBackend(Model):
+    bucket: str = Field(pattern=r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
+    prefix: str = Field(min_length=1, max_length=512, pattern=r"^[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_.-]+)*$")
+
+    # Reject dot segments and aliases that can hide a different state object
+    @model_validator(mode="after")
+    def canonical_prefix(self):
+        if any(part in {".", ".."} for part in self.prefix.split("/")):
+            raise ValueError("GCS state prefix must use canonical path segments")
+        return self
+
+
 # Bound the supported receipt format and freshness window
 class ReceiptPolicy(Model):
-    format: Literal["aws-ecs-v1"] = "aws-ecs-v1"
-    backend: StateBackend
+    format: Literal["aws-ecs-v1", "gcp-cloud-run-v1"] = "aws-ecs-v1"
+    backend: StateBackend | GcsBackend
     valid_seconds: int = Field(default=3600, ge=60, le=86400)
+
+    # Match the native state backend to the selected public-output contract
+    @model_validator(mode="after")
+    def backend_matches_format(self):
+        expected = StateBackend if self.format == "aws-ecs-v1" else GcsBackend
+        if not isinstance(self.backend, expected):
+            raise ValueError("Receipt format requires its matching S3 or GCS backend")
+        return self
 
 
 # Bind a deployment target to source, execution identities and policy
@@ -108,19 +129,34 @@ class Target(Model):
     policy: Policy = Field(default_factory=Policy)
     receipt_outputs: ReceiptPolicy | None = None
     receipt_dependencies: dict[str, Slug] = Field(default_factory=dict)
+    receipt_region: str | None = Field(default=None, pattern=r"^[a-z]+-[a-z]+[0-9]+$")
 
     # Reject incompatible authority settings before accepting a request
     @model_validator(mode="after")
     def check_boundary(self):
         if self.receipt_outputs or self.receipt_dependencies:
-            if self.cloud != "aws" or not re.fullmatch(r"arn:aws:iam::[0-9]{12}:role/.+", self.identity.get("role_arn", "")):
-                raise ValueError("Infrastructure receipts currently require a registered AWS role")
-            if self.receipt_outputs and self.engines != ["opentofu"]:
-                raise ValueError("Receipt producers currently require the OpenTofu saved-plan path")
+            if self.cloud not in {"aws", "gcp"}:
+                raise ValueError("Infrastructure receipts require a registered AWS or GCP identity")
+            if self.cloud == "aws" and not re.fullmatch(r"arn:aws:iam::[0-9]{12}:role/.+", self.identity.get("role_arn", "")):
+                raise ValueError("AWS infrastructure receipts require a registered role")
+            if self.cloud == "gcp" and (not self.receipt_region or not re.fullmatch(
+                    r"[a-z][a-z0-9-]{4,28}[a-z0-9]", self.identity.get("project_id", ""))):
+                raise ValueError("GCP receipts require an explicit region and project")
+            if self.cloud == "gcp" and self.identity.get("project_id") != self.planner_identity.get("project_id"):
+                raise ValueError("GCP receipt planning and execution must use the same project")
+            if self.receipt_outputs:
+                expected = "aws-ecs-v1" if self.cloud == "aws" else "gcp-cloud-run-v1"
+                if self.receipt_outputs.format != expected:
+                    raise ValueError("Receipt format differs from the registered cloud")
+                allowed = {"opentofu"} if self.cloud == "aws" else {"opentofu", "terraform"}
+                if not self.engines or len(set(self.engines)) != len(self.engines) or not set(self.engines) <= allowed:
+                    raise ValueError("Receipt producers require supported saved-plan engines")
             if self.receipt_dependencies and self.engines != ["delivery"]:
                 raise ValueError("Receipt consumers must use the delivery engine")
             if any(not re.fullmatch(r"[a-z][a-z0-9-]{0,47}", key) for key in self.receipt_dependencies):
                 raise ValueError("Receipt dependencies must name workspace components")
+        if self.receipt_region is not None and (self.cloud != "gcp" or not (self.receipt_outputs or self.receipt_dependencies)):
+            raise ValueError("Receipt region is only valid for GCP receipt producers or consumers")
         if not PINNED_WORKFLOW.fullmatch(self.workflow_ref):
             raise ValueError("Pin the reusable workflow to a full 40-character commit SHA")
         path = PurePosixPath(self.workdir)
@@ -130,7 +166,7 @@ class Target(Model):
             raise ValueError("Use separate planning and execution environments")
         # Explicit local grants never inherit federated or production authority
         if self.local_cloud:
-            if (self.cloud not in {"aws", "gcp"} or not self.allow_local_operator or self.production
+            if (self.cloud not in {"aws", "gcp", "azure"} or not self.allow_local_operator or self.production
                     or self.policy.allow_delegation or self.engines != ["delivery"]
                     or self.receipt_outputs or self.receipt_dependencies
                     or not re.fullmatch(r"[0-9a-f]{64}", self.delivery_digest or "")
@@ -170,6 +206,9 @@ class Target(Model):
     @property
     def digest(self) -> str:
         value = self.model_dump()
+        # Preserve existing AWS and nonreceipt policy identities when GCP scope is absent
+        if self.receipt_region is None:
+            value.pop("receipt_region")
         if not self.local_cloud:
             value.pop("local_cloud")
         # Optional receipts must not invalidate existing nonreceipt approvals and grants

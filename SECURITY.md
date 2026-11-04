@@ -1,8 +1,10 @@
 # Security
 
 DeployOps is a working preview. It has not had an independent security audit or live multi-cloud validation.
-Do not give it root credentials, unrestricted cloud administrator access, or untrusted agent control of its
-controller, policy files, deployment workflow, runner host, or operator token.
+Keep account-owner credentials and untrusted agent control outside the controller, policy files,
+deployment workflow, runner host and operator token. Trusted local qualification can use explicit native
+credential references under an expiring operator grant. Those checks do not reduce the source identity’s
+provider permissions; administrator keys remain administrator keys. See [local cloud access](docs/local-cloud-access.md).
 
 ## Boundaries that exist
 

@@ -10,21 +10,34 @@ import tomllib
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..config import fingerprint
 from ..errors import Refused
+from .files import private_directory
 
 
 # Keep access references outside workspace-controlled source and browser forms
 class Grant(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    provider: Literal["aws", "gcp"]
+    provider: Literal["aws", "gcp", "azure"]
     identity: dict[str, str]
-    adapters: list[Literal["cloudformation", "cdk", "ecs", "cloud-run"]] = Field(min_length=1)
+    adapters: list[Literal["cloudformation", "cdk", "ecs", "cloud-run", "arm", "bicep", "container-apps"]] = Field(min_length=1)
     resource_types: list[str] = Field(min_length=1)
     actions: list[Literal["create", "update", "delete", "replace", "read", "no-op"]]
     max_changes: int = Field(ge=1, le=100)
+
+
+    # Native adapter grants cannot authorize another provider or source execution
+    @model_validator(mode="after")
+    def provider_adapters(self):
+        allowed = {"aws": {"cloudformation", "cdk", "ecs"}, "gcp": {"cloud-run"},
+                   "azure": {"arm", "bicep", "container-apps"}}
+        if not set(self.adapters) <= allowed[self.provider]:
+            raise ValueError("Local adapters must match the granted cloud provider")
+        if self.provider == "azure":
+            azure_identity(self.identity)
+        return self
 
 
 # A grant approves only this workspace revision and a finite lifetime
@@ -60,9 +73,35 @@ def load_access(path: Path, digest: str) -> Access:
     return access
 
 
+# Validate the public Azure scope without opening the private key
+def azure_identity(identity: dict[str, str]) -> None:
+    required = {"tenant_id", "client_id", "subscription_id", "resource_group", "cloud", "certificate_file"}
+    uuid = r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"
+    if (set(identity) != required or identity.get("cloud") != "AzureCloud"
+            or any(not re.fullmatch(uuid, identity.get(key, "")) for key in ("tenant_id", "client_id", "subscription_id"))
+            or not re.fullmatch(r"[A-Za-z0-9_().-]{1,90}", identity.get("resource_group", ""))
+            or identity["resource_group"].endswith(".")
+            or not Path(identity.get("certificate_file", "")).is_absolute()):
+        raise Refused("Azure local access needs public-cloud tenant, client, subscription, resource group and absolute certificate path", 422)
+
+
+# Resolve credential aliases on every authority check so source cannot supply the key
+def check_paths(grant: Grant, source_roots: list[Path]) -> None:
+    if grant.provider == "azure":
+        azure_identity(grant.identity)
+        certificate = private_file(grant.identity["certificate_file"])
+        if any(certificate.is_relative_to(root.resolve()) for root in source_roots):
+            raise Refused("Keep Azure certificate credentials outside workspace and source repositories", 422)
+
+
 # Native tools receive only the chosen credential reference and fixed target
 def credentials(grant: Grant) -> dict[str, str]:
     identity = grant.identity
+    if grant.provider == "azure":
+        azure_identity(identity)
+        certificate = private_file(identity["certificate_file"])
+        return {"ARM_CLIENT_ID": identity["client_id"], "ARM_TENANT_ID": identity["tenant_id"],
+                "ARM_SUBSCRIPTION_ID": identity["subscription_id"], "ARM_CLIENT_CERTIFICATE_PATH": str(certificate)}
     if grant.provider == "aws":
         required = {"account_id", "principal_arn", "region", "profile", "credentials_file", "config_file"}
         if set(identity) != required or not re.fullmatch(r"[0-9]{12}", identity.get("account_id", "")):
@@ -105,8 +144,61 @@ def credentials(grant: Grant) -> dict[str, str]:
             "CLOUDSDK_CORE_PROJECT": identity["project_id"], "GOOGLE_CLOUD_PROJECT": identity["project_id"]}
 
 
+# Authenticate only the granted service principal in a private public-cloud CLI cache
+def verify_azure(context, grant: Grant) -> dict:
+    identity = grant.identity
+    azure_identity(identity)
+    required = {"subscription_id", "resource_group"}
+    if context.component.adapter in {"arm", "bicep"}:
+        required.add("tenant_id")
+    for key in required | ({"tenant_id", "client_id"} & context.options.keys()):
+        if str(context.options.get(key, "")).lower() != identity[key].lower():
+            raise Refused("Azure adapter target differs from its local cloud grant", 403)
+    if context.options.get("cloud", "AzureCloud") != "AzureCloud":
+        raise Refused("Azure local access supports the public cloud only", 403)
+    if context.component.adapter not in grant.adapters:
+        raise Refused("Azure adapter is outside its local cloud grant", 403)
+
+    # Native login consumes a file reference; private-key bytes never enter argv or events
+    certificate = private_file(identity["certificate_file"])
+    if certificate.is_relative_to(context.source.resolve()) or certificate.is_relative_to(context.stage.parent.resolve()):
+        raise Refused("Keep Azure certificate credentials outside source and release artifacts", 422)
+    home = context.stage.parent / "home"
+    private_directory(home)
+    cache = home / ".azure"
+    private_directory(cache)
+    context.process.env.update(HOME=str(home), AZURE_CONFIG_DIR=str(cache),
+        AZURE_CORE_COLLECT_TELEMETRY="no", AZURE_EXTENSION_USE_DYNAMIC_INSTALL="no")
+    context.command(["az", "cloud", "set", "--name", "AzureCloud", "--only-show-errors"], capture=True)
+    context.command(["az", "login", "--service-principal", "--username", identity["client_id"],
+        "--tenant", identity["tenant_id"], "--certificate", str(certificate), "--output", "none",
+        "--only-show-errors"], capture=True)
+
+    # Subscription selection and readback reject cached human or different-tenant identities
+    context.command(["az", "account", "set", "--subscription", identity["subscription_id"], "--only-show-errors"], capture=True)
+    observed = json.loads(context.command(["az", "account", "show", "--subscription", identity["subscription_id"],
+        "--output", "json", "--only-show-errors"], capture=True))
+    user = observed.get("user", {})
+    if (str(observed.get("id", "")).lower() != identity["subscription_id"].lower()
+            or str(observed.get("tenantId", "")).lower() != identity["tenant_id"].lower()
+            or observed.get("environmentName") != "AzureCloud" or observed.get("state") != "Enabled"
+            or str(user.get("name", "")).lower() != identity["client_id"].lower()
+            or user.get("type") != "servicePrincipal"):
+        raise Refused("Azure authenticated identity differs from its local cloud grant", 403)
+    group = json.loads(context.command(["az", "group", "show", "--name", identity["resource_group"],
+        "--subscription", identity["subscription_id"], "--output", "json", "--only-show-errors"], capture=True))
+    expected = f"/subscriptions/{identity['subscription_id']}/resourceGroups/{identity['resource_group']}"
+    if str(group.get("id", "")).lower() != expected.lower():
+        raise Refused("Azure resource group differs from its local cloud grant", 403)
+    return {"provider": "azure", "subscription_id": identity["subscription_id"],
+            "tenant_id": identity["tenant_id"], "principal": identity["client_id"],
+            "resource_group": identity["resource_group"]}
+
+
 # Read identity through the same process environment used by native adapters
 def verify(context, grant: Grant) -> dict:
+    if grant.provider == "azure":
+        return verify_azure(context, grant)
     identity = grant.identity
     for key in ("account_id", "region", "project_id"):
         if key in context.options and key in identity and context.options[key] != identity[key]:
