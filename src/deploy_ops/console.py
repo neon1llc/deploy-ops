@@ -48,6 +48,13 @@ class Input(BaseModel):
     limit: int = Field(default=3, ge=1, le=5)
     version: int | None = Field(default=None, ge=1)
 
+    # Paging settings contain references only and use independent revision checks
+    paging_configuration: dict | None = None
+    revision: int = Field(default=0, ge=0)
+    context: dict[str, str] = Field(default_factory=dict)
+    binding: str = ""
+    allow_duplicate: bool = False
+
     # Preview ownership and cleanup retain their separate lifecycle boundaries
     preview_owner: str = Field(default="", max_length=200)
     preview_hours: int = Field(default=1, ge=1, le=72)
@@ -131,7 +138,7 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     # Serve only known UI assets rather than arbitrary package files
     @app.get("/assets/{name}")
     def asset(name: str):
-        if name not in ("app.js", "style.css", "appearance.mjs", "theme.mjs"):
+        if name not in ("app.js", "paging.js", "style.css", "appearance.mjs", "theme.mjs"):
             raise HTTPException(404)
         return FileResponse(assets / name)
 
@@ -195,6 +202,36 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
                                           {"old_digest": engine.spec.digest, "new_digest": proposed.digest})
             engine = Engine(engine.path, engine.state)
         return {"digest": engine.spec.digest, "status": "saved", "reload": True}
+
+
+    # Expose paging drafts and per-destination evidence without credential values
+    @app.get("/api/paging/{view}", dependencies=[Depends(operator)])
+    def paging_view(view: str):
+        from .delivery import paging
+        if view == "config":
+            return paging.config(engine.ledger)
+        if view == "status":
+            return paging.status(engine.ledger)
+        raise Refused("Unknown paging view", 404)
+
+
+    # Keep draft activation and actual sending as separately named operations
+    @app.post("/api/paging/{action}", dependencies=[Depends(operator)])
+    def paging_action(action: str, data: Input):
+        from .delivery import paging
+        if action == "save":
+            return paging.save_config(engine.ledger, data.paging_configuration, data.revision)
+        if action == "activate":
+            return paging.activate(engine.ledger, data.revision)
+        if action == "preview":
+            return paging.preview(engine.ledger, data.context, data.paging_configuration)
+        if action == "test":
+            return paging.test_destination(engine.ledger, data.name, data.revision)
+        if action == "drain":
+            return paging.drain(engine.ledger)
+        if action in ("acknowledge", "resolve", "retry"):
+            return paging.action(engine.ledger, data.binding, action, data.version, data.allow_duplicate)
+        raise Refused("Unknown paging operation", 404)
 
 
     # Inspect delivery state without sending another notification

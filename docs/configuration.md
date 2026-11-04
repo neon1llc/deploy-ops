@@ -138,3 +138,6 @@ deploy-ops --project deploy-ops.toml config patch --section components --name we
 The JSON result contains the updated `toml`, a unified `diff`, validated fields and the contract digest.
 Review and save the desired draft through the console or your normal editor. Configuration output can
 contain repository paths and options; do not publish it without checking its contents.
+
+Paging destinations and routing use a separate versioned configuration so edits do not invalidate
+deployment approvals. Use the guided console or `deploy-ops paging` commands; see [paging](paging.md).

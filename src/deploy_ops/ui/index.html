@@ -2,7 +2,7 @@
 <!-- ui/index.html - Review and operate a trusted local workspace without a frontend build tool. -->
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>DeployOps by neon1</title><link rel="stylesheet" href="/assets/style.css"><script type="module" src="/assets/appearance.mjs"></script><script src="/assets/app.js" defer></script></head>
+<title>DeployOps by neon1</title><link rel="stylesheet" href="/assets/style.css"><script type="module" src="/assets/appearance.mjs"></script><script src="/assets/app.js" defer></script><script src="/assets/paging.js" defer></script></head>
 <body><header><div><span class="brand">neon1</span><h1>DeployOps</h1><p>Infrastructure and applications. One release history.</p></div><span id="mode" class="badge">Locked</span></header>
 <main><section id="unlock"><h2>Open your workspace</h2><p>Paste the token from the local operator token file. It stays in this tab's memory.</p>
 <form id="login"><label for="token">Operator token</label><input id="token" type="password" autocomplete="off" required><button>Unlock</button></form></section>
@@ -39,8 +39,43 @@
 <p>Acknowledgement stops escalation. Resolution records your decision; it does not repair or reconcile the deployment. Notes stay in the local audit. Keep secrets out of them.</p>
 <button id="incident-tick" type="button" class="secondary">Check due escalations</button>
 <h3>Workspace notification outbox</h3><p id="notification-status"></p>
-<p>Delivery is separate from acknowledgement. Use <code>deploy-ops notify --status</code> to inspect or <code>deploy-ops notify</code> to send through your configured endpoint. This outbox has one destination, not a recipient schedule.</p>
+<p>Delivery is separate from acknowledgement. Use <code>deploy-ops notify --status</code> to inspect or <code>deploy-ops notify</code> to send through your configured endpoint. This legacy outbox has one destination. Named destinations use the separate paging delivery records below.</p>
 <p id="incident-status" role="status" aria-live="polite" tabindex="-1"></p></details>
+<!-- Configure named paging destinations without exposing worker credentials -->
+<details id="paging-panel"><summary>Paging destinations and routing</summary>
+<p>Keep responder schedules in your paging provider. Local incident acknowledgement and remote destination acknowledgement are separate decisions. Accepted requests do not prove a person received a page.</p>
+<button id="paging-load" type="button" class="secondary">Load saved paging settings</button>
+<p id="paging-revision">Open this panel to load settings.</p>
+<form id="paging-destination-form" action="/api/paging/save" method="post">
+<fieldset><legend>Named destination</legend>
+<label for="paging-destination-select">Edit destination</label><select id="paging-destination-select" name="selected"><option value="">New destination</option></select>
+<label for="paging-destination-name">Destination name (required)</label><input id="paging-destination-name" name="name" required pattern="[a-z][a-z0-9\-]{0,47}" maxlength="48" autocapitalize="off" spellcheck="false">
+<label for="paging-provider">Provider (required)</label><select id="paging-provider" name="provider" required></select>
+<div id="paging-destination-fields"></div><p id="paging-provider-help"></p>
+<button type="submit">Apply destination to draft</button></fieldset></form>
+<form id="paging-route-form" action="/api/paging/save" method="post">
+<fieldset><legend>Ordered route</legend>
+<label for="paging-route-select">Edit route</label><select id="paging-route-select" name="selected"><option value="">New route</option></select>
+<label for="paging-route-name">Route name (required)</label><input id="paging-route-name" name="name" required pattern="[a-z][a-z0-9\-]{0,47}" maxlength="48" autocapitalize="off" spellcheck="false">
+<div id="paging-route-fields"></div><button type="submit">Apply route to draft</button></fieldset></form>
+<h3>Route order</h3><p>The first matching route wins. Each route can fan out to multiple destinations. Repeated names select a destination once. No matching route uses the default destinations.</p>
+<div id="paging-routes"></div><fieldset id="paging-defaults"><legend>Default destinations</legend></fieldset>
+<div class="controls"><button id="paging-save" type="button">Save paging draft</button><button id="paging-activate" type="button">Activate saved revision</button></div>
+<p>Saving does not activate routing or send a test. Activation affects new events. Existing remote incidents retain their original destinations and credential references.</p>
+<!-- Route preview never contacts a provider or evaluates credential values -->
+<form id="paging-preview-form" action="/api/paging/preview" method="post"><fieldset><legend>Preview draft route</legend>
+<div id="paging-preview-fields"></div><button type="submit">Preview route without sending</button></fieldset></form>
+<div id="paging-preview-result"></div>
+<!-- Explicit sending stays separate from configuration and local incident decisions -->
+<form id="paging-test-form" action="/api/paging/test" method="post"><fieldset><legend>Synthetic test page</legend>
+<label for="paging-test-destination">Active destination</label><select id="paging-test-destination" name="name" required></select>
+<label class="check" for="paging-test-confirm"><input id="paging-test-confirm" name="confirm" type="checkbox" required> I intend to contact this destination. A running worker may send immediately and provider channels may incur charges.</label>
+<button type="submit">Queue test page</button></fieldset></form>
+<div class="controls"><button id="paging-drain" type="button">Send queued deliveries</button><button id="paging-refresh" type="button" class="secondary">Refresh delivery evidence</button></div>
+<p>For unattended work, run <code>deploy-ops paging worker</code> in a separately managed foreground process or container. A sleeping host cannot deliver new events. No service is installed automatically.</p>
+<p id="paging-health"></p><div id="paging-bindings"></div><div id="paging-deliveries"></div>
+<p id="paging-status" role="status" aria-live="polite" tabindex="-1"></p>
+<p>Planned native adapters: incident.io, Better Stack, Grafana Cloud IRM and ilert. Optional Apprise notification transport remains planned.</p></details>
 <details><summary>Workspace configuration</summary><p>Edit existing repositories, environments and components below. Advanced options stay in the TOML draft. Keep secrets out of this file. Finish or cancel outstanding releases before saving.</p>
 <button id="load-forms" type="button" class="secondary">Load forms from current draft</button>
 <form id="config-form" action="/api/config/patch" method="post">

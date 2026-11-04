@@ -88,3 +88,9 @@ fieldset { min-width: 0; border: 1px solid var(--line-strong, ButtonBorder); bor
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Keep paging controls usable on narrow screens and under compact density */
+#paging-panel input:not([type=checkbox]), #paging-panel select { width: 100%; min-height: 48px; }
+#paging-panel button, #paging-panel .check { min-height: 48px; }
+#paging-panel p, #paging-routes { overflow-wrap: anywhere; }
+#paging-panel input:user-invalid { outline: 2px solid var(--error, CanvasText); }

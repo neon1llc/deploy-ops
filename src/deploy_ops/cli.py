@@ -119,6 +119,32 @@ def parser():
     notify.add_argument("--url", default=os.environ.get("DEPLOY_OPS_NOTIFY_URL"))
     notify.add_argument("--kind", choices=["json", "slack", "ntfy"], default="json")
 
+    # Paging configuration, explicit sends and unattended delivery share one durable owner
+    paging = commands.add_parser("paging", help="Configure named destinations and inspect native incident delivery")
+    paging_actions = paging.add_subparsers(dest="paging_action", required=True)
+    for name in ("config", "status"):
+        paging_actions.add_parser(name)
+    draft = paging_actions.add_parser("save")
+    draft.add_argument("file", type=Path, help="Secret-free paging TOML")
+    draft.add_argument("--revision", type=int, required=True)
+    activation = paging_actions.add_parser("activate")
+    activation.add_argument("--revision", type=int, required=True)
+    route = paging_actions.add_parser("preview")
+    for name in ("project", "environment", "component", "event", "severity"):
+        route.add_argument("--" + name, dest="paging_" + name, default="incident.opened" if name == "event" else "")
+    route.add_argument("--file", type=Path, help="Preview an unsaved TOML draft without sending")
+    test = paging_actions.add_parser("test", help="Explicitly queue a synthetic page that can contact a responder")
+    test.add_argument("destination")
+    test.add_argument("--revision", type=int, required=True)
+    drain = paging_actions.add_parser("drain")
+    drain.add_argument("--limit", type=int, default=50)
+    paging_actions.add_parser("worker", help="Run the foreground delivery worker until interrupted")
+    for name in ("acknowledge", "resolve", "retry"):
+        action = paging_actions.add_parser(name)
+        action.add_argument("binding")
+        action.add_argument("--version", type=int, required=True)
+        action.add_argument("--allow-duplicate", action="store_true")
+
     # Console access and the independent authority controller retain their own interfaces
     ui = commands.add_parser("ui")
     ui.add_argument("--port", type=int, default=8765)
@@ -270,6 +296,29 @@ def dispatch(args):
         if not args.url:
             raise Refused("Set DEPLOY_OPS_NOTIFY_URL or pass --url", 422)
         return flush(engine.ledger, args.url, args.kind)
+    if args.command == "paging":
+        from .delivery import paging
+        action = args.paging_action
+        if action == "config":
+            return paging.config(engine.ledger)
+        if action == "status":
+            return paging.status(engine.ledger)
+        if action == "save":
+            return paging.save_config(engine.ledger, args.file.read_text(), args.revision)
+        if action == "activate":
+            return paging.activate(engine.ledger, args.revision)
+        if action == "preview":
+            context = {key: getattr(args, "paging_" + key) for key in ("project", "environment", "component", "event", "severity")}
+            draft = args.file.read_text() if args.file else None
+            return paging.preview(engine.ledger, context, draft)
+        if action == "test":
+            return paging.test_destination(engine.ledger, args.destination, args.revision)
+        if action == "drain":
+            return paging.drain(engine.ledger, args.limit)
+        if action == "worker":
+            paging.run_worker(engine.ledger)
+            return {"stopped": True}
+        return paging.action(engine.ledger, args.binding, action, args.version, args.allow_duplicate)
     if args.command == "ui":
         from .console import serve
         return serve(engine, args.port, args.token_file)

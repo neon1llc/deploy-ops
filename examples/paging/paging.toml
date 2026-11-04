@@ -1,0 +1,24 @@
+# examples/paging/paging.toml - Configure native paging with worker-owned secret references.
+
+
+# Save this draft before explicitly activating its routing revision
+schema_version = 1
+default_destinations = []
+
+# PagerDuty uses a service Events API v2 integration and its existing escalation policy
+[destinations.operations]
+provider = "pagerduty"
+key_env = "DEPLOY_OPS_PAGING_OPERATIONS"
+
+# GoAlert owns its service schedule and receives no acknowledgement through this API
+[destinations.self-hosted]
+provider = "goalert"
+key_env = "DEPLOY_OPS_PAGING_GOALERT"
+endpoint = "https://alerts.example/api/v2/generic/incoming"
+
+# The first matching route fans out once to each named destination
+[[routes]]
+name = "production-incidents"
+environments = ["production"]
+events = ["incident.opened"]
+destinations = ["operations", "self-hosted"]

@@ -515,7 +515,7 @@ element("incident-open-form").onsubmit = event => {
       interval_seconds: Number(element("incident-interval").value), limit: Number(element("incident-limit").value)});
     if (!token) return;
     selectedIncident = record.id;
-    incidentMessage("Incident recorded. Its notification is queued separately; no responder has been contacted by this action.");
+    incidentMessage("Incident recorded. Destination work is queued; a running paging worker may send it now.");
   });
 };
 

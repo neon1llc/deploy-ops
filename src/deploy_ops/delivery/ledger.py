@@ -43,6 +43,8 @@ class Ledger:
                     sent INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0
                 );
             """)
+        from .paging import initialize
+        initialize(self.store)
 
 
     # Persist release state and its event atomically
@@ -61,9 +63,12 @@ class Ledger:
     # Queue transport work only after recording the durable event
     def _event(self, connection, release_id: str, name: str, detail: dict):
         now = int(time.time())
-        connection.execute("INSERT INTO release_events(release_id,time,name,detail) VALUES (?,?,?,?)",
+        cursor = connection.execute("INSERT INTO release_events(release_id,time,name,detail) VALUES (?,?,?,?)",
                            (release_id, now, name, canonical(detail)))
         self.store.event(connection, now, "delivery", name, release_id, detail)
+        # Destination obligations commit atomically with their originating event
+        from .paging import enqueue
+        enqueue(connection, release_id, name, detail, cursor.lastrowid)
         if name in {"release.succeeded", "release.failed", "release.waiting", "release.uncertain"}:
             connection.execute("INSERT INTO notifications(payload) VALUES (?)", (
                 canonical({"release_id": release_id, "event": name, "time": now}),

@@ -90,7 +90,8 @@ records commit together. They are separate from whole-release snapshots so a wor
 operator acknowledgement with an older release copy. Existing databases gain no automatic incidents.
 Back up workspace state before upgrading; an older version does not understand incident operations.
 
-The implemented path is local incident tracking with bounded escalation signals. External pager adapters,
-authenticated remote acknowledgement, on-call routing, recipient escalation and live paging qualification
-remain unfinished. The local operator console must remain on loopback. Do not expose it as a webhook
+The local incident path retains bounded escalation signals. [Named paging destinations](paging.md) add
+PagerDuty and GoAlert requests with separate per-destination evidence. Local acknowledgement remains
+local. Authenticated incoming acknowledgement, remote status readback and live paging qualification
+remain unfinished. Native responder schedules stay with the provider. The local operator console must remain on loopback. Do not expose it as a webhook
 callback service.
