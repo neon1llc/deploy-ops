@@ -164,6 +164,12 @@ def parser():
         action.add_argument("--version", type=int, required=True)
         action.add_argument("--allow-duplicate", action="store_true")
 
+    # Local controller operations reuse the same owner as the console
+    operator = commands.add_parser("operator", help="Inspect and stop local controller authority")
+    operator.add_argument("action", choices=["status", "requests", "request", "decision", "resolve", "pause", "resume", "delegations", "revoke", "audit"])
+    operator.add_argument("identifier", nargs="?", default="")
+    operator.add_argument("--values", type=json.loads, default={})
+
     # Console access and the independent authority controller retain their own interfaces
     ui = commands.add_parser("ui")
     ui.add_argument("--port", type=int, default=8765)
@@ -256,6 +262,12 @@ def dispatch(args):
             return validate(source, args.project.read_text())
         from .delivery.engine import Engine
         return save(Engine(args.project, args.state, args.controller), source, args.source_hash)
+
+    # Operator decisions never start a deployment worker
+    if args.command == "operator":
+        from .delivery.engine import Engine
+        from .delivery.operator import Operator
+        return Operator(Engine(args.project, args.state, args.controller)).call(args.action, args.identifier, args.values)
 
     # Stateful actions share the same workspace and ledger owner
     from .delivery.engine import Engine

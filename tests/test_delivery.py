@@ -190,7 +190,7 @@ def test_console_auth_origin_and_same_core(engine):
     token = "t" * 40
     client = TestClient(create_app(engine, token), base_url="http://127.0.0.1:8765")
     assert client.get("/").status_code == 200
-    for asset in ("app.js", "shell.js", "paging.js", "isolated.js", "style.css", "appearance.mjs", "theme.mjs"):
+    for asset in ("app.js", "shell.js", "operator.js", "paging.js", "isolated.js", "style.css", "appearance.mjs", "theme.mjs"):
         assert client.get("/assets/" + asset).status_code == 200
         assert client.get("/" + asset).status_code == 200
     assert client.get("/assets/operator.token").status_code == 404
@@ -430,3 +430,54 @@ def test_console_release_action_contract():
     root = Path(__file__).resolve().parents[1]
     subprocess.run([node, str(root / "tests" / "release_ui.cjs")], cwd=root,
                    check=True, capture_output=True, text=True, timeout=20)
+
+
+# Stop existing authority, inspect uncertain work and reconcile without replaying a mutation
+def test_local_operator_stop_and_recovery(engine):
+    from deploy_ops.delivery.operator import Operator
+    operator = Operator(engine)
+    client = TestClient(create_app(engine, 'fixture-' + 'x' * 40), base_url='http://127.0.0.1:8765')
+    headers = {'Authorization': 'Bearer fixture-' + 'x' * 40}
+    release = engine.advance(engine.create('development', 'foundation')['id'])
+    node = release['nodes']['foundation']
+    identifier = node['request_id']
+    base = '/api/operator/'
+    assert client.get(base + 'status').status_code == 401
+    assert client.post(base + 'pause', headers={**headers, 'Origin': 'https://outside.example'}, json={}).status_code == 403
+    stale = client.post(base + 'decision', headers=headers, json={'identifier': identifier,
+        'values': {'digest': '0' * 64, 'decision': 'approve'}})
+    assert stale.status_code == 409
+    operator.call('decision', identifier, {'digest': node['request_digest'], 'decision': 'approve'})
+    assert engine.ledger.get(release['id'])['status'] == 'waiting'
+    lease = engine.gate.claim(engine.gate.status(identifier), release)
+    grants = engine.gate.delegate('development', 1, 1)
+    assert client.post(base + 'pause', headers=headers, json={}).json() == {'paused': True}
+    observed = client.get(base + 'request', params={'identifier': identifier}, headers=headers).json()
+    assert observed['status'] == 'uncertain'
+    assert 'execution' not in observed and lease['token'] not in json.dumps(observed)
+    with pytest.raises(Refused):
+        engine.gate.heartbeat(lease)
+    assert client.post(base + 'resolve', headers=headers, json={'identifier': identifier,
+        'values': {'outcome': 'failed', 'note': 'Inspected local destination; no mutation was executed'}}).json()['status'] == 'failed'
+    assert client.post(base + 'resume', headers=headers, json={}).json() == {'paused': False}
+    assert not any(grant['active'] for grant in operator.call('delegations'))
+    assert not list(engine.deployments.rglob('resource.json'))
+    fresh = engine.advance(engine.create('development', 'foundation')['id'])
+    assert fresh['status'] == 'waiting'
+    assert operator.call('audit')['events'] > 0
+    operator.call('revoke', grants[0]['id'])
+    invalid = client.post(base + 'resolve', headers=headers, json={'identifier': identifier,
+        'values': {'outcome': 'failed', 'note': 'credential-sentinel', 'token': 'secret-sentinel'}})
+    assert invalid.status_code == 422 and 'secret-sentinel' not in invalid.text
+
+
+# Do not convert a console token into remote or isolated administrator authority
+def test_operator_unregistered_mode_and_invalid_body(engine, monkeypatch):
+    from deploy_ops.delivery.operator import Operator
+    client = TestClient(create_app(engine, 'fixture-' + 'x' * 40), base_url='http://127.0.0.1:8765')
+    headers = {'Authorization': 'Bearer fixture-' + 'x' * 40}
+    response = client.post('/api/operator/pause', headers=headers, json=['private-token-sentinel'])
+    assert response.status_code == 422 and 'private-token-sentinel' not in response.text
+    monkeypatch.setattr(engine, 'gate', object())
+    assert Operator(engine).status()['available'] is False
+    assert client.post('/api/operator/pause', headers=headers, json={}).status_code == 403

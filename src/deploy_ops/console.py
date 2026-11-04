@@ -127,6 +127,35 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         threading.Thread(target=work, daemon=True, name="deploy-ops-" + release_id[:8]).start()
 
 
+    # Keep operator input fixed and reuse the existing authenticated loopback boundary
+    @app.get("/api/operator/{action}", dependencies=[Depends(operator)])
+    def operator_read(action: str, identifier: str = ""):
+        from .delivery.operator import Operator
+        if action not in {"status", "requests", "request", "delegations", "audit"}:
+            raise Refused("Unknown operator observation", 404)
+        return Operator(engine).call(action, identifier)
+
+
+    # Validate decision bodies without echoing rejected values into responses
+    @app.post("/api/operator/{action}", dependencies=[Depends(operator)])
+    async def operator_write(action: str, request: Request):
+        from .delivery.operator import Operator
+        try:
+            body = await request.json()
+        except ValueError:
+            raise Refused("Invalid operator action body", 422) from None
+        if not isinstance(body, dict):
+            raise Refused("Invalid operator action body", 422)
+        if action not in {"decision", "resolve", "pause", "resume", "revoke"}:
+            raise Refused("Unknown operator action", 404)
+        if set(body) - {"identifier", "values"} or not isinstance(body.get("values", {}), dict):
+            raise Refused("Invalid operator action fields", 422)
+        identifier = body.get("identifier", "")
+        if not isinstance(identifier, str):
+            raise Refused("Invalid operator identifier", 422)
+        return Operator(engine).call(action, identifier, body.get("values", {}))
+
+
     # Load the packaged console without granting API access
     @app.get("/")
     def index():
@@ -137,7 +166,7 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     @app.get("/assets/{name}")
     @app.get("/{name}")
     def asset(name: str):
-        if name not in ("app.js", "shell.js", "paging.js", "isolated.js", "style.css", "appearance.mjs", "theme.mjs"):
+        if name not in ("app.js", "shell.js", "operator.js", "paging.js", "isolated.js", "style.css", "appearance.mjs", "theme.mjs"):
             raise HTTPException(404)
         return FileResponse(assets / name)
 

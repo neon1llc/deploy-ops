@@ -169,3 +169,37 @@ deploy-ops preview RELEASE_ID --component web --port 8000
 
 This process stays in the foreground until stopped. It does not expose the operator console or create
 a permanent hosting service.
+
+## Stop and recover local controller authority
+
+Open **Controls → Controller stop and recovery**, then refresh the controller. Inspect a request's target,
+normalized changes and exact source/artifact digest before approving or rejecting it. Approval records
+permission only. Execution remains a separate release action.
+
+**Pause authority** revokes bounded delegations, cancels approved requests and marks running requests
+uncertain. It blocks new approvals and claims. It cannot undo operations already accepted by a provider.
+Inspect actual outcomes before recording a reconciliation reason and outcome. Reconciliation records the
+observation without replaying deployment. **Resume authority** allows fresh decisions without restoring
+revoked grants. Refresh also shows delegation history and the verified audit-chain head.
+
+The equivalent local CLI uses the same workspace and controller:
+
+```bash
+deploy-ops operator status
+deploy-ops operator requests
+deploy-ops operator request REQUEST_ID
+deploy-ops operator pause
+deploy-ops operator resolve REQUEST_ID --values '{"outcome":"failed","note":"Inspected target and confirmed the failed outcome"}'
+deploy-ops operator delegations
+deploy-ops operator revoke DELEGATION_ID
+deploy-ops operator audit
+deploy-ops operator resume
+```
+
+Exact decisions use `operator decision REQUEST_ID --values` with `digest`, `decision` (`approve` or
+`reject`) and an optional `note`. The console requires an operational reason for its decisions. Keep
+credentials out of notes. This panel and CLI adapter support the existing local controller only. Remote
+and isolated modes report unavailable here and retain their existing dedicated operator interfaces.
+Controller reconciliation and release recovery are separate records. Inspect the release afterward and
+use its recovery action when an interrupted release also needs reconciliation. Pausing one workspace's
+controller does not pause a different state directory.

@@ -337,5 +337,36 @@ console.log("Shell navigation, complete settings discovery, retained drafts, fac
   app.node("config-add-type").value = "repositories"; app.node("config-add-type").dispatchEvent({type: "change"});
   assert.equal(app.node("config-add-name").value, "unfinished-repo"); assert.equal(app.node("create-path").value, "new-source");
   assert.equal(app.node("config-diff").textContent, "+new-site");
-  console.log("Creation DOM: typed requests, failure recovery and independent draft retention passed");
+  // Exercise fixed operator routes and retain authored inspection notes across observations
+  const operatorCalls = [];
+  const request = {id: "a".repeat(32), digest: "b".repeat(64), status: "pending", reason: "Review",
+    manifest: {target: "local-foundation", preview: {changes: []}}};
+  let paused = false;
+  app.context.capture = async (path, method, body) => {
+    operatorCalls.push({path, method, body});
+    if (path === "/operator/status") return {available: true, paused};
+    if (path === "/operator/requests") return [request];
+    if (path.startsWith("/operator/request?")) return request;
+    if (path === "/operator/delegations") return [];
+    if (path === "/operator/audit") return {events: 4, head: "verified"};
+    if (path === "/operator/pause") { paused = true; request.status = "uncertain"; return {paused}; }
+    if (path === "/operator/resume") { paused = false; return {paused}; }
+    if (path === "/operator/decision") { request.status = "approved"; return request; }
+    throw new Error("Unexpected operator route");
+  };
+  vm.runInContext('function button(label,action){const node=document.createElement("button");node.textContent=label;node.onclick=action;return node;} function reviewFacts(){} function reviewChanges(){} function reviewEvidence(){}', app.context);
+  vm.runInContext(fs.readFileSync("src/deploy_ops/ui/operator.js", "utf8"), app.context);
+  await vm.runInContext("operatorLoad()", app.context);
+  await app.node("operator-requests").children[0].onclick();
+  app.node("operator-note").value = "Unfinished inspection note";
+  await vm.runInContext("operatorLoad()", app.context);
+  assert.equal(app.node("operator-note").value, "Unfinished inspection note");
+  assert.equal(app.node("operator-approve").disabled, false);
+  await app.node("operator-pause").onclick();
+  assert.equal(app.node("operator-approve").disabled, true);
+  assert.equal(app.node("operator-resolve").disabled, false);
+  assert.equal(app.node("operator-note").value, "Unfinished inspection note");
+  assert.ok(operatorCalls.every(call => !/resume$/.test(call.path) && !/releases/.test(call.path)));
+  assert.equal(app.node("operator-audit").textContent, "4 verified events · chain head verified");
+  console.log("Creation and operator DOM: typed requests, authority state and independent drafts passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

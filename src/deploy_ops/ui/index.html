@@ -12,6 +12,7 @@
     <script type="module" src="appearance.mjs"></script>
     <script src="app.js" defer></script>
     <script src="paging.js" defer></script>
+    <script src="operator.js" defer></script>
     <script src="isolated.js" defer></script>
   </head>
   <body>
@@ -485,6 +486,26 @@
               </details>
             </div>
             <div data-view="controls" hidden>
+              <!-- Stop and reconcile authority through the existing local controller -->
+              <details id="operator-panel" data-setting="controller authority pause resume requests approvals recovery reconciliation delegations audit">
+                <summary>Controller stop and recovery</summary>
+                <p>Pause blocks new authority, revokes delegations and cancels approved work. Running work becomes uncertain and needs inspection. Accepted operations are not rolled back. Resume does not restore revoked grants.</p>
+                <button id="operator-load" type="button" class="secondary">Refresh controller</button>
+                <p id="operator-status" role="status" aria-live="polite"></p>
+                <div id="operator-controls" hidden>
+                  <div class="controls"><button id="operator-pause" type="button">Pause authority</button><button id="operator-resume" type="button">Resume authority</button></div>
+                  <h3>Requests</h3><div id="operator-requests"></div>
+                  <h3 id="operator-heading" tabindex="-1">Selected request</h3><div id="operator-detail"></div>
+                  <form id="operator-decision"><label for="operator-note">Decision or inspection reason</label><textarea id="operator-note" minlength="10" maxlength="500" required></textarea>
+                    <div class="controls"><button id="operator-approve" type="submit" name="decision" value="approve">Approve exact request</button><button id="operator-reject" type="submit" name="decision" value="reject">Reject exact request</button></div>
+                    <label for="operator-outcome">Observed outcome after inspection</label><select id="operator-outcome"><option value="failed">Failed</option><option value="cancelled">Cancelled</option><option value="succeeded">Succeeded</option></select>
+                    <button id="operator-resolve" type="submit" name="decision" value="resolve">Record inspected outcome</button>
+                  </form>
+                  <h3>Bounded delegations</h3><div id="operator-delegations"></div>
+                  <h3>Audit chain</h3><p id="operator-audit"></p>
+                </div>
+              </details>
+
               <label class="settings-search" for="settings-search"
                 >Search settings<input
                   id="settings-search"
