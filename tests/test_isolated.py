@@ -480,3 +480,50 @@ def test_expired_grant_can_read_and_reconcile_but_never_execute(setup, monkeypat
     assert result.status_code == 200 and result.json()["status"] == "failed"
     assert not result.json().get("output_receipt")
     assert len(route.broker.accounts) == 1
+
+
+# Reap a naturally exited transport without hiding a real process-group permission failure
+def test_lima_cleanup_reaps_exited_transport():
+    from deploy_ops.isolated import _stop_lima
+    process = subprocess.Popen([sys.executable, '-I', '-c', 'pass'], stdout=subprocess.PIPE,
+                               start_new_session=True)
+    try:
+        assert process.stdout.read() == b''
+        _stop_lima(process)
+        assert process.returncode == 0
+    finally:
+        process.stdout.close()
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+
+
+# Retry the Darwin zombie race only after the group leader has demonstrably exited
+@pytest.mark.parametrize('exited', [False, True])
+def test_lima_cleanup_permission_race(monkeypatch, exited):
+    from unittest.mock import Mock
+    from deploy_ops.isolated import _stop_lima
+    process = Mock()
+    process.poll.side_effect = [None, 0 if exited else None]
+    stop = Mock(side_effect=[PermissionError('fixture'), None])
+    monkeypatch.setattr('deploy_ops.isolated._stop', stop)
+    if exited:
+        _stop_lima(process)
+        assert stop.call_count == 2
+    else:
+        with pytest.raises(PermissionError):
+            _stop_lima(process)
+        assert stop.call_count == 1
+
+
+# Still attempt descendant cleanup after the transport leader has already been reaped
+def test_lima_cleanup_retains_descendant_permission_failure(monkeypatch):
+    from unittest.mock import Mock
+    from deploy_ops.isolated import _stop_lima
+    process = Mock()
+    process.poll.return_value = 0
+    stop = Mock(side_effect=PermissionError('fixture'))
+    monkeypatch.setattr('deploy_ops.isolated._stop', stop)
+    with pytest.raises(PermissionError):
+        _stop_lima(process)
+    assert stop.call_count == 2

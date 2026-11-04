@@ -98,6 +98,18 @@ class NativeBroker:
                 _stop(process)
 
 
+# Reap an exited Lima leader before signalling any surviving transport descendants
+def _stop_lima(process):
+    process.poll()
+    try:
+        _stop(process)
+    except PermissionError:
+        # Darwin can deny a signal to a group containing only an unreaped zombie
+        if process.poll() is None:
+            raise
+        _stop(process)
+
+
 # Validate the actual Lima runtime before the helper can request any token
 class LimaRunner:
     # Recheck immutable tool references on every isolated operation
@@ -189,7 +201,7 @@ class LimaRunner:
             # EOF reaches the guest supervisor before the local SSH process is terminated
             with contextlib.suppress(Exception):
                 process.stdin.close()
-            _stop(process)
+            _stop_lima(process)
             process.stdout.close()
 
 
