@@ -232,6 +232,15 @@ inputs, distinct worker identities, supervisor exclusion and descendant terminat
 or heartbeat loss. No real GCP token, plan, apply or application rollout was exercised by those checks.
 The console panel has shared API coverage; its new browser interactions still require verification.
 
+A subsequent bounded live attempt authenticated native impersonation and published two immutable
+images to its private registry, but did not establish a successful infrastructure plan. Both planning
+requests failed during host transport cleanup and were reconciled after confirming no Cloud Run
+service, empty infrastructure state and no remaining worker. No apply or application release followed.
+Credentialless reproduction identified macOS refusing a process-group signal while its exited Lima
+leader remained unreaped. The transport now reaps that leader first, retaining descendant cleanup and
+genuine permission failures. Both native exit cases and all 589 tests passed after the fix. The fixed
+transport still needs a fresh bounded live deployment qualification.
+
 Native paging now includes PagerDuty, GoAlert, incident.io, Better Stack, Grafana Cloud IRM and ilert.
 Provider-shaped fixtures cover each supported lifecycle and distinguish accepted delivery from observed
 remote state. Local browser fixtures exercised the guided configuration and supported transitions.
