@@ -149,6 +149,9 @@ def parser():
     ui = commands.add_parser("ui")
     ui.add_argument("--port", type=int, default=8765)
     ui.add_argument("--token-file", type=Path, required=True)
+    # Isolated local infrastructure shares its core methods with the operator console
+    from .isolated import arguments
+    arguments(commands.add_parser("isolated", help="Approve and run one registered isolated GCP recipe"))
     gate = commands.add_parser("gate", help="Use the independent approval controller and IaC worker")
     gate.add_argument("args", nargs=argparse.REMAINDER)
     return root
@@ -168,6 +171,9 @@ def advance(engine, release, wait_seconds):
 
 # Route every entry point through the shared deployment owners
 def dispatch(args):
+    if args.command == "isolated":
+        from .isolated import dispatch as isolated
+        return isolated(args)
     if args.command == "gate":
         from . import gate_cli
         return gate_cli._dispatch(gate_cli.parser().parse_args(args.args))

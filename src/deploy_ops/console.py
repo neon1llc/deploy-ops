@@ -138,9 +138,76 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     # Serve only known UI assets rather than arbitrary package files
     @app.get("/assets/{name}")
     def asset(name: str):
-        if name not in ("app.js", "paging.js", "style.css", "appearance.mjs", "theme.mjs"):
+        if name not in ("app.js", "paging.js", "isolated.js", "style.css", "appearance.mjs", "theme.mjs"):
             raise HTTPException(404)
         return FileResponse(assets / name)
+
+
+    # Require the same explicit operator registration used by the application receipt gate
+    def isolated_route():
+        from .isolated import IsolatedGate
+        if not isinstance(engine.gate, IsolatedGate):
+            raise Refused("Configure an isolated operator grant before using local GCP infrastructure", 403)
+        return engine.gate.route
+
+
+    # Read public recipe and approval evidence without inspecting credentials or cloud resources
+    @app.get("/api/isolated", dependencies=[Depends(operator)])
+    def isolated_status():
+        from .isolated import IsolatedGate
+        if not isinstance(engine.gate, IsolatedGate):
+            return {"enabled": False, "available": False, "reason": "No isolated operator grant configured",
+                    "requests": [], "active": [], "destroy_supported": False}
+        result = isolated_route().status()
+        with mutex:
+            result["active"] = [name.removeprefix("isolated:") for name in workers if name.startswith("isolated:")]
+        return result
+
+
+    # Freeze the current public packet for a separate planning approval
+    @app.post("/api/isolated/prepare", dependencies=[Depends(operator)])
+    def isolated_prepare(data: Input):
+        current_contract()
+        return isolated_route().prepare()
+
+
+    # Keep exact approval distinct from asynchronously starting an already approved operation
+    @app.post("/api/isolated/requests/{request_id}/{action}", dependencies=[Depends(operator)])
+    def isolated_action(request_id: str, action: str, data: Input):
+        current_contract()
+        route = isolated_route()
+        request = route.request(request_id)
+        if request["digest"] != data.digest:
+            raise Refused("Isolated request digest changed; inspect the current request")
+        if action == "reconcile":
+            with mutex:
+                if "isolated:" + request_id in workers:
+                    raise Refused("Wait for the active isolated worker before recording an inspection")
+                return route.reconcile(request_id, data.digest, data.note)
+        if action == "approve":
+            return route.approve(request_id, data.digest)
+        if action != "execute":
+            raise Refused("Unknown isolated infrastructure action", 404)
+        route.current()
+        if request["status"] != "approved":
+            raise Refused("Approve the exact isolated request before execution")
+        key = "isolated:" + request_id
+        with mutex:
+            if any(name.startswith("isolated:") for name in workers):
+                raise Refused("An isolated infrastructure worker is already active")
+            workers.add(key)
+
+        # Persist uncertainty in the controller while keeping diagnostics out of browser responses
+        def work():
+            try:
+                route.execute(request_id)
+            except Exception as error:
+                route.failed(request_id, error)
+            finally:
+                with mutex:
+                    workers.discard(key)
+        threading.Thread(target=work, daemon=True, name="deploy-ops-isolated-" + request_id[:8]).start()
+        return {"request_id": request_id, "started": True}
 
 
     # Expose the current draft model without credential references

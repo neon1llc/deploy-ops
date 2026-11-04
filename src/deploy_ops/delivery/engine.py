@@ -41,8 +41,21 @@ class Engine:
                 access.is_relative_to((self.path.parent / repository.path).resolve())
                 for repository in self.spec.repositories.values())):
             raise Refused("Keep local cloud access grants outside workspace and source repositories", 422)
-        self.gate = RemoteGate(controller) if controller else LocalGate(self.spec, self.ledger.store, access,
-            [self.path.parent, *[(self.path.parent / repository.path).resolve() for repository in self.spec.repositories.values()]])
+        isolated = os.environ.get("DEPLOY_OPS_ISOLATED_GRANT_FILE")
+        if isolated:
+            from ..isolated import IsolatedGate
+            isolated_path = Path(isolated).expanduser().resolve()
+            roots = [self.path.parent, *[(self.path.parent / repository.path).resolve() for repository in self.spec.repositories.values()]]
+            if controller or access or any(isolated_path.is_relative_to(root) for root in roots):
+                raise Refused("Use one isolated operator grant outside workspace and source repositories", 422)
+            self.gate = IsolatedGate(self.spec, self.state, isolated_path)
+            references = (self.gate.route.grant.credentials_file, self.gate.route.grant.lock_file,
+                          self.gate.route.grant.gcloud, self.gate.route.grant.limactl)
+            if any(Path(value).resolve().is_relative_to(root) for value in references for root in roots):
+                raise Refused("Keep isolated credentials, tools and provider lock outside contributor source", 422)
+        else:
+            self.gate = RemoteGate(controller) if controller else LocalGate(self.spec, self.ledger.store, access,
+                [self.path.parent, *[(self.path.parent / repository.path).resolve() for repository in self.spec.repositories.values()]])
         self.deployments = self.state / "deployments"
         private_directory(self.deployments)
 
@@ -152,7 +165,7 @@ class Engine:
                 except Refused:
                     continue
                 missing = [dependency for dependency in self.spec.components[name].needs
-                           if not isinstance(self.gate, RemoteGate)
+                           if not self.gate.supports_receipts
                            and not self.ledger.latest_outputs(environment, dependency, self.spec.digest)]
                 actions.append({"component": name, "environment": environment, "rollback": rollback,
                                 "available": not missing,
@@ -178,8 +191,8 @@ class Engine:
         if receipts is not None and (not isinstance(receipts, dict) or any(not isinstance(key, str) or not isinstance(value, str) for key, value in receipts.items())):
             raise Refused("Infrastructure receipts must map component names to receipt IDs", 422)
         receipts = receipts or {}
-        if receipts and (not isinstance(self.gate, RemoteGate) or not component):
-            raise Refused("Infrastructure receipts require one remote application component", 422)
+        if receipts and (not self.gate.supports_receipts or not component):
+            raise Refused("Infrastructure receipts require one registered application component", 422)
         if any(not re.fullmatch(r"[0-9a-f]{32}", value) for value in receipts.values()):
             raise Refused("Infrastructure receipt IDs must be 32 lowercase hexadecimal characters", 422)
         graph = self.describe(environment, component, with_dependencies)
@@ -260,7 +273,7 @@ class Engine:
         private_directory(folder / "home")
         private_directory(folder / "build-home")
         outputs = {key: value["outputs"] for key, value in release["nodes"].items() if value["status"] == "succeeded"}
-        if isinstance(self.gate, RemoteGate):
+        if self.gate.supports_receipts:
             target = target_name(self.spec.name, release["environment"], name)
             bindings = self.gate.context(target).get("receipt_dependencies", {})
             inputs = release.get("receipt_inputs", {})

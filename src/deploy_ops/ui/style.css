@@ -94,3 +94,7 @@ fieldset { min-width: 0; border: 1px solid var(--line-strong, ButtonBorder); bor
 #paging-panel button, #paging-panel .check { min-height: 48px; }
 #paging-panel p, #paging-routes { overflow-wrap: anywhere; }
 #paging-panel input:user-invalid { outline: 2px solid var(--error, CanvasText); }
+
+/* Keep exact infrastructure digests readable without shrinking action targets */
+#isolated-panel p { overflow-wrap: anywhere; }
+#isolated-panel button { min-height: 48px; max-width: 100%; }

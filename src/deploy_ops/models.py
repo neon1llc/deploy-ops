@@ -27,8 +27,8 @@ class Source(Model):
 
     kind: Literal["github", "local"] = "github"
     repository: str
-    repository_id: str
-    repository_owner_id: str
+    repository_id: str | None = None
+    repository_owner_id: str | None = None
     ref: str
     sha: Commit
     actor: str
@@ -37,9 +37,17 @@ class Source(Model):
     run_attempt: str
     event_name: str
     environment: str
-    job_workflow_ref: str
-    job_workflow_sha: Commit
+    job_workflow_ref: str | None = None
+    job_workflow_sha: Commit | None = None
     subject: str
+
+    # Federated source must retain real issuer claims while local provenance stays explicitly local
+    @model_validator(mode="after")
+    def verified_fields(self):
+        if self.kind == "github" and not all((self.repository_id, self.repository_owner_id,
+                                               self.job_workflow_ref, self.job_workflow_sha)):
+            raise ValueError("GitHub source requires verified repository and workflow claims")
+        return self
 
 
 # Carry optional caller labels separately from authenticated claims
@@ -97,6 +105,14 @@ class InfrastructureEvidence(Model):
     outputs: EcsOutputs | CloudRunOutputs
 
 
+# Make the generated public source packet reviewable without exposing broker references
+class IsolatedPacket(Model):
+    module: dict[str, Any]
+    lock_digest: Digest
+    tool_digest: Digest
+    provider_digest: Digest
+
+
 # Bind the reviewed plan to artifact, tool and optional dependency evidence
 class Proposal(Model):
     target: Slug
@@ -108,6 +124,8 @@ class Proposal(Model):
     estimated_monthly_delta_cents: int | None = Field(default=None, ge=-100000000, le=100000000)
     agent: Agent = Field(default_factory=Agent)
     receipts: dict[str, ReceiptReference] = Field(default_factory=dict)
+    planning_request: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    isolated_packet: IsolatedPacket | None = None
 
 
     # Require dependency identity for saved-plan engines

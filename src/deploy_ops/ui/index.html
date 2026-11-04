@@ -2,7 +2,7 @@
 <!-- ui/index.html - Review and operate a trusted local workspace without a frontend build tool. -->
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>DeployOps by neon1</title><link rel="stylesheet" href="/assets/style.css"><script type="module" src="/assets/appearance.mjs"></script><script src="/assets/app.js" defer></script><script src="/assets/paging.js" defer></script></head>
+<title>DeployOps by neon1</title><link rel="stylesheet" href="/assets/style.css"><script type="module" src="/assets/appearance.mjs"></script><script src="/assets/app.js" defer></script><script src="/assets/paging.js" defer></script><script src="/assets/isolated.js" defer></script></head>
 <body><header><div><span class="brand">neon1</span><h1>DeployOps</h1><p>Infrastructure and applications. One release history.</p></div><span id="mode" class="badge">Locked</span></header>
 <main><section id="unlock"><h2>Open your workspace</h2><p>Paste the token from the local operator token file. It stays in this tab's memory.</p>
 <form id="login"><label for="token">Operator token</label><input id="token" type="password" autocomplete="off" required><button>Unlock</button></form></section>
@@ -10,7 +10,7 @@
 <form id="release-form"><div class="controls"><label>Environment<select id="environment"></select></label><label>Component<select id="component"><option value="">All components</option></select></label></div>
 <label>Immutable image, optional<input id="image" placeholder="registry.example/team/app@sha256:..."></label>
 <label>Infrastructure receipts, optional<input id="receipts" placeholder='{"foundation":"receipt ID"}' spellcheck="false"></label>
-<p class="muted">For remote delivery, supply the target environment's public infrastructure receipt IDs. The controller checks them again before execution.</p>
+<p class="muted">For registered infrastructure receipts, supply the target environment's public receipt IDs. The controller checks them again before execution.</p>
 <label class="check"><input id="only" type="checkbox"> Reuse recorded dependency outputs</label>
 <fieldset id="preview-options" hidden><legend>Isolated static preview</legend>
 <label for="preview-owner">Preview owner</label><input id="preview-owner" maxlength="200">
@@ -75,7 +75,16 @@
 <p>For unattended work, run <code>deploy-ops paging worker</code> in a separately managed foreground process or container. A sleeping host cannot deliver new events. No service is installed automatically.</p>
 <p id="paging-health"></p><div id="paging-bindings"></div><div id="paging-deliveries"></div>
 <p id="paging-status" role="status" aria-live="polite" tabindex="-1"></p>
-<p>Planned native adapters: Grafana Cloud IRM and ilert. Optional Apprise notification transport remains planned.</p></details>
+<p>Native paging supports PagerDuty, GoAlert, incident.io, Better Stack, Grafana Cloud IRM and ilert. Optional Apprise notification transport remains planned.</p></details>
+<!-- Review isolated infrastructure separately from application releases and credential setup -->
+<details id="isolated-panel"><summary>Isolated GCP infrastructure</summary>
+<p>Review the registered Cloud Run recipe, approve planning, then review and approve its saved infrastructure plan. Account access and the isolated runtime are configured outside this workspace.</p>
+<button id="isolated-refresh" type="button" class="secondary">Load infrastructure status</button>
+<p id="isolated-availability">Open this panel to check registration.</p>
+<div id="isolated-recipe"></div>
+<form id="isolated-prepare-form" action="/api/isolated/prepare" method="post"><button id="isolated-prepare" type="submit" disabled>Prepare planning review</button></form>
+<p>Planning uses authenticated provider reads and backend locking. Applying a saved plan changes cloud resources. Stopping a worker does not undo accepted cloud operations. This route does not support infrastructure destruction.</p>
+<div id="isolated-requests"></div></details>
 <details><summary>Workspace configuration</summary><p>Edit existing repositories, environments and components below. Advanced options stay in the TOML draft. Keep secrets out of this file. Finish or cancel outstanding releases before saving.</p>
 <button id="load-forms" type="button" class="secondary">Load forms from current draft</button>
 <form id="config-form" action="/api/config/patch" method="post">
@@ -102,4 +111,4 @@
 <label for="appearance-json">Appearance JSON</label><textarea id="appearance-json" rows="8" maxlength="8192" spellcheck="false"></textarea>
 <div class="controls"><button id="appearance-export" type="button" class="secondary">Export current appearance</button><button id="appearance-import" type="button">Import appearance</button></div>
 </details><p id="appearance-status" role="status" aria-live="polite"></p></details>
-</main><footer>DeployOps by neon1 LLC · Local operator console · Cloud actions require a trusted OIDC worker</footer></body></html>
+</main><footer>DeployOps by neon1 LLC · Local operator console · Cloud actions require approved account access</footer></body></html>

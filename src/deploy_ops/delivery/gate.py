@@ -27,6 +27,8 @@ def target_name(project: str, environment: str, component: str) -> str:
 class LocalGate:
     """Local mode records operator authority. It does not impersonate GitHub OIDC."""
 
+    supports_receipts = False
+
     # Register only local environments with bounded local policies
     def __init__(self, spec: Workspace, store: Store, access_file: Path | None = None,
                  source_roots: list[Path] | None = None):
@@ -164,6 +166,7 @@ class LocalGate:
 
 # Use the same authority protocol from isolated workflow workers
 class RemoteGate:
+    supports_receipts = True
 
     # Keep controller transport settings in one client
     def __init__(self, url: str):

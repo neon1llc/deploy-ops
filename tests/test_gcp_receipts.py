@@ -303,7 +303,7 @@ def test_existing_aws_receipt_digest_is_unchanged():
     data.update(engines=["opentofu"], receipt_outputs={"backend": {
         "bucket": "fixture-state", "key": "development.tfstate", "region": "us-east-1"}})
     target = Target.model_validate(data)
-    assert target.digest == fingerprint(target.model_dump(exclude={"receipt_region", "local_cloud"}))
+    assert target.digest == fingerprint(target.model_dump(exclude={"receipt_region", "local_cloud", "local_isolated_iac"}))
 
 
 # Native version changes need a newly qualified contract before approval

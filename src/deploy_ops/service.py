@@ -39,9 +39,9 @@ class Controller:
 
     # Match authenticated workflow claims to the requested stage
     def check_source(self, target: Target, source: Source, stage: str) -> None:
-        if target.local_cloud and source.kind != "local":
+        if (target.local_cloud or target.local_isolated_iac) and source.kind != "local":
             raise Refused("Local cloud grants cannot be used by federated workers", 403)
-        if source.kind == "local" and not (target.allow_local_operator and (target.cloud == "local" or target.local_cloud)):
+        if source.kind == "local" and not (target.allow_local_operator and (target.cloud == "local" or target.local_cloud or target.local_isolated_iac)):
             raise Refused("Local operator authority cannot reach this target", 403)
         expected_environment = target.planner_environment if stage == "plan" else target.environment
         checks = (
@@ -50,7 +50,7 @@ class Controller:
             source.repository_owner_id == target.repository_owner_id,
             source.ref == target.ref,
             source.job_workflow_ref == target.workflow_ref,
-            source.job_workflow_sha == target.workflow_ref.rsplit("@", 1)[1],
+            source.job_workflow_sha == (target.workflow_ref.rsplit("@", 1)[1] if target.workflow_ref else None),
             source.environment == expected_environment,
             source.event_name in target.events,
         )
@@ -151,6 +151,16 @@ class Controller:
             "estimated_monthly_delta_cents": proposal.estimated_monthly_delta_cents,
             "policy_digest": target.digest,
         }
+        if target.local_isolated_iac and proposal.engine == "manifest":
+            if (not proposal.isolated_packet
+                    or fingerprint(proposal.isolated_packet.model_dump()) != target.identity["packet_digest"]
+                    or proposal.artifact_digest != target.identity["packet_digest"]):
+                raise Refused("Planning approval must include the exact registered public source packet", 403)
+            manifest["isolated_packet"] = proposal.isolated_packet.model_dump()
+        elif proposal.isolated_packet:
+            raise Refused("Public source packets are only accepted for isolated planning approval", 422)
+        if proposal.planning_request:
+            manifest["planning_request"] = proposal.planning_request
         if proposal.receipts:
             manifest["receipts"] = {key: value.model_dump() for key, value in proposal.receipts.items()}
         digest = fingerprint(manifest)
@@ -162,6 +172,20 @@ class Controller:
             "approval": None, "execution": None,
         }
         with self.store.transaction() as connection:
+            # Local saved plans require a completed planning lease under the same frozen operator packet
+            if target.local_isolated_iac and proposal.engine in {"terraform", "opentofu"}:
+                if not proposal.planning_request:
+                    raise Refused("Isolated apply requires a completed planning lease", 403)
+                planning = self.store.request(connection, proposal.planning_request)
+                parent = self._current(planning)
+                if (planning["status"] != "succeeded" or planning["manifest"]["engine"] != "manifest"
+                        or not parent.local_isolated_iac or parent.receipt_outputs
+                        or parent.identity != target.planner_identity
+                        or planning["manifest"]["artifact_digest"] != target.identity["packet_digest"]
+                        or planning["manifest"]["source"]["run_id"] != source.run_id):
+                    raise Refused("Planning lease does not authorize this isolated saved plan", 403)
+            elif proposal.planning_request:
+                raise Refused("Planning lease references are only supported for isolated native plans", 422)
             self._check_receipts(connection, target, manifest.get("receipts", {}))
             previous = connection.execute("SELECT data FROM requests WHERE digest=?", (digest,)).fetchone()
             if previous:

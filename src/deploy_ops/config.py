@@ -110,10 +110,10 @@ class ReceiptPolicy(Model):
 # Bind a deployment target to source, execution identities and policy
 class Target(Model):
     repository: str = Field(pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-    repository_id: str = Field(pattern=r"^[1-9][0-9]*$")
-    repository_owner_id: str = Field(pattern=r"^[1-9][0-9]*$")
+    repository_id: str | None = Field(default=None, pattern=r"^[1-9][0-9]*$")
+    repository_owner_id: str | None = Field(default=None, pattern=r"^[1-9][0-9]*$")
     ref: str = "refs/heads/main"
-    workflow_ref: str
+    workflow_ref: str | None = None
     environment: str = Field(min_length=1, max_length=100)
     planner_environment: str = Field(min_length=1, max_length=100)
     cloud: Cloud
@@ -122,6 +122,7 @@ class Target(Model):
     delivery_digest: str | None = None
     allow_local_operator: bool = False
     local_cloud: bool = False
+    local_isolated_iac: bool = False
     production: bool = False
     events: list[str] = Field(default_factory=lambda: ["workflow_dispatch", "push"])
     identity: dict[str, str]
@@ -157,13 +158,38 @@ class Target(Model):
                 raise ValueError("Receipt dependencies must name workspace components")
         if self.receipt_region is not None and (self.cloud != "gcp" or not (self.receipt_outputs or self.receipt_dependencies)):
             raise ValueError("Receipt region is only valid for GCP receipt producers or consumers")
-        if not PINNED_WORKFLOW.fullmatch(self.workflow_ref):
-            raise ValueError("Pin the reusable workflow to a full 40-character commit SHA")
+        if self.local_isolated_iac:
+            if self.workflow_ref is not None or self.repository_id is not None or self.repository_owner_id is not None:
+                raise ValueError("Isolated local targets must not claim GitHub repository or workflow identity")
+        elif not (self.repository_id and self.repository_owner_id and self.workflow_ref
+                  and PINNED_WORKFLOW.fullmatch(self.workflow_ref)):
+            raise ValueError("Pin the reusable workflow and register verified GitHub repository IDs")
         path = PurePosixPath(self.workdir)
         if path.is_absolute() or ".." in path.parts or "\\" in self.workdir:
             raise ValueError("workdir must stay inside the checked-out repository")
         if self.planner_environment == self.environment:
             raise ValueError("Use separate planning and execution environments")
+        # Isolated operator targets never inherit federated identity or unattended authority
+        if self.local_isolated_iac:
+            if (self.local_cloud or self.cloud != "gcp" or not self.allow_local_operator or self.production
+                    or self.policy.allow_delegation or self.engines not in (["manifest"], ["terraform"], ["opentofu"], ["delivery"])):
+                raise ValueError("Isolated IaC requires an explicit nonproduction manual GCP target")
+            required = {"grant_digest", "packet_digest", "project_id", "service_account"}
+            for identity in (self.identity, self.planner_identity):
+                if (set(identity) != required or not re.fullmatch(r"[a-z][a-z0-9-]{4,28}[a-z0-9]", identity["project_id"])
+                        or not all(re.fullmatch(r"[0-9a-f]{64}", identity[key]) for key in ("grant_digest", "packet_digest"))
+                        or not re.fullmatch(r"[a-z][a-z0-9-]{4,28}[a-z0-9]@" + re.escape(identity["project_id"])
+                                           + r"\.iam\.gserviceaccount\.com", identity["service_account"])):
+                    raise ValueError("Isolated identities require exact grant, packet, project and service account bindings")
+            if any(self.identity[key] != self.planner_identity[key] for key in required - {"service_account"}):
+                raise ValueError("Isolated stages must share one registered packet and project")
+            if self.engines != ["manifest"] and self.identity["service_account"] == self.planner_identity["service_account"]:
+                raise ValueError("Isolated planning and execution identities must differ")
+            if self.engines[0] in {"terraform", "opentofu"} and not self.receipt_outputs:
+                raise ValueError("Isolated native apply requires typed output receipts")
+            if self.engines == ["delivery"] and (not self.receipt_dependencies or not self.delivery_digest):
+                raise ValueError("Isolated application targets require registered receipt dependencies")
+            return self
         # Explicit local grants never inherit federated or production authority
         if self.local_cloud:
             if (self.cloud not in {"aws", "gcp", "azure"} or not self.allow_local_operator or self.production
@@ -211,6 +237,8 @@ class Target(Model):
             value.pop("receipt_region")
         if not self.local_cloud:
             value.pop("local_cloud")
+        if not self.local_isolated_iac:
+            value.pop("local_isolated_iac")
         # Optional receipts must not invalidate existing nonreceipt approvals and grants
         if not self.receipt_outputs and not self.receipt_dependencies:
             value.pop("receipt_outputs")
