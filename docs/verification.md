@@ -1,7 +1,7 @@
 # Verification
 
 **Checked:** 2026-11-03. The local and browser observations below qualify the v0.10.0 baseline.
-The native-infrastructure section records the subsequent v0.11.0 candidate checks separately.
+Later sections record the v0.11.0–v0.12.0 increments separately.
 
 ## Local execution
 
@@ -152,6 +152,29 @@ against synthetic provider responses exercised inherited native options, retaine
 and ECS approvals, provider readback, app-only output reuse and a narrow layout. Browser local storage remained
 empty. These browser interactions use the shared core, but the provider responses remain fixtures.
 
+## Live ECS application journey
+
+AWS CLI 2.36.34 in us-east-1 created a disposable thirteen-resource CloudFormation stack through
+DeployOps v0.11.0, including its own network and one Fargate Linux/X86_64 task (0.25 vCPU, 0.5 GiB).
+The task had no inbound access or public service endpoint. Native ECS health and a startup log verified
+the initial immutable image running Python 3.13.18.
+
+DeployOps v0.11.1 then completed two independent application releases using the retained infrastructure
+outputs. The second changed the image to Python 3.14.10; native task health, image digest and startup
+log matched. The CloudFormation template and last-update timestamp remained unchanged across those
+app releases. This qualifies native image rollout and container health, not custom image build/publish,
+public HTTP delivery, cross-worker receipt exchange or production reliability.
+
+Owned stack deletion completed and independent reads confirmed the VPC, network interfaces, gateway,
+logs and execution role were absent. The two app-created task revisions were deregistered and submitted
+for native deletion; AWS retained nonbillable DELETE_IN_PROGRESS metadata. The entire batch, including
+cleanup checks, took under seventeen minutes.
+
+The ECS mutation journal now records registration intent, the returned task revision and activation
+intent before proceeding. It disables native mutation retries and supports bounded tagged-revision
+discovery after a lost registration response. Six focused recovery cases cover lost acknowledgements,
+changed evidence and replay refusal; the full v0.11.1 snapshot passed 302 tests.
+
 ## Isolated native tooling
 
 OpenTofu 1.10.0 and Terraform 1.12.2 initialized, validated, saved and decoded a real `terraform_data`
@@ -161,9 +184,26 @@ resource creation; neither was applied. A separate guest Docker 26.1.5/buildx 0.
 scratch fixture with network access disabled. These checks establish native local tooling behavior,
 not a cloud provider plan, credential isolation for a remote job or a registry publication.
 
+## GCP receipts, Azure access and paging
+
+The v0.12.0 candidate passed 417 tests and repository syntax/link/whitespace checks. GCP receipt checks
+cover both pinned engines, exact scope/backend/output binding, failed-apply invalidation and independent
+app-only reuse. Real offline GCS backend probes replaced hostile source endpoint/key settings before
+credential use; locked Google provider 6.50.0 validation passed under both engines. No GCP deployment
+or real GitHub OIDC exchange is claimed from these checks.
+
+Azure CLI 2.91.0 completed certificate service-principal login, exact tenant/subscription/client checks
+and an authorized resource-group read. The product’s corresponding native-grant route passed full
+Engine fixtures for ARM and Container Apps, including mismatched scope and unsafe certificate locations.
+
+Paging passed 26 focused cases and a real Chrome journey covering two native destinations, routing
+drafts, preview, activation, independent acknowledgement/resolution, failed-draft retention and a
+390-pixel layout. Browser delivery was intercepted by a local fixture. A real local TLS receiver
+exercised transport deadlines and delayed connection-close bodies; no external recipient was paged.
+
 ## Remaining qualification
 
-AWS application delivery, Azure deployments, GCP workloads, Slack, registry build/publish and cloud
+Azure deployments, GCP workloads, Slack, registry build/publish and cloud
 Terraform/OpenTofu journeys remain unqualified. GCP service-account authentication succeeded through
 native ADC and the actual DeployOps gcloud process. Project and billing reads succeeded after approved
 enablement of the Cloud Resource Manager and Cloud Billing APIs. No GCP workload was created.

@@ -1,5 +1,9 @@
 # Examples
 
+The [GCP receipt example](gcp-receipts/README.md) connects separate Terraform/OpenTofu and Cloud Run workers,
+including later app-only releases. It includes a provider-locked infrastructure root, controller registration and
+public output contract. Its native and controller fixtures are verified; live GCP qualification remains separate.
+
 The JSON previews are synthetic fixtures, not exports from the user's accounts. `ecs-update.json` shows a small service update. `denied-iam.json` exercises an authority-change denial. `cost-estimate.json` contains an invented test value solely for exercising the estimator interface.
 
 The `terraform-data` directory can produce a local saved plan without a cloud provider:
