@@ -19,6 +19,9 @@ from deploy_ops.errors import Refused
 INCIDENT = {'provider': 'incident.io', 'key_env': 'DEPLOY_OPS_PAGING_HTTP', 'alert_source_id': '01EXAMPLE'}
 BETTER = {'provider': 'better-stack', 'key_env': 'DEPLOY_OPS_PAGING_BETTER',
           'requester_email': 'operator@example.com', 'policy_id': '123'}
+GRAFANA = {'provider': 'grafana-cloud-irm', 'endpoint_env': 'DEPLOY_OPS_PAGING_GRAFANA_URL',
+           'token_env': 'DEPLOY_OPS_PAGING_GRAFANA_TOKEN', 'template_mapping_confirmed': True}
+ILERT = {'provider': 'ilert', 'key_env': 'DEPLOY_OPS_PAGING_ILERT'}
 PAYLOAD = {'event': 'incident.opened', 'release_id': 'fixture-release', 'severity': 'error'}
 
 
@@ -240,3 +243,173 @@ def test_readback_interfaces(native_system, monkeypatch):
     assert client.post('/api/paging/readback', json=body).status_code == 401
     response = client.post('/api/paging/readback', json=body, headers={'Authorization': 'Bearer ' + token})
     assert response.status_code == 200 and response.json()['readback']['remote_state'] == 'started'
+
+
+# Grafana's secret endpoint and ilert's source key remain isolated behind the same durable bindings
+def test_grafana_and_ilert_lifecycles(tmp_path, monkeypatch):
+    engine = Engine(create(tmp_path / 'workspace'))
+    url = 'https://oncall-prod-us-central-0.grafana.net/integrations/v1/formatted_webhook/fixture-secret/'
+    monkeypatch.setenv(GRAFANA['endpoint_env'], url)
+    monkeypatch.setenv(GRAFANA['token_env'], 'fixture-grafana-token')
+    monkeypatch.setenv(ILERT['key_env'], 'fixture-ilert-source-key')
+    paging.save_config(engine.ledger, {'destinations': {'grafana': GRAFANA, 'ilert': ILERT},
+                                      'default_destinations': ['grafana', 'ilert']}, 0)
+    paging.activate(engine.ledger, 1)
+    release = engine.create('development')
+    release['status'] = 'uncertain'
+    engine.ledger.save(release, 'release.uncertain')
+    open_incident(engine.ledger, release['id'], 'operations', 'Fixture')
+    calls = []
+
+    # Check exact provider methods and wire fields without a network connection
+    def transport(endpoint, body, headers, networks):
+        data = json.loads(body)
+        calls.append(data)
+        assert networks == []
+        if endpoint == url:
+            assert headers['Authorization'] == 'Bearer fixture-grafana-token'
+            return 200, {}, b''
+        assert endpoint == 'https://api.ilert.com/api/events' and 'Authorization' not in headers
+        assert data['integrationKey'] == 'fixture-ilert-source-key'
+        return 202, {}, b''
+
+    monkeypatch.setattr(paging_providers, 'request', transport)
+    assert paging.drain(engine.ledger)['accepted'] == 2
+    restarted = Engine(engine.path)
+    bindings = paging.status(restarted.ledger)['bindings']
+    grafana = next(item for item in bindings if item['provider'] == 'grafana-cloud-irm')
+    ilert = next(item for item in bindings if item['provider'] == 'ilert')
+    with pytest.raises(Refused, match='does not support'):
+        paging.action(restarted.ledger, grafana['id'], 'acknowledge', grafana['version'])
+    paging.action(restarted.ledger, ilert['id'], 'acknowledge', ilert['version'])
+    assert paging.drain(restarted.ledger)['accepted'] == 1
+    for binding in paging.status(restarted.ledger)['bindings']:
+        paging.action(restarted.ledger, binding['id'], 'resolve', binding['version'])
+    assert paging.drain(restarted.ledger)['accepted'] == 2
+    assert [item['state'] for item in calls if 'alert_uid' in item] == ['alerting', 'ok']
+    assert len({item['alert_uid'] for item in calls if 'alert_uid' in item}) == 1
+    assert [item['eventType'] for item in calls if 'eventType' in item] == ['ALERT', 'ACCEPT', 'RESOLVE']
+    assert len({item['alertKey'] for item in calls if 'alertKey' in item}) == 1
+    evidence = json.dumps(paging.status(restarted.ledger)) + json.dumps(paging.config(restarted.ledger))
+    assert all(secret not in evidence for secret in (url, 'fixture-grafana-token', 'fixture-ilert-source-key'))
+    assert {item['remote_state'] for item in paging.status(restarted.ledger)['bindings']} == {'unverified'}
+
+
+# Host, path and secret-URL changes cannot redirect an established Grafana integration
+@pytest.mark.parametrize('url', [
+    'https://oncall-prod-us-central-0.grafana.net.attacker.example/integrations/v1/formatted_webhook/secret/',
+    'https://oncall-prod-us-central-0.grafana.net/integrations/v1/webhook/secret/',
+    'https://oncall-prod-us-central-0.grafana.net/integrations/v1/formatted_webhook/secret/?token=secret',
+    'http://oncall-prod-us-central-0.grafana.net/integrations/v1/formatted_webhook/secret/',
+    'https://127.0.0.1/integrations/v1/formatted_webhook/secret/'])
+def test_grafana_endpoint_rejection_is_redacted(url, monkeypatch):
+    monkeypatch.setenv(GRAFANA['endpoint_env'], url)
+    with pytest.raises(Refused) as error:
+        paging_providers.integration_identity(GRAFANA)
+    assert url not in str(error.value) and 'secret' not in str(error.value)
+
+
+# Optional bearer-token rotation cannot change the pinned integration URL
+def test_grafana_identity_and_unknown_response(monkeypatch):
+    url = 'https://oncall-prod-eu-west-0.grafana.net/integrations/v1/formatted_webhook/source-one/'
+    monkeypatch.setenv(GRAFANA['endpoint_env'], url)
+    monkeypatch.setenv(GRAFANA['token_env'], 'first-token')
+    identity = paging_providers.integration_identity(GRAFANA)
+    monkeypatch.setenv(GRAFANA['token_env'], 'second-token')
+
+    # An accepted token rotation still leaves a lost response honestly unknown
+    def lost(endpoint, body, headers, networks):
+        assert headers['Authorization'] == 'Bearer second-token'
+        return 0, {}, b''
+
+    assert paging_providers.send(GRAFANA, PAYLOAD, 'trigger', 'dedup', identity, lost)['state'] == 'unknown'
+    monkeypatch.setenv(GRAFANA['endpoint_env'], url.replace('source-one', 'source-two'))
+    result = paging_providers.send(GRAFANA, PAYLOAD, 'resolve', 'dedup', identity, lost)
+    assert result['state'] == 'failed' and not result['retryable']
+
+
+# Priority stays provider-managed unless an operator chooses the explicit severity mapping
+@pytest.mark.parametrize('severity,expected', [('critical', 'HIGH'), ('error', 'HIGH'), ('warning', 'LOW'), ('info', 'LOW')])
+def test_ilert_priority_mapping_and_acceptance(severity, expected, monkeypatch):
+    monkeypatch.setenv(ILERT['key_env'], 'fixture')
+    calls = []
+
+    # Events202 has no required JSON body and does not confirm the resulting remote state
+    def accepted_event(url, body, headers, networks):
+        calls.append(json.loads(body))
+        return 202, {}, b''
+
+    result = paging_providers.send({**ILERT, 'priority_mode': 'severity'}, {**PAYLOAD, 'severity': severity},
+                                   'trigger', 'deploy-ops-dedup', transport=accepted_event)
+    assert result['state'] == 'accepted' and 'remote_state' not in result
+    assert calls[-1]['priority'] == expected and calls[-1]['customDetails']['severity'] == severity
+    paging_providers.send(ILERT, PAYLOAD, 'trigger', 'deploy-ops-dedup', transport=accepted_event)
+    assert 'priority' not in calls[-1]
+    assert paging_providers.send(ILERT, PAYLOAD, 'trigger', 'dedup', transport=lambda *args: (200, {}, b''))['state'] == 'unknown'
+
+
+# Configuration cannot imply upstream mapping or unsupported native options silently
+@pytest.mark.parametrize('settings', [
+    {**GRAFANA, 'template_mapping_confirmed': False}, {**GRAFANA, 'key_env': 'DEPLOY_OPS_PAGING_OTHER'},
+    {**GRAFANA, 'allowed_networks': ['127.0.0.1/32']}, {**ILERT, 'token_env': 'DEPLOY_OPS_PAGING_OTHER'},
+    {**INCIDENT, 'priority_mode': 'severity'}])
+def test_remaining_native_settings_fail_closed(settings):
+    with pytest.raises(ValueError):
+        Destination.model_validate(settings)
+
+
+# Rotating a secret between reads cannot redirect a send after its identity check
+@pytest.mark.parametrize('settings', [GRAFANA, ILERT])
+def test_send_hashes_the_exact_transmitted_integration(settings, monkeypatch):
+    import hashlib
+    first = ('https://oncall-prod-eu-west-0.grafana.net/integrations/v1/formatted_webhook/first/'
+             if settings['provider'] == 'grafana-cloud-irm' else 'first-integration-key')
+    second = first.replace('first', 'second')
+    reference = settings.get('endpoint_env') or settings['key_env']
+    reads = []
+    calls = []
+
+    # Make a second credential lookup return another integration without changing test scope
+    def rotating_credential(name):
+        if name != reference:
+            return 'optional-bearer-token' if name else ''
+        reads.append(name)
+        return first if len(reads) == 1 else second
+
+    # Retain only synthetic transport data for the exact-key assertion
+    def transport(url, body, headers, networks):
+        calls.append((url, json.loads(body)))
+        return (200 if settings['provider'] == 'grafana-cloud-irm' else 202), {}, b''
+
+    monkeypatch.setattr(paging_providers, 'credential', rotating_credential)
+    identity = hashlib.sha256(first.encode()).hexdigest()
+    result = paging_providers.send(settings, PAYLOAD, 'trigger', 'fixture-dedup', identity, transport)
+    assert result['state'] == 'accepted' and result['identity'] == identity
+    assert reads == [reference]
+    wire_identity = calls[0][0] if settings['provider'] == 'grafana-cloud-irm' else calls[0][1]['integrationKey']
+    assert wire_identity == first
+
+
+# A changed captured credential stops before transport even if a later read would match
+@pytest.mark.parametrize('settings', [GRAFANA, ILERT])
+def test_send_refuses_changed_snapshot_without_rereading(settings, monkeypatch):
+    import hashlib
+    original = ('https://oncall-prod-eu-west-0.grafana.net/integrations/v1/formatted_webhook/original/'
+                if settings['provider'] == 'grafana-cloud-irm' else 'original-integration-key')
+    changed = original.replace('original', 'changed')
+    reference = settings.get('endpoint_env') or settings['key_env']
+    reads = []
+    calls = []
+
+    # Returning the original value later must not rescue a mismatched first snapshot
+    def rotating_credential(name):
+        if name != reference:
+            return ''
+        reads.append(name)
+        return changed if len(reads) == 1 else original
+
+    monkeypatch.setattr(paging_providers, 'credential', rotating_credential)
+    result = paging_providers.send(settings, PAYLOAD, 'resolve', 'fixture-dedup',
+        hashlib.sha256(original.encode()).hexdigest(), lambda *args: calls.append(args))
+    assert result['state'] == 'failed' and result['retryable'] is False
+    assert reads == [reference] and calls == []

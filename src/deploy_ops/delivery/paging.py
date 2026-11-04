@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from ..config import canonical
 from ..errors import Refused
 from .paging_config import CAPABILITIES, PLANNED, Destination, Paging, Route
-from .paging_providers import credential, read_remote, send
+from .paging_providers import integration_identity, read_remote, send
 
 
 # Add paging records beside existing incidents without rewriting legacy notification history
@@ -430,7 +430,7 @@ def drain(ledger, limit=50, sender=None, heartbeat=None):
         try:
             if row['binding_id']:
                 # Pin the originating integration hash before the first possible external send
-                observed = hashlib.sha256(credential(settings['key_env']).encode()).hexdigest()
+                observed = integration_identity(settings)
                 with ledger.store.transaction() as connection:
                     binding = _binding(connection, row['binding_id'])
                     if not binding['identity']:

@@ -10,8 +10,8 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Keep future integrations visible without accepting unfinished provider implementations
-PROVIDERS = ('pagerduty', 'goalert', 'incident.io', 'better-stack', 'json', 'slack', 'ntfy')
-PLANNED = ('grafana-cloud-irm', 'ilert', 'apprise')
+PROVIDERS = ('pagerduty', 'goalert', 'incident.io', 'better-stack', 'grafana-cloud-irm', 'ilert', 'json', 'slack', 'ntfy')
+PLANNED = ('apprise',)
 NAME = re.compile(r'^[a-z][a-z0-9-]{0,47}$')
 REFERENCE = re.compile(r'^DEPLOY_OPS_PAGING_[A-Z0-9_]{1,80}$')
 CAPABILITIES = {
@@ -19,6 +19,8 @@ CAPABILITIES = {
     'goalert': {'trigger': True, 'acknowledge': False, 'resolve': True, 'readback': False, 'notifications': False},
     'incident.io': {'trigger': True, 'acknowledge': False, 'resolve': True, 'readback': False, 'notifications': False},
     'better-stack': {'trigger': True, 'acknowledge': True, 'resolve': True, 'readback': True, 'notifications': False},
+    'grafana-cloud-irm': {'trigger': True, 'acknowledge': False, 'resolve': True, 'readback': False, 'notifications': False},
+    'ilert': {'trigger': True, 'acknowledge': True, 'resolve': True, 'readback': False, 'notifications': False},
     **{name: {'trigger': False, 'acknowledge': False, 'resolve': False, 'readback': False, 'notifications': True}
        for name in ('json', 'slack', 'ntfy')},
 }
@@ -31,7 +33,7 @@ class Record(BaseModel):
 
 # Keep secrets in explicitly named worker environment variables
 class Destination(Record):
-    provider: Literal['pagerduty', 'goalert', 'incident.io', 'better-stack', 'json', 'slack', 'ntfy']
+    provider: Literal['pagerduty', 'goalert', 'incident.io', 'better-stack', 'grafana-cloud-irm', 'ilert', 'json', 'slack', 'ntfy']
     enabled: bool = True
     key_env: str = ''
     endpoint: str = ''
@@ -42,6 +44,8 @@ class Destination(Record):
     requester_email: str = ''
     policy_id: str = ''
     team_name: str = Field(default='', max_length=200)
+    template_mapping_confirmed: bool = False
+    priority_mode: Literal['source', 'severity'] = 'source'
     allowed_networks: list[str] = Field(default_factory=list)
     attempts: int = Field(default=5, ge=1, le=10)
     retry_seconds: int = Field(default=60, ge=1, le=3600)
@@ -53,12 +57,12 @@ class Destination(Record):
         for reference in (self.key_env, self.endpoint_env, self.token_env, self.signing_env):
             if reference and not REFERENCE.fullmatch(reference):
                 raise ValueError('Use a DEPLOY_OPS_PAGING_ environment reference, never a credential value')
-        if self.provider in ('pagerduty', 'goalert', 'incident.io', 'better-stack'):
+        if self.provider in ('pagerduty', 'goalert', 'incident.io', 'better-stack', 'ilert'):
             if not self.key_env or self.endpoint_env or self.token_env or self.signing_env:
                 raise ValueError('Native paging requires key_env and no generic transport credentials')
             if self.provider == 'pagerduty' and (self.endpoint or self.allowed_networks):
                 raise ValueError('PagerDuty uses its fixed US Events API endpoint')
-            if self.provider in ('incident.io', 'better-stack') and (self.endpoint or self.allowed_networks):
+            if self.provider in ('incident.io', 'better-stack', 'ilert') and (self.endpoint or self.allowed_networks):
                 raise ValueError('Hosted native paging uses a fixed provider endpoint and public networks')
             if self.provider == 'goalert':
                 parsed = urlsplit(self.endpoint)
@@ -67,6 +71,10 @@ class Destination(Record):
                 if (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password
                         or parsed.query or parsed.fragment or not parsed.path.endswith('/api/v2/generic/incoming')):
                     raise ValueError('GoAlert needs a public HTTPS generic endpoint without tokens or query parameters')
+        elif self.provider == 'grafana-cloud-irm':
+            if (not self.endpoint_env or self.endpoint or self.key_env or self.signing_env or self.allowed_networks
+                    or not self.template_mapping_confirmed):
+                raise ValueError('Grafana Cloud IRM requires an endpoint reference and confirmed grouping/autoresolve mapping')
         elif not self.endpoint_env or self.endpoint or self.key_env:
             raise ValueError('Notification URLs belong in endpoint_env, not exported configuration')
 
@@ -82,6 +90,10 @@ class Destination(Record):
                 raise ValueError('Better Stack requires a requester email and existing numeric escalation policy ID')
         elif self.requester_email or self.policy_id or self.team_name:
             raise ValueError('Requester, policy and team settings are only supported by Better Stack')
+        if self.template_mapping_confirmed and self.provider != 'grafana-cloud-irm':
+            raise ValueError('Template mapping confirmation is only supported by Grafana Cloud IRM')
+        if self.priority_mode != 'source' and self.provider != 'ilert':
+            raise ValueError('Priority mapping is only supported by ilert')
         for network in self.allowed_networks:
             value = ipaddress.ip_network(network, strict=True)
             if value.is_link_local or value.is_multicast or value.is_unspecified or value.prefixlen == 0:

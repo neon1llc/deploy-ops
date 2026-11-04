@@ -115,6 +115,36 @@ def credential(reference):
     return value
 
 
+# Read one integration credential for both its identity check and eventual transmission
+def integration_credential(destination):
+    reference = destination.endpoint_env if destination.provider == 'grafana-cloud-irm' else destination.key_env
+    value = credential(reference)
+    if destination.provider == 'grafana-cloud-irm':
+        grafana_endpoint(value)
+    return value
+
+
+# Bind Grafana's secret integration URL while allowing its optional account token to rotate
+def integration_identity(settings):
+    value = integration_credential(Destination.model_validate(settings))
+    return hashlib.sha256(value.encode()).hexdigest() if value else ''
+
+
+# Accept only the documented hosted formatted-webhook route without returning its secret URL
+def grafana_endpoint(value):
+    try:
+        parsed = urlsplit(value)
+        valid = (parsed.scheme == 'https' and parsed.port in (None, 443) and not parsed.username
+                 and not parsed.password and not parsed.query and not parsed.fragment
+                 and re.fullmatch(r'oncall-prod-[a-z0-9-]+\.grafana\.net', parsed.hostname or '')
+                 and re.fullmatch(r'/integrations/v1/formatted_webhook/[A-Za-z0-9_-]{1,256}/', parsed.path))
+    except ValueError:
+        valid = False
+    if not valid:
+        raise Refused('Use the Grafana Cloud IRM HTTPS formatted-webhook URL from its integration page', 422)
+    return value
+
+
 # Reject metadata, redirects and DNS rebinding before opening an authenticated connection
 def request(url, body, headers, networks, method='POST'):
     if method not in ('POST', 'GET'):
@@ -183,7 +213,7 @@ def send(settings, payload, action, dedup, identity='', transport=None):
     transport = transport or request
     headers = {'Content-Type': 'application/json'}
     provider = destination.provider
-    key = credential(destination.key_env)
+    key = integration_credential(destination)
     key_digest = hashlib.sha256(key.encode()).hexdigest() if key else ''
     if identity and key_digest != identity:
         return {'state': 'failed', 'reason': 'Originating integration credential changed', 'retryable': False}
@@ -196,6 +226,26 @@ def send(settings, payload, action, dedup, identity='', transport=None):
         if action == 'trigger':
             data['payload'] = {'summary': summary, 'source': payload.get('project') or 'DeployOps',
                                'severity': payload.get('severity', 'error')}
+    elif provider == 'grafana-cloud-irm':
+        if action not in ('trigger', 'resolve'):
+            raise Refused('Grafana Cloud IRM formatted webhooks support alerting and ok signals only', 422)
+        url = key
+        token = credential(destination.token_env)
+        if token:
+            headers['Authorization'] = 'Bearer ' + token
+        data = {'alert_uid': dedup, 'title': summary, 'state': 'ok' if action == 'resolve' else 'alerting',
+                'message': 'DeployOps ' + payload.get('severity', 'error') + ' incident; inspect the deployment evidence'}
+    elif provider == 'ilert':
+        event_type = {'trigger': 'ALERT', 'acknowledge': 'ACCEPT', 'resolve': 'RESOLVE'}.get(action)
+        if event_type is None:
+            raise Refused('ilert Events supports ALERT, ACCEPT and RESOLVE only', 422)
+        url = 'https://api.ilert.com/api/events'
+        data = {'integrationKey': key, 'eventType': event_type, 'alertKey': dedup, 'summary': summary}
+        if action == 'trigger':
+            data['customDetails'] = {field: payload.get(field, '') for field in
+                                     ('project', 'environment', 'component', 'severity', 'release_id')}
+            if destination.priority_mode == 'severity':
+                data['priority'] = 'HIGH' if payload.get('severity', 'error') in ('critical', 'error') else 'LOW'
     elif provider == 'incident.io':
         if action not in ('trigger', 'resolve'):
             raise Refused('incident.io HTTP sources support firing and resolved alerts only', 422)
@@ -272,6 +322,8 @@ def send(settings, payload, action, dedup, identity='', transport=None):
                                           or response.get('deduplication_key') != dedup
                                           or response.get('status') != 'success'):
             result.update(state='unknown', reason='Acceptance response did not identify the requested alert event')
+        if provider == 'ilert' and code != 202:
+            result.update(state='unknown', reason='ilert did not return its documented event acceptance status')
         if provider == 'better-stack':
             observed = better_stack_response(response, payload.get('remote_id', ''))
             expected_code = 201 if action == 'trigger' else 200

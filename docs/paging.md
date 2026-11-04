@@ -1,13 +1,13 @@
 # Named paging destinations
 
-DeployOps routes local deployment incidents to named PagerDuty, GoAlert, incident.io or Better Stack integrations and ordinary
+DeployOps routes local deployment incidents to named PagerDuty, GoAlert, incident.io, Better Stack,
+Grafana Cloud IRM or ilert integrations and ordinary
 notifications to JSON webhooks, Slack or ntfy. Each destination has independent delivery evidence.
 Multiple instances of the same provider are supported. Provider acceptance does not prove that a person
 received a page, acknowledged an incident or fixed a deployment.
 
 The native adapters are qualified with local protocol fixtures. No live provider page has
-been sent as part of this implementation. Grafana Cloud IRM and ilert remain
-planned native adapters. Optional Apprise support remains planned. Hosted accounts and provider channels
+been sent as part of this implementation. Optional Apprise support remains planned. Hosted accounts and provider channels
 may require paid plans or incur SMS/voice charges. No subscriptions or background services are installed.
 
 ## Configure, preview and activate
@@ -61,6 +61,35 @@ cannot be reconciled through this integration and never triggers an automatic du
 [Create incident](https://betterstack.com/docs/uptime/api/create-a-new-incident/),
 [manual creation and escalation](https://betterstack.com/docs/uptime/creating-incidents-manually/),
 [token scope](https://betterstack.com/docs/uptime/api/getting-started-with-uptime-api/).
+
+Grafana Cloud IRM uses its current **Formatted Webhook** alert integration. Put the complete secret
+webhook URL in `endpoint_env`; supported URLs use `https://oncall-prod-<region>.grafana.net/integrations/v1/formatted_webhook/<secret>/`.
+Optional `token_env` supplies a Grafana service-account bearer token if the integration requires it.
+That service account needs `grafana-irm-app.alert-groups:write`. The integration URL is pinned for existing
+bindings; the optional bearer token can rotate without changing that integration. Raw webhook,
+incident-creation webhook, custom domains and archived OnCall OSS are outside this selected route.
+[Current Grafana Cloud IRM formatted-webhook contract](https://grafana.com/docs/grafana-cloud/observe-and-act/respond-to-incidents/integrations/custom-integrations/incoming-webhooks/oncall-webhooks/).
+
+Before setting `template_mapping_confirmed = true`, configure the IRM integration to group by
+`{{ payload.alert_uid }}`, resolve when `{{ payload.state == 'ok' }}`, enable autoresolve, and select the
+intended responder route/escalation chain. DeployOps sends `alerting` for a trigger and `ok` for resolution,
+with the same `alert_uid`. The checkbox confirms operator setup; it does not inspect the remote
+configuration. HTTP acceptance does not prove grouping, resolution or responder delivery. This selected
+route has no acknowledgement or readback. [Templates](https://grafana.com/docs/grafana-cloud/observe-and-act/respond-to-incidents/escalation-and-routing/customize-alert-templates/),
+[integration routing and autoresolve](https://grafana.com/docs/grafana-cloud/observe-and-act/respond-to-incidents/guides/best-practices/integrations/).
+
+ilert uses `key_env` for an **API alert source integration key**, not an account bearer token. Trigger,
+acknowledge and resolve map to `ALERT`, `ACCEPT` and `RESOLVE` at its fixed Events endpoint. Each binding
+keeps one lowercase `alertKey`; matching is case-insensitive and grouping depends on the source's
+configuration. HTTP 202 means the event was accepted, without remote-state or human-response proof.
+There is no status read through this selected integration-key route. [Events API](https://docs.ilert.com/developer-docs/rest-api/api-reference/events).
+
+ilert's `priority_mode = "source"` preserves its configured priority. Optional `"severity"` sends `HIGH`
+for local critical/error and `LOW` for warning/info. This field can be ignored or overridden by ilert's
+source priority, support hours or custom template; configure that behavior upstream. Local severity also
+remains in `customDetails`. DeployOps uses its existing conservative retry policy even where vendor
+examples suggest retrying all network/server errors, because an unknown accepted event could later open
+another alert. [Priority and alert-key behavior](https://docs.ilert.com/developer-docs/api-samples/creating-alerts-through-events).
 
 Set referenced credentials in the separately managed worker environment. Never enter secret values in
 console fields, TOML, source repositories or command arguments. The console does not reveal credential
@@ -135,7 +164,7 @@ deploy-ops paging readback BINDING_ID --version CURRENT_VERSION
 [PagerDuty Events API v2](https://docs.pagerduty.com/developer/send-alert-event) supports trigger,
 acknowledge and resolve. [GoAlert's generic API](https://goalert.me/docs/alerting/alerting-from-generic-api/)
 supports create/update and close, and returns unsupported for acknowledgement. Accepted actions are recorded separately from
-remote state, which remains unverified for these integrations and incident.io. Better Stack supports
+remote state, which remains unverified for these integrations, incident.io, Grafana Cloud IRM and ilert. Better Stack supports
 [API acknowledgement](https://betterstack.com/docs/uptime/api/acknowledge-an-ongoing-incident/),
 [resolution](https://betterstack.com/docs/uptime/api/resolve-an-ongoing-incident/) and explicit
 [incident status reads](https://betterstack.com/docs/uptime/api/list-a-single-incident/). Requests attribute

@@ -72,12 +72,15 @@ function pagingDestinationFields() {
   const provider = element("paging-provider").value;
   const schema = pagingConfig.forms.destination.properties;
   const native = !pagingConfig.capabilities[provider].notifications;
-  const keys = ["enabled", ...(native ? ["key_env"] : ["endpoint_env"]), ...(provider === "goalert" ? ["endpoint"] : []),
+  const keys = ["enabled", ...(native && provider !== "grafana-cloud-irm" ? ["key_env"] : ["endpoint_env"]), ...(provider === "goalert" ? ["endpoint"] : []),
+    ...(provider === "grafana-cloud-irm" ? ["template_mapping_confirmed"] : []),
     ...(provider === "incident.io" ? ["alert_source_id"] : []), ...(provider === "better-stack" ? ["requester_email", "policy_id"] : [])];
   const labels = {enabled: "Enabled for new routes", key_env: "Integration key environment reference", endpoint_env: "Endpoint URL environment reference",
     endpoint: "GoAlert HTTPS generic endpoint", token_env: "Optional bearer token reference", signing_env: "Optional HMAC secret reference",
     alert_source_id: "HTTP alert source configuration ID", requester_email: "Requester email", policy_id: "Existing escalation policy ID",
     team_name: "Team name (required for a global API token)",
+    template_mapping_confirmed: "I configured Grafana grouping by alert_uid, resolution when state is ok, autoresolve and the responder route",
+    priority_mode: "ilert priority: inherit source or map local severity",
     allowed_networks: "Approved private networks, comma separated", attempts: "Maximum attempts", retry_seconds: "Initial retry delay (seconds)"};
   for (const key of keys) {
     const value = pagingDestination[key] ?? schema[key].default ?? "";
@@ -85,8 +88,9 @@ function pagingDestinationFields() {
     pagingField(root, key, labels[key], value, schema[key], next => { pagingDestination[key] = next; }, key !== "enabled");
   }
   const advanced = document.createElement("fieldset"); advanced.id = "paging-advanced"; text(advanced, "legend", "Delivery limits and network scope");
-  const extras = ["attempts", "retry_seconds", ...(["pagerduty", "incident.io", "better-stack"].includes(provider) ? [] : ["allowed_networks"]),
-    ...(provider === "better-stack" ? ["team_name"] : []), ...(!native ? ["token_env", "signing_env"] : [])];
+  const extras = ["attempts", "retry_seconds", ...(["pagerduty", "incident.io", "better-stack", "grafana-cloud-irm", "ilert"].includes(provider) ? [] : ["allowed_networks"]),
+    ...(provider === "better-stack" ? ["team_name"] : []), ...(provider === "ilert" ? ["priority_mode"] : []),
+    ...(provider === "grafana-cloud-irm" ? ["token_env"] : []), ...(!native ? ["token_env", "signing_env"] : [])];
   for (const key of extras) {
     const value = pagingDestination[key] ?? schema[key].default ?? (schema[key].type === "array" ? [] : "");
     pagingDestination[key] = value;
@@ -97,7 +101,9 @@ function pagingDestinationFields() {
     "pagerduty": "PagerDuty supports trigger, acknowledge and resolve through its US Events API. Readback is unsupported.",
     "goalert": "GoAlert supports create/update and close. Acknowledgement and readback are unsupported.",
     "incident.io": "Use the HTTP alert source secret. Firing and resolved events affect alerts, not incidents or escalations. Configure source parsing and routing in incident.io. Acknowledgement and readback are unsupported.",
-    "better-stack": "Use a team-scoped Incidents API token and an existing escalation policy. Its policy can contact responders. Creation, API acknowledgement, resolution and explicit status reads are supported; a lost creation response cannot be safely repeated automatically."
+    "better-stack": "Use a team-scoped Incidents API token and an existing escalation policy. Its policy can contact responders. Creation, API acknowledgement, resolution and explicit status reads are supported; a lost creation response cannot be safely repeated automatically.",
+    "grafana-cloud-irm": "Use the secret URL of a Grafana Cloud IRM Formatted Webhook integration in the endpoint environment reference. Optional bearer token security stays in token_env. Configure grouping {{ payload.alert_uid }} and resolve condition {{ payload.state == 'ok' }}, enable autoresolve and select an escalation route. Acknowledgement and readback are unsupported; this targets hosted IRM, not archived OnCall OSS.",
+    "ilert": "Use the API alert source integration key, not an account API token. Events map to ALERT, ACCEPT and RESOLVE. Priority defaults to the source; severity mapping sends HIGH for critical/error and LOW for warning/info. Source priority rules can override or ignore that field. Acceptance does not verify a responder or remote state."
   };
   element("paging-provider-help").textContent = native ? "Use DEPLOY_OPS_PAGING_ references, never key values. Native schedules remain provider-managed. " + help[provider] :
     "Use DEPLOY_OPS_PAGING_ references. These transports deliver notifications without native acknowledgement or resolution.";

@@ -29,6 +29,19 @@ key_env = "DEPLOY_OPS_PAGING_BETTER_STACK"
 requester_email = "operator@example.com"
 policy_id = "123456"
 
+# Confirm the documented grouping, autoresolve and responder route before using this integration
+[destinations.cloud-irm]
+provider = "grafana-cloud-irm"
+endpoint_env = "DEPLOY_OPS_PAGING_GRAFANA_WEBHOOK"
+token_env = "DEPLOY_OPS_PAGING_GRAFANA_TOKEN"
+template_mapping_confirmed = true
+
+# ilert owns source priority by default and accepts lifecycle events through its integration key
+[destinations.ilert-team]
+provider = "ilert"
+key_env = "DEPLOY_OPS_PAGING_ILERT"
+priority_mode = "source"
+
 # The first matching route fans out once to each named destination
 [[routes]]
 name = "production-incidents"
