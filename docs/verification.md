@@ -215,8 +215,10 @@ of the CLI label `none`. Independent reads confirmed no submission or created re
 Bicep template passed native compilation before a fresh release. This failed preparation remains part
 of the evidence.
 
-Owned cleanup removed the application. Azure still reported the empty environment as
-`ScheduledForDelete` after the 30-minute batch deadline; cleanup was not yet confirmed complete.
+Owned cleanup removed the application. The environment remained `ScheduledForDelete` beyond the
+30-minute batch deadline, then disappeared after roughly 47 minutes from batch start. An empty resource
+group and an independent exact-resource Not Found response confirmed cleanup. The pre-existing API
+Center remained present. This records a provider cleanup overrun, not compliance with the planned lifetime.
 The new Container Apps mutation journal and exact-revision recovery checks were added after this live
 run. Local fixtures and retained native response shapes cover them; live uncertain-write recovery
 remains unqualified.

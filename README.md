@@ -37,7 +37,7 @@ The demo builds, deploys, promotes, and HTTP-checks a real local application. It
 
 CloudFormation passed a live private S3 lifecycle; ECS passed infrastructure-to-app delivery and an
 app-only image update. Azure passed Bicep/ARM provisioning and an independent Container Apps image update;
-environment cleanup remains pending provider deletion. Other cloud paths have command-contract tests.
+owned cleanup completed after a provider deletion overrun. Other cloud paths have command-contract tests.
 Identity preflight does not qualify a deployment. This is a working preview,
 not a claim of universal repository compatibility or production readiness.
 
