@@ -235,6 +235,17 @@ def operation_path(context: Context) -> Path:
     return context.stage.parent / "arm-operation.json"
 
 
+# Report missing local submission evidence without inferring the target's resource state
+def inspect_pending(context: Context) -> dict:
+    scope = target(context)
+    path = operation_path(context)
+    if path.exists() or path.is_symlink():
+        raise Refused("An Azure submission record exists without reviewed evidence; restore the reviewed evidence before reconciliation", 409)
+    return {"status": "no-submission-recorded", "deployment_id": scope["deployment_id"],
+            "target": scope, "automatic_retry": False, "resource_state": "unverified",
+            "guidance": "No local submission record exists for this release. Inspect the target, correct preparation, and explicitly recover before preparing a new release."}
+
+
 # Preserve a named operation before submission so a lost response cannot trigger blind replay
 def record(context: Context, prepared: dict, status: str) -> None:
     private_json(operation_path(context), {"release_id": context.release_id, "component": context.name,

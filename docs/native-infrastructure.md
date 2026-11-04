@@ -94,6 +94,14 @@ infrastructure outcome evidence. The dependent application's runtime adapter che
 After interruption, inspect the named deployment instead of replaying its creation. There is no automatic
 rollback or resource destruction. Deleting an ARM deployment record deletes history, not resources.
 
+If preparation fails before reviewed evidence is saved, provider status reports
+`no-submission-recorded` with the deterministic deployment target when no local submission record exists.
+This does not verify remote resource state or clear the release's uncertainty. Inspect the target and
+correct preparation before explicit recovery and a fresh release; automatic retry remains disabled.
+A submission record without its reviewed evidence requires restoring that evidence before reconciliation.
+Command events identify allowlisted Azure operations such as `azure.deployment.group.what-if` and the
+exit code, without exposing command arguments or raw provider errors.
+
 The [ARM example](../examples/azure-arm/README.md) and [Bicep example](../examples/azure-bicep/README.md)
 feed a separate Container Apps release. The Bicep sample has been compiled locally with v0.41.2.
 It creates no public ingress, managed environment, identity or registry, but its application replica

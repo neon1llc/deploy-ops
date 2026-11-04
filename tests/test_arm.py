@@ -199,6 +199,34 @@ def test_reconciliation_preserves_remote_outcome(tmp_path, state, expected):
     assert arm.inspect(ctx, prepared)["status"] == expected
 
 
+# Both native infrastructure routes report only local absence before submission
+@pytest.mark.parametrize("adapter", ["arm", "bicep"])
+def test_pending_status_never_claims_remote_absence(tmp_path, adapter):
+    ctx = context(tmp_path, [], adapter=adapter)
+    observed = arm.inspect_pending(ctx)
+    assert observed["status"] == "no-submission-recorded"
+    assert observed["target"] == arm.target(ctx)
+    assert observed["automatic_retry"] is False
+    assert observed["resource_state"] == "unverified"
+    assert ctx.process.calls == []
+
+
+# Even an unreadable or dangling submission marker prevents the missing-record path
+@pytest.mark.parametrize("kind", ["file", "directory", "dangling-symlink"])
+def test_pending_record_cannot_bypass_reviewed_evidence(tmp_path, kind):
+    ctx = context(tmp_path, [])
+    path = arm.operation_path(ctx)
+    if kind == "file":
+        path.write_text("secret-invalid-provider-body")
+    elif kind == "directory":
+        path.mkdir()
+    else:
+        path.symlink_to(tmp_path / "missing-record")
+    with pytest.raises(Refused, match="submission record exists without reviewed evidence"):
+        arm.inspect_pending(ctx)
+    assert ctx.process.calls == []
+
+
 # Deployment history cleanup is never confused with deleting deployed resources
 @pytest.mark.parametrize("options", [{"mode": "Complete"}, {"operation": "destroy"}])
 def test_destructive_modes_have_no_implicit_implementation(tmp_path, options):

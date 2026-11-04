@@ -17,7 +17,7 @@ from deploy_ops.delivery.demo import finish, run
 from deploy_ops.delivery.engine import Engine
 from deploy_ops.delivery.files import digest_tree
 from deploy_ops.delivery.notify import flush
-from deploy_ops.delivery.process import Process
+from deploy_ops.delivery.process import AZURE_OPERATIONS, Process, command_metadata
 from deploy_ops.delivery.scaffold import create
 from deploy_ops.delivery.spec import Repository, Workspace
 from deploy_ops.errors import Refused
@@ -142,6 +142,45 @@ def test_subprocess_does_not_inherit_personal_tokens(tmp_path, monkeypatch):
     text = process.run([sys.executable, "-c", "import os,json; print(json.dumps(dict(os.environ)))"], tmp_path, capture=True)
     assert "not-for-builds" not in text
     assert events[-1][0] == "command.finished"
+
+
+# All public operation labels come from fixed native prefixes rather than arbitrary arguments
+@pytest.mark.parametrize("operation", AZURE_OPERATIONS)
+def test_native_azure_operation_labels_are_allowlisted(operation):
+    argv = ["/native/bin/az", *operation, "--secret", "argument-secret-sentinel"]
+    assert command_metadata(argv) == {"tool": "az", "operation": "azure." + ".".join(operation)}
+    assert command_metadata(["other", *operation]) == {"tool": "other"}
+    assert command_metadata(["az", "unknown-secret-sentinel", *operation]) == {"tool": "az"}
+
+
+# Real subprocess failure keeps raw stdout, stderr and argument secrets out of events and errors
+@pytest.mark.parametrize("known", [True, False])
+def test_native_azure_failure_labels_do_not_expose_diagnostics(tmp_path, known):
+    executable = tmp_path / "az"
+    executable.write_text("#!/bin/sh\nprintf 'stdout-secret-sentinel'\nprintf 'stderr-secret-sentinel' >&2\nexit 7\n")
+    executable.chmod(0o700)
+    events = []
+    process = Process(tmp_path, lambda event, detail: events.append((event, detail)))
+    operation = ["deployment", "group", "what-if"] if known else ["unknown-secret-sentinel"]
+    with pytest.raises(Refused) as failure:
+        process.run([str(executable), *operation, "--secret", "argument-secret-sentinel"], tmp_path, capture=True)
+    evidence = json.dumps(events) + str(failure.value)
+    assert "secret-sentinel" not in evidence
+    assert events[-1][0] == "command.failed"
+    assert events[-1][1]["exit_code"] == 7
+    assert ("azure.deployment.group.what-if" in evidence) is known
+
+
+# Successful captured commands share the same safe label without emitting their response body
+def test_native_azure_success_labels_keep_captured_output_private(tmp_path):
+    executable = tmp_path / "az"
+    executable.write_text("#!/bin/sh\nprintf 'captured-secret-sentinel'\n")
+    executable.chmod(0o700)
+    events = []
+    process = Process(tmp_path, lambda event, detail: events.append((event, detail)))
+    assert process.run([str(executable), "account", "show"], tmp_path, capture=True) == "captured-secret-sentinel"
+    assert events == [("command.started", {"tool": "az", "operation": "azure.account.show"}),
+                      ("command.finished", {"tool": "az", "operation": "azure.account.show"})]
 
 
 # Require loopback and token boundaries while reusing the shared graph

@@ -32,6 +32,7 @@ class Azure:
                         "user": {"name": CLIENT, "type": "servicePrincipal"}}
         self.group = GROUP
         self.deployment = ""
+        self.fail_preview = False
 
 
     # Return provider-shaped observations through the real isolated Process boundary
@@ -54,6 +55,8 @@ class Azure:
         elif argv[1] == "version":
             result = {"azure-cli": "2.91.0"}
         elif argv[1:4] == ["deployment", "group", "what-if"]:
+            if self.fail_preview:
+                raise Refused("azure.deployment.group.what-if failed with exit code 1")
             result = {"status": "Succeeded", "changes": [{"resourceId": GROUP + "/providers/Microsoft.Storage/storageAccounts/fixture",
                       "changeType": "Create", "after": {"type": "Microsoft.Storage/storageAccounts", "name": "fixture"}}]}
         elif argv[1:4] == ["deployment", "group", "list"]:
@@ -130,6 +133,37 @@ def test_local_azure_certificate_delivers_reviewed_arm(azure, monkeypatch):
     evidence = json.dumps([release, engine.ledger.events(release["id"]), engine.ledger.store.audit()])
     assert str(certificate) not in evidence and certificate.read_text() not in evidence
     assert not list((engine.state / "releases").glob("*/*/home"))
+
+
+# Failed preparation can expose its target without retrying what-if or clearing uncertainty
+def test_failed_azure_preview_status_without_submission(azure):
+    engine, provider, _, _ = azure
+    provider.fail_preview = True
+    release = engine.advance(engine.create("development")["id"])
+    assert release["status"] == "uncertain"
+    assert not release["nodes"]["foundation"].get("artifact_digest")
+    observed = engine.provider_status(release["id"], "foundation")
+    assert observed["status"] == "no-submission-recorded"
+    assert observed["automatic_retry"] is False
+    assert observed["resource_state"] == "unverified"
+    assert observed["target"]["subscription_id"] == SUBSCRIPTION
+    assert observed["deployment_id"].startswith(GROUP + "/providers/Microsoft.Resources/deployments/")
+    assert engine.ledger.get(release["id"])["status"] == "uncertain"
+    assert sum(call[1:4] == ["deployment", "group", "what-if"] for call in provider.calls) == 1
+    assert provider.writes == []
+
+
+# Missing reviewed artifacts never permit adoption of an existing submission record
+def test_azure_pending_journal_requires_reviewed_envelope(azure):
+    engine, provider, _, _ = azure
+    provider.fail_preview = True
+    release = engine.advance(engine.create("development")["id"])
+    marker = engine.state / "releases" / release["id"] / "foundation" / "arm-operation.json"
+    marker.write_text('{"status":"submitting"}')
+    with pytest.raises(Refused, match="submission record exists without reviewed evidence"):
+        engine.provider_status(release["id"], "foundation")
+    assert provider.writes == []
+    assert engine.ledger.get(release["id"])["status"] == "uncertain"
 
 
 # Mismatched options are rejected before native authentication receives a certificate

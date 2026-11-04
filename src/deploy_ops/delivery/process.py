@@ -16,6 +16,27 @@ from ..errors import Refused
 SAFE_ENV = {"PATH", "LANG", "LC_ALL", "SSL_CERT_FILE", "SYSTEMROOT", "WINDIR"}
 
 
+# Fixed operation names identify native failures without recording arguments or provider errors
+AZURE_OPERATIONS = (
+    ("cloud", "set"), ("login",), ("account", "set"), ("account", "show"),
+    ("group", "show"), ("version",), ("deployment", "group", "what-if"),
+    ("deployment", "group", "list"), ("deployment", "group", "create"),
+    ("deployment", "group", "show"), ("containerapp", "show"),
+    ("containerapp", "update"), ("containerapp", "revision", "show"),
+)
+
+
+# Only known command prefixes contribute labels to public execution events
+def command_metadata(argv: list[str]) -> dict[str, str]:
+    result = {"tool": Path(argv[0]).name}
+    if result["tool"] == "az":
+        for operation in AZURE_OPERATIONS:
+            if tuple(argv[1:1 + len(operation)]) == operation:
+                result["operation"] = "azure." + ".".join(operation)
+                break
+    return result
+
+
 # Start from a small host allowlist and add only explicit credential references
 def environment(home: Path, credentials: dict[str, str] | None = None) -> dict[str, str]:
     values = {key: value for key, value in os.environ.items() if key in SAFE_ENV}
@@ -53,7 +74,8 @@ class Process:
         if not argv or any(not isinstance(item, str) or "\x00" in item for item in argv):
             raise Refused("Invalid command argument list", 422)
         self.heartbeat()
-        self.emit("command.started", {"tool": Path(argv[0]).name})
+        metadata = command_metadata(argv)
+        self.emit("command.started", metadata)
 
         # Private streams keep raw provider responses out of ordinary command events
         with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as diagnostic, tempfile.TemporaryFile() as stdin:
@@ -82,11 +104,12 @@ class Process:
                     raise Refused("Command output exceeded its 10 MB limit")
                 if process.returncode != 0:
                     # Raw provider output can contain secrets that the controller never received
-                    self.emit("command.failed", {"tool": Path(argv[0]).name, "exit_code": process.returncode})
-                    raise Refused(f"{Path(argv[0]).name} failed with exit code {process.returncode}")
+                    self.emit("command.failed", {**metadata, "exit_code": process.returncode})
+                    label = metadata.get("operation", metadata["tool"])
+                    raise Refused(f"{label} failed with exit code {process.returncode}")
                 if not capture and text:
                     self.emit("command.output", {"text": redact(text[-4000:], self.secrets)})
-                self.emit("command.finished", {"tool": Path(argv[0]).name})
+                self.emit("command.finished", metadata)
                 return text
             finally:
                 if os.name == "posix":
