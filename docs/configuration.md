@@ -43,7 +43,7 @@ store and pass references, not plaintext values.
 | `cdk` | `account_id`, `region`, `stack_name`, `assembly`, `stack_artifact` | Consume a frozen assembly; never synthesize application code with writer credentials |
 | `arm`, `bicep` | `subscription_id`, `tenant_id`, `resource_group`, `template` | Frozen local JSON, incremental deployment only; Bicep requires compiler metadata |
 | `ecs` | `region`, `cluster`, `service`, `container`, `image` | Existing ECS-controller service |
-| `container-apps` | `name`, `resource_group`, `subscription_id`, `image` | Existing Single revision mode app |
+| `container-apps` | `name`, `resource_group`, `subscription_id`, `image` | Existing Single revision mode app with one named container |
 | `cloud-run` | `name`, `project_id`, `region`, `image` | Existing service with one 100% traffic target |
 | `kubernetes` | `context`, `namespace`, `deployment`, `container`, `image` | Dedicated kubeconfig and existing Deployment |
 | `workflow` | `apply` and `verify` command lists, optional `prepare` and `outputs_file` | Local trusted scripts only, manual approval, no preview equivalence guarantee |

@@ -33,6 +33,11 @@ class Azure:
         self.group = GROUP
         self.deployment = ""
         self.fail_preview = False
+        self.fail_app_update = False
+        self.app = {"id": GROUP + "/providers/Microsoft.App/containerApps/app", "properties": {
+            "configuration": {"activeRevisionsMode": "Single"}, "latestRevisionName": "app--old",
+            "latestReadyRevisionName": "app--old", "template": {"revisionSuffix": "old",
+                "containers": [{"name": "web", "image": "registry.example/app@sha256:" + "b" * 64}]}}}
 
 
     # Return provider-shaped observations through the real isolated Process boundary
@@ -46,12 +51,22 @@ class Azure:
         elif argv[1:3] == ["group", "show"]:
             result = {"id": self.group}
         elif argv[1:3] == ["containerapp", "show"]:
-            result = {"properties": {"configuration": {"activeRevisionsMode": "Single"}, "latestReadyRevisionName": "old"}}
+            result = self.app
         elif argv[1:3] == ["containerapp", "update"]:
             self.writes.append("update-app")
-            result = {"properties": {"latestRevisionName": "new"}}
+            suffix = argv[argv.index("--revision-suffix") + 1]
+            properties = self.app["properties"]
+            properties["latestRevisionName"] = properties["latestReadyRevisionName"] = "app--" + suffix
+            properties["template"]["revisionSuffix"] = suffix
+            properties["template"]["containers"][0]["image"] = argv[argv.index("--image") + 1]
+            if self.fail_app_update:
+                raise Refused("Synthetic Container Apps acknowledgement loss")
+            result = self.app
         elif argv[1:4] == ["containerapp", "revision", "show"]:
-            result = {"properties": {"healthState": "Healthy", "provisioningState": "Provisioned"}}
+            name = self.app["properties"]["latestRevisionName"]
+            result = {"id": self.app["id"] + "/revisions/" + name, "name": name, "properties": {
+                "healthState": "Healthy", "provisioningState": "Provisioned", "active": True,
+                "template": self.app["properties"]["template"]}}
         elif argv[1] == "version":
             result = {"azure-cli": "2.91.0"}
         elif argv[1:4] == ["deployment", "group", "what-if"]:
@@ -231,8 +246,10 @@ def test_azure_credentials_never_read_or_export_private_key(azure):
 
 
 # The same certificate boundary supports a pinned app image without infrastructure credentials in source
-def test_local_azure_certificate_delivers_container_app(azure, monkeypatch):
+@pytest.mark.parametrize("lost_response", [False, True])
+def test_local_azure_certificate_delivers_container_app(azure, monkeypatch, lost_response):
     engine, provider, _, _ = azure
+    provider.fail_app_update = lost_response
     document = tomlkit.parse(engine.path.read_text())
     document["components"]["foundation"] = {"repository": "infrastructure", "kind": "application",
         "adapter": "container-apps", "options": {"subscription_id": SUBSCRIPTION, "resource_group": "fixture",
@@ -249,9 +266,16 @@ def test_local_azure_certificate_delivers_container_app(azure, monkeypatch):
     assert release["status"] == "waiting", release.get("reason")
     engine.approve(release["id"], "foundation", release["nodes"]["foundation"]["request_digest"])
     release = engine.advance(release["id"])
-    assert release["status"] == "succeeded", release.get("reason")
     assert provider.writes == ["update-app"]
-    assert release["nodes"]["foundation"]["outputs"]["revision"] == "new"
+    if lost_response:
+        assert release["status"] == "uncertain", release.get("reason")
+        observed = engine.provider_status(release["id"], "foundation")
+        assert observed["status"] == "succeeded" and observed["replay_allowed"] is False
+        assert engine.ledger.get(release["id"])["status"] == "uncertain"
+        assert provider.writes == ["update-app"]
+    else:
+        assert release["status"] == "succeeded", release.get("reason")
+        assert release["nodes"]["foundation"]["outputs"]["revision"].startswith("app--do-")
 
 
 # Certificate support must not redirect the established remote OIDC login contract

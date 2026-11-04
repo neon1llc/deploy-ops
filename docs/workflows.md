@@ -80,6 +80,26 @@ deploy-ops recover RELEASE_ID --note "Inspected the target. Recorded the provide
 Do not reuse that sentence as evidence without actually inspecting the target. Start a fresh release after
 reconciliation. The tool never guesses that a failed command had no effects.
 
+For Container Apps, `deploy-ops provider inspect RELEASE_ID COMPONENT` reads the exact app and
+revision recorded before its update. It checks the immutable image, container, template hash, health
+and Single-mode activation without replaying the update. A missing or unreadable revision remains
+unknown; provider readback does not itself clear release uncertainty. Configuration and environment
+values are represented by hashes in the operation record. Same-image delivery makes no update call
+and verifies the existing revision as a no-op.
+
+Template comparison accounts for the revision API omitting the suffix, default scaling intervals and
+CPU-derived default ephemeral storage. The exact revision resource name binds the suffix separately.
+Nondefault scaling, resource limits, environment values, commands, probes and unknown fields remain
+part of the comparison; missing evidence for a nondefault setting is refused. Azure documents the
+[scaling defaults](https://learn.microsoft.com/en-us/azure/container-apps/scale-app) and
+[ephemeral storage allowances](https://learn.microsoft.com/en-us/azure/container-apps/storage-mounts).
+
+The adapter uses a release-specific revision suffix. Azure [rejects conflicting suffixes](https://learn.microsoft.com/en-us/azure/container-apps/azure-resource-manager-api-spec#propertiestemplate);
+this is not an idempotency guarantee. DeployOps never repeats the update command after recording an
+attempt. The native last-read/write interval is not atomic, and an external concurrent change can still
+race the update. Recovery and no-op behavior have local command-fixture coverage; they are not yet
+qualified by a live recovery exercise.
+
 ## Notify and page
 
 Events are saved before notification delivery. Send the outbox from a trusted scheduled worker or after a run:
