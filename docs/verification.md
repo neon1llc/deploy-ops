@@ -1,7 +1,7 @@
 # Verification
 
 **Checked:** 2026-11-03. The local and browser observations below qualify the v0.10.0 baseline.
-Later sections record the v0.11.0–v0.12.0 increments separately.
+Later sections record the v0.11.0–v0.12.0 increments and subsequent checks separately.
 
 ## Local execution
 
@@ -201,10 +201,45 @@ drafts, preview, activation, independent acknowledgement/resolution, failed-draf
 390-pixel layout. Browser delivery was intercepted by a local fixture. A real local TLS receiver
 exercised transport deadlines and delayed connection-close bodies; no external recipient was paged.
 
+## Azure application journey
+
+The installed v0.12.0 package used Azure CLI 2.91.0 to create a disposable Container Apps environment
+and app from frozen Bicep output, then update infrastructure tags through raw ARM. Independent app
+releases reused the infrastructure outputs and changed an immutable Python image from 3.13.18 to
+3.14.10. Native revision health and startup logs matched both versions. The ARM deployment template
+hash and timestamp stayed unchanged during application releases. The app had no ingress, used the
+Consumption profile and requested 0.25 CPU and 0.5 GiB with one replica.
+
+An initial read-only what-if failed because the native template requires a null log destination instead
+of the CLI label `none`. Independent reads confirmed no submission or created resources. The corrected
+Bicep template passed native compilation before a fresh release. This failed preparation remains part
+of the evidence.
+
+Owned cleanup removed the application. Azure still reported the empty environment as
+`ScheduledForDelete` after the 30-minute batch deadline; cleanup was not yet confirmed complete.
+The new Container Apps mutation journal and exact-revision recovery checks were added after this live
+run. Local fixtures and retained native response shapes cover them; live uncertain-write recovery
+remains unqualified.
+
+## Isolated GCP and six native paging targets
+
+The v0.13.0 candidate passed 585 tests and the 189-file source checker. The isolated GCP
+route uses the same controller for separately approved planning, saved-plan execution and application
+receipt reuse. Actual credentialless VM checks covered native initialization and validation, immutable
+inputs, distinct worker identities, supervisor exclusion and descendant termination on EOF, deadline
+or heartbeat loss. No real GCP token, plan, apply or application rollout was exercised by those checks.
+The console panel has shared API coverage; its new browser interactions still require verification.
+
+Native paging now includes PagerDuty, GoAlert, incident.io, Better Stack, Grafana Cloud IRM and ilert.
+Provider-shaped fixtures cover each supported lifecycle and distinguish accepted delivery from observed
+remote state. Local browser fixtures exercised the guided configuration and supported transitions.
+No external on-call destination was contacted. Grafana Cloud IRM and incident.io do not offer an
+acknowledgement action through their selected webhook contracts; ilert acceptance does not establish
+remote lifecycle state.
+
 ## Remaining qualification
 
-Azure deployments, GCP workloads, Slack, registry build/publish and cloud
-Terraform/OpenTofu journeys remain unqualified. GCP service-account authentication succeeded through
+GCP workloads, Slack, registry build/publish and cloud Terraform/OpenTofu journeys remain unqualified. GCP service-account authentication succeeded through
 native ADC and the actual DeployOps gcloud process. Project and billing reads succeeded after approved
 enablement of the Cloud Resource Manager and Cloud Billing APIs. No GCP workload was created.
 Installed command availability alone does not establish working integrations. GitHub Actions results

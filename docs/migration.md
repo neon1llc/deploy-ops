@@ -29,3 +29,15 @@ Do not reuse a previous approval under a changed policy. An explicit local cloud
 resource-type and action allowlist instead, requires manual approval, and never enables production or
 delegation. Missing, expired or mismatched grants leave configuration editing available but cloud
 execution disabled.
+
+## Isolated execution and Container Apps recovery
+
+The optional `local_isolated_iac` target mode keeps local operator provenance separate from GitHub
+claims. It is omitted from existing target fingerprints when unused. No database schema migration is
+required. Register a new private grant for the isolated route; existing local or federated grants do
+not gain this authority automatically.
+
+Container Apps requests prepared before exact revision journaling must be completed or reconciled
+under their original version. Prepare a fresh release for the new adapter; it refuses old prepared
+requests without a reviewed recovery identity. Existing Single-mode apps must contain exactly one
+named application container.

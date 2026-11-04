@@ -1,6 +1,6 @@
 # DeployOps
 
-**0.12.0 preview · by neon1 LLC**
+**0.13.0 preview · by neon1 LLC**
 
 Deploy infrastructure and applications from separate repositories. Choose an environment,
 review exact changes, and track the result through one CLI, local browser console, and audit history.
@@ -19,7 +19,8 @@ The demo builds, deploys, promotes, and HTTP-checks a real local application. It
 |---|---|
 | [Setup](docs/setup.md) | Run the CLI and browser console |
 | [Workflows](docs/workflows.md) | Infrastructure, apps, promotion, and recovery |
-| [Infrastructure receipts](docs/infrastructure-receipts.md) | Reuse AWS infrastructure outputs across isolated app workers |
+| [Infrastructure receipts](docs/infrastructure-receipts.md) | Reuse typed infrastructure outputs across isolated app workers |
+| [Isolated GCP](docs/isolated-gcp.md) | Review and run a fixed Cloud Run recipe in a dedicated VM |
 | [Native infrastructure](docs/native-infrastructure.md) | Review CloudFormation/CDK changes and frozen ARM/Bicep templates |
 | [Capabilities](docs/capabilities.md) | Implemented paths and remaining work |
 | [Architecture](docs/architecture.md) | Components, trust boundaries, and diagrams |
@@ -35,7 +36,9 @@ The demo builds, deploys, promotes, and HTTP-checks a real local application. It
 | [Development](docs/development.md) | Commands, comments, and ownership |
 
 CloudFormation passed a live private S3 lifecycle; ECS passed infrastructure-to-app delivery and an
-app-only image update. Other cloud deployment paths have command-contract tests. Identity preflight does not qualify a deployment. This is a working preview,
+app-only image update. Azure passed Bicep/ARM provisioning and an independent Container Apps image update;
+environment cleanup remains pending provider deletion. Other cloud paths have command-contract tests.
+Identity preflight does not qualify a deployment. This is a working preview,
 not a claim of universal repository compatibility or production readiness.
 
 Licensed under [Apache-2.0](LICENSE), with [attribution notices](NOTICE). See [licensing](docs/licensing.md).
