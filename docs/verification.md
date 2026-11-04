@@ -230,7 +230,10 @@ route uses the same controller for separately approved planning, saved-plan exec
 receipt reuse. Actual credentialless VM checks covered native initialization and validation, immutable
 inputs, distinct worker identities, supervisor exclusion and descendant termination on EOF, deadline
 or heartbeat loss. No real GCP token, plan, apply or application rollout was exercised by those checks.
-The console panel has shared API coverage; its new browser interactions still require verification.
+The console panel has shared API coverage. A real browser fixture exercised recipe review, separate
+planning and saved-plan approvals, terminal outcomes and receipt prefill into the application form.
+Receipt selection preserved the separate application preparation step. Automatic refresh retained
+the image draft, focus and selection. These browser checks used synthetic native responses, not GCP.
 
 A subsequent bounded live attempt authenticated native impersonation and published two immutable
 images to its private registry, but did not establish a successful infrastructure plan. Both planning
@@ -240,6 +243,9 @@ Credentialless reproduction identified macOS refusing a process-group signal whi
 leader remained unreaped. The transport now reaps that leader first, retaining descendant cleanup and
 genuine permission failures. Both native exit cases and all 589 tests passed after the fix. The fixed
 transport still needs a fresh bounded live deployment qualification.
+Independent provider readback confirmed removal of the temporary state bucket, registry, five service
+accounts and six custom roles within the 30-minute batch. Enabled APIs, Google-managed service agents
+and existing project log retention remain. No workload was created.
 
 Native paging now includes PagerDuty, GoAlert, incident.io, Better Stack, Grafana Cloud IRM and ilert.
 Provider-shaped fixtures cover each supported lifecycle and distinguish accepted delivery from observed
