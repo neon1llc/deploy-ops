@@ -197,7 +197,7 @@ deploy-ops operator resume
 ```
 
 Exact decisions use `operator decision REQUEST_ID --values` with `digest`, `decision` (`approve` or
-`reject`) and an optional `note`. The console requires an operational reason for its decisions. Keep
+`reject`) and an optional `note`. Reconciliation requires an inspection reason of 10–500 characters. Keep
 credentials out of notes. This panel and CLI adapter support the existing local controller only. Remote
 and isolated modes report unavailable here and retain their existing dedicated operator interfaces.
 Controller reconciliation and release recovery are separate records. Inspect the release afterward and

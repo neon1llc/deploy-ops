@@ -93,6 +93,9 @@ element("operator-decision").onsubmit = (event) => {
   const request = operatorSelected;
   const choice = event.submitter?.value;
   if (!["approve", "reject", "resolve"].includes(choice)) return;
+  const note = element("operator-note");
+  note.setCustomValidity(choice === "resolve" && note.value.trim().length < 10 ? "Describe the inspected outcome in at least 10 characters." : "");
+  if (!note.reportValidity()) { note.focus(); return; }
   const values = choice === "resolve" ? {outcome: element("operator-outcome").value, note: element("operator-note").value}
     : {digest: request.digest, decision: choice, note: element("operator-note").value};
   operatorRun(async () => {
@@ -100,3 +103,7 @@ element("operator-decision").onsubmit = (event) => {
     await operatorLoad();
   });
 };
+
+
+// Clear an inspection-only error when the operator revises the note or chooses another decision
+element("operator-note").oninput = () => element("operator-note").setCustomValidity("");
