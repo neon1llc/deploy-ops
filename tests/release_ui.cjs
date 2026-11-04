@@ -250,5 +250,24 @@ function control(key) {
   nodes.get("receipts").value = '["private-sentinel"]';
   assert.throws(() => vm.runInContext('readReceipts()', context), /could not be read/);
   assert(!nodes.get("receipt-status").textContent.includes("private-sentinel"));
+  vm.runInContext("api=capture;", context);
+  // Serving actions use fixed identities and isolated links without triggering deployment
+  context.fixture.release.nodes.web = {adapter: "static", status: "succeeded", outputs: {digest: "artifact"}};
+  context.fixture.serving_sessions = [];
+  await vm.runInContext('show("release-fixture")', context);
+  calls.length = 0;
+  await control("serving-start-web").onclick();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), {path: "/serving/start", method: "POST", body: {release: "release-fixture", component: "web"}});
+  assert.equal(calls.length, 1);
+  context.fixture.serving_sessions = [{id: "owned-session", component: "web", url: "http://127.0.0.1:18000", status: "serving", digest: "artifact"}];
+  await vm.runInContext('show("release-fixture")', context);
+  const link = nodes.get("detail").querySelectorAll("a")[0];
+  assert.equal(link.target, "_blank"); assert.equal(link.rel, "noopener noreferrer");
+  assert.equal(link.referrerPolicy, "no-referrer");
+  assert.equal(link.href, "http://127.0.0.1:18000");
+  calls.length = 0;
+  await control("serving-stop-web").onclick();
+  assert.equal(calls.length, 1); assert.equal(calls[0].path, "/serving/stop");
+  assert.equal(calls[0].body.id, "owned-session");
   console.log("PASS: readable review, exact actions, guided receipts, duplicate blocking, draft retention and isolated prefill");
 })().catch(error => { console.error(error); process.exitCode = 1; });

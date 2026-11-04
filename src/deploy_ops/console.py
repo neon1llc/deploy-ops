@@ -2,6 +2,7 @@
 
 
 import hmac
+from contextlib import asynccontextmanager
 import os
 import secrets
 import threading
@@ -67,7 +68,18 @@ class Input(BaseModel):
 def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     if len(token) < 32:
         raise ValueError("Console tokens need at least 32 characters")
-    app = FastAPI(title="DeployOps local console", docs_url=None, redoc_url=None, openapi_url=None)
+    from .delivery.serving import Sessions
+    serving = Sessions(port)
+
+    # End only this console process's owned content sessions
+    @asynccontextmanager
+    async def lifespan(app):
+        try:
+            yield
+        finally:
+            serving.close()
+
+    app = FastAPI(title="DeployOps local console", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     assets = Path(str(files("deploy_ops").joinpath("ui")))
     origins = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
     hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
@@ -157,6 +169,31 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         if not isinstance(identifier, str):
             raise Refused("Invalid operator identifier", 422)
         return Operator(engine).call(action, identifier, body.get("values", {}))
+
+
+    # Read back process-owned listeners without creating or adopting a session
+    @app.get("/api/serving", dependencies=[Depends(operator)])
+    def serving_status():
+        return serving.list()
+
+
+    # Fixed serving inputs cannot select host paths, commands or another owner's process
+    @app.post("/api/serving/{action}", dependencies=[Depends(operator)])
+    async def serving_action(action: str, request: Request):
+        try:
+            body = await request.json()
+        except ValueError:
+            raise Refused("Invalid serving request", 422) from None
+        if not isinstance(body, dict):
+            raise Refused("Invalid serving fields", 422)
+        if action == "start":
+            if set(body) - {"release", "component", "port"} or not all(isinstance(body.get(key), str) for key in ("release", "component")):
+                raise Refused("Choose a release, component and optional port", 422)
+            return serving.start(engine, body["release"], body["component"], body.get("port", 0))
+        if (action == "stop" and set(body) == {"id"} and isinstance(body["id"], str)
+                and len(body["id"]) == 32 and all(char in "0123456789abcdef" for char in body["id"])):
+            return serving.stop(body["id"])
+        raise Refused("Unknown serving action or fields", 422)
 
 
     # Load the packaged console without granting API access
@@ -376,7 +413,8 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
                 request_statuses[name] = {"status": request["status"], "digest": request["digest"]}
             except Exception:
                 request_statuses[name] = {"status": "unavailable", "digest": None}
-        return {"release": release, "events": engine.ledger.events(release_id),
+        return {"serving_sessions": [item for item in serving.list() if item["release"] == release_id],
+                "release": release, "events": engine.ledger.events(release_id),
                 "request_statuses": request_statuses,
                 "cleanup_request": engine.gate.status(cleanup["request_id"]) if cleanup.get("request_id") else None,
                 "artifact_actions": engine.artifact_actions(release)}

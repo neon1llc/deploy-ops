@@ -350,6 +350,26 @@ function reviewWorkflow(root, workflow) {
 }
 
 
+// Keep local serving separate from activation, authority and preview cleanup
+function renderServing(area, release, name, sessions) {
+  text(area, "h4", "Serve this static revision");
+  text(area, "p", "Serving opens this retained revision on a separate loopback origin. It does not deploy or change the current target. If an action response is lost, refresh to inspect its session before retrying.");
+  const session = sessions.find(item => item.component === name);
+  if (!session) {
+    area.append(button("Start serving", async () => {
+      await api("/serving/start", "POST", {release: release.id, component: name}); await refresh();
+    }, "serving-start-" + name));
+    return;
+  }
+  text(area, "p", "Session: " + session.status + " · selected artifact " + session.digest);
+  const link = document.createElement("a"); link.href = session.url; link.textContent = session.url;
+  link.target = "_blank"; link.rel = "noopener noreferrer"; link.referrerPolicy = "no-referrer"; area.append(link);
+  area.append(button("Stop serving", async () => {
+    await api("/serving/stop", "POST", {id: session.id}); await refresh();
+  }, "serving-stop-" + name));
+}
+
+
 // Explain reviewed evidence and expose actions valid for the current release
 async function show(id) {
   selected = id;
@@ -410,6 +430,7 @@ async function show(id) {
       await api("/releases/" + id + "/approve", "POST", { component: name, digest: node.request_digest });
       message("Exact change approved. Execution is a separate action."); await refresh();
     }, "approve-" + name));
+    if (node.status === "succeeded" && node.adapter === "static") renderServing(area, release, name, data.serving_sessions || []);
     if (node.status === "succeeded") reviewEvidence(area, name + ":outputs", "Recorded deployment outputs", node.outputs, expanded);
     const actions = data.artifact_actions.filter((action) => action.component === name);
     if (actions.length) {

@@ -239,3 +239,35 @@ infrastructure separately, then promote the successful development application a
 contract. A configuration change after the origin release requires a fresh release; it does not rewrite
 an approval or relax promotion checks. These guided operations cover local build checks/command and
 DirectoryOptions/StaticOptions, not environment-specific builds or arbitrary provider options.
+
+## Serve a selected static revision
+
+A successful static component offers **Start serving** in its release detail. The console starts an
+owned listener on a separate OS-assigned loopback port. Inspect its session status and URL, then open the
+link explicitly. **Stop serving** closes that session only. Neither action builds, deploys, changes active
+pointers or approvals, retires previews, or deletes files. A newer deployment does not change the selected
+revision's content. Session status describes the listener and preview lifetime, not current activation or
+application health.
+
+The existing foreground command uses the same serving core:
+
+```bash
+deploy-ops preview RELEASE_ID --component web --port 8000
+```
+
+Use `--port 0` for an OS-assigned port. Ctrl-C or termination closes the CLI's own listener. Console
+shutdown closes its sessions; restarting restores none. The console cannot stop a separate CLI's session.
+Repeated console starts return the existing session; refresh resolves an unknown start response before
+retrying. At most eight sessions belong to a console process. A port collision never evicts its occupant.
+
+Content is read-only and limited to bounded regular files from the retained reviewed revision. Missing or
+changed evidence and files are refused. Unknown paths, symlinks, directory listings and known controller
+state filenames are not served. Keep secrets out of static artifacts; this is not a secret scanner or a
+hostile-code sandbox. Other local processes can read loopback content. Content must use its own origin,
+never a proxy or iframe at the operator console origin. No console token, CORS permission or credential
+cookie is added to content responses.
+
+For isolated previews, expiry or actual retirement refuses new content with HTTP 410. Preparing or
+approving cleanup alone preserves reads. A response already accepted may finish. Stopping a session leaves
+all deployment and cleanup records/files unchanged. Source, CLI/HTTP and DOM checks do not establish
+foreground-browser or production-hosting qualification.

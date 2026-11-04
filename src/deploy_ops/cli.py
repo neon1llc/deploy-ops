@@ -329,43 +329,27 @@ def dispatch(args):
             return execute_cleanup(engine, args.release)
         return reconcile_cleanup(engine, args.release, args.note, args.confirm_removed)
     if args.command == "preview":
-        from functools import partial
-        from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-        from .delivery.files import inside
-        release = engine.ledger.get(args.release)
-        node = release["nodes"].get(args.component, {})
-        if node.get("status") != "succeeded" or node.get("adapter") != "static" or not 1024 <= args.port <= 65535:
-            raise Refused("Choose a successful static component and an unprivileged port", 422)
-        if release.get("preview"):
-            from .delivery.previews import active
-            active(engine, release)
-        site = inside(engine.deployment_root(release), node["outputs"]["path"])
+        import signal
+        import time
+        from .delivery.serving import Sessions
+        sessions = Sessions()
+        previous = signal.getsignal(signal.SIGTERM)
 
+        # Termination closes only this foreground process's owned listener
+        def terminate(signum, frame):
+            raise KeyboardInterrupt
 
-        # Serve only the selected artifact while checking preview lifetime on each request
-        class PreviewHandler(SimpleHTTPRequestHandler):
-            # Reject expired previews and paths outside the deployed artifact
-            def send_head(self):
-                if release.get("preview"):
-                    from .delivery.previews import active
-                    try:
-                        active(engine, engine.ledger.get(release["id"]))
-                    except (Refused, OSError):
-                        self.send_error(410, "Preview expired or retired")
-                        return None
-                requested = Path(self.translate_path(self.path)).resolve()
-                if not requested.is_relative_to(site):
-                    self.send_error(403, "Path leaves the preview")
-                    return None
-                return super().send_head()
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), partial(PreviewHandler, directory=str(site)))
-        print(f"Static release: http://127.0.0.1:{args.port} | Ctrl-C stops this preview")
+        signal.signal(signal.SIGTERM, terminate)
         try:
-            server.serve_forever()
+            session = sessions.start(engine, args.release, args.component, args.port)
+            print(f"Static release: {session['url']} | Ctrl-C stops this session", flush=True)
+            while True:
+                time.sleep(1)
         except KeyboardInterrupt:
             pass
         finally:
-            server.server_close()
+            sessions.close()
+            signal.signal(signal.SIGTERM, previous)
         return {"status": "preview-stopped"}
 
     # Notification delivery cannot acknowledge or resolve an incident

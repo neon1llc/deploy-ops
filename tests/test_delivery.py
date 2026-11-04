@@ -481,3 +481,77 @@ def test_operator_unregistered_mode_and_invalid_body(engine, monkeypatch):
     monkeypatch.setattr(engine, 'gate', object())
     assert Operator(engine).status()['available'] is False
     assert client.post('/api/operator/pause', headers=headers, json={}).status_code == 403
+
+
+# Serve only an immutable reviewed revision and stop process-owned listeners independently
+def test_static_serving_owned_lifecycle(engine):
+    import socket
+    from deploy_ops.delivery.serving import Sessions
+    release = finish(engine, engine.create('development'))
+    serving = Sessions(8765)
+    occupied = socket.socket(); occupied.bind(('127.0.0.1', 0)); occupied.listen()
+    try:
+        first = serving.start(engine, release['id'], 'web')
+        assert first == serving.start(engine, release['id'], 'web')
+        response = httpx.get(first['url'])
+        assert response.status_code == 200
+        assert 'access-control-allow-origin' not in response.headers and 'set-cookie' not in response.headers
+        assert response.headers['cache-control'] == 'no-store'
+        assert httpx.head(first['url']).content == b''
+        assert httpx.get(first['url'], headers={'Host': 'outside.example'}).status_code == 403
+        assert httpx.get(first['url'] + '/prepared.json').status_code == 404
+        assert httpx.get(first['url'] + '/%2e%2e/secret').status_code == 403
+        assert httpx.get(first['url'] + '/missing/').status_code == 404
+        with pytest.raises(Refused):
+            serving.start(engine, release['id'], 'foundation')
+        second_release = finish(engine, engine.create('development', 'web', False))
+        with pytest.raises(Refused):
+            serving.start(engine, second_release['id'], 'web', occupied.getsockname()[1])
+        assert len(serving.list()) == 1
+        second = serving.start(engine, second_release['id'], 'web')
+        assert second['id'] != first['id']
+        files = Path(release['nodes']['web']['outputs']['path'])
+        original = (files / 'index.html').read_bytes()
+        (files / 'index.html').write_text('changed')
+        assert httpx.get(first['url']).status_code == 410
+        (files / 'index.html').unlink()
+        outside = files.parent / 'private.txt'; outside.write_text('private-sentinel')
+        (files / 'index.html').symlink_to(outside)
+        refused = httpx.get(first['url'])
+        assert refused.status_code == 410 and 'private-sentinel' not in refused.text
+        (files / 'index.html').unlink(); (files / 'index.html').write_bytes(original)
+        evidence = engine.state / 'releases' / release['id'] / 'web' / 'prepared.json'
+        saved = evidence.read_bytes(); evidence.write_text('{}')
+        assert httpx.get(first['url']).status_code == 410
+        evidence.write_bytes(saved)
+        serving.stop(first['id']); serving.stop(first['id']); serving.stop('not-owned')
+        assert files.is_dir() and httpx.get(second['url']).status_code == 200
+        (files / 'index.html').write_text('changed')
+        with pytest.raises(Refused):
+            serving.start(engine, release['id'], 'web')
+        assert occupied.getsockname()[1] > 0
+    finally:
+        serving.close(); occupied.close()
+    with pytest.raises(httpx.ConnectError):
+        httpx.get(second['url'], timeout=1)
+
+
+# Console lifecycle preserves authentication and closes owned sessions on shutdown
+def test_console_static_serving_shutdown_and_auth(engine):
+    release = finish(engine, engine.create('development'))
+    headers = {'Authorization': 'Bearer ' + 'x' * 43}
+    app = create_app(engine, 'x' * 43)
+    with TestClient(app, base_url='http://127.0.0.1:8765') as client:
+        assert client.get('/api/serving').status_code == 401
+        assert client.post('/api/serving/start', headers={**headers, 'Origin': 'https://outside.example'}, json={}).status_code == 403
+        session = client.post('/api/serving/start', headers=headers, json={'release': release['id'], 'component': 'web'}).json()
+        assert httpx.get(session['url']).status_code == 200
+        assert client.get('/api/serving', headers=headers).json()[0]['id'] == session['id']
+        assert client.post('/api/serving/stop', headers=headers, json={'id': 'f' * 32}).json()['status'] == 'not-owned-or-stopped'
+        assert httpx.get(session['url']).status_code == 200
+        assert client.post('/api/serving/start', headers=headers, json={'release': release['id'], 'component': 'web', 'port': 8765}).status_code == 422
+        assert client.post('/api/serving/start', headers=headers, json={'release': release['id'], 'component': 'web', 'path': '/tmp'}).status_code == 422
+    with pytest.raises(httpx.ConnectError):
+        httpx.get(session['url'], timeout=1)
+    with TestClient(create_app(engine, 'x' * 43), base_url='http://127.0.0.1:8765') as client:
+        assert client.get('/api/serving', headers=headers).json() == []

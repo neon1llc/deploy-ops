@@ -359,3 +359,27 @@ def test_cli_and_console_share_preview_contract(preview_engine):
     assert approved.status_code == 200
     cleaned = dispatch(parser().parse_args(['--project',str(engine.path),'previews','cleanup',release['id']]))
     assert cleaned['cleanup']['status'] == 'retired'
+
+
+# Cleanup review preserves serving until actual retirement; clock expiry refuses only new reads
+def test_serving_preview_cleanup_and_expiry(preview_engine, monkeypatch):
+    import httpx
+    from deploy_ops.delivery.serving import Sessions
+    engine = preview_engine
+    release = deploy(engine)
+    sessions = Sessions()
+    session = sessions.start(engine, release['id'], 'web')
+    try:
+        prepared = prepare_cleanup(engine, release['id'])
+        assert httpx.get(session['url']).status_code == 200
+        approve_cleanup(engine, release['id'], prepared['cleanup']['request_digest'])
+        assert httpx.get(session['url']).status_code == 200
+        with monkeypatch.context() as clock:
+            clock.setattr('deploy_ops.delivery.previews.time.time', lambda: release['preview']['expires_at'])
+            assert httpx.get(session['url']).status_code == 410
+        assert httpx.get(session['url']).status_code == 200
+        execute_cleanup(engine, release['id'])
+        assert httpx.get(session['url']).status_code == 410
+        assert sessions.list()[0]['status'] == 'retired'
+    finally:
+        sessions.close()
