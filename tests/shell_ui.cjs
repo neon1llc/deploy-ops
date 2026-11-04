@@ -48,6 +48,7 @@ class Node {
   // Keep map-row operations and browser validity state observable
   get lastElementChild() { return this.children.at(-1) || null; }
   setCustomValidity(message) { this.validationMessage = message; }
+  reportValidity() { return !this.validationMessage; }
   remove() {
     this.parentElement.children = this.parentElement.children.filter(node => node !== this);
     this.parentElement = null;
@@ -368,5 +369,18 @@ console.log("Shell navigation, complete settings discovery, retained drafts, fac
   assert.equal(app.node("operator-note").value, "Unfinished inspection note");
   assert.ok(operatorCalls.every(call => !/resume$/.test(call.path) && !/releases/.test(call.path)));
   assert.equal(app.node("operator-audit").textContent, "4 verified events · chain head verified");
+  // Invalid inspection notes cannot send; an approval-only decision remains independent
+  app.node("operator-note").value = "";
+  const beforeInvalid = operatorCalls.length;
+  await app.node("operator-decision").onsubmit({preventDefault() {}, submitter: {value: "resolve"}});
+  assert.equal(operatorCalls.length, beforeInvalid);
+  assert.match(app.node("operator-note").validationMessage, /10 characters/);
+  paused = false; request.status = "pending";
+  await vm.runInContext("operatorLoad()", app.context);
+  await app.node("operator-decision").onsubmit({preventDefault() {}, submitter: {value: "approve"}});
+  const decision = operatorCalls.find(call => call.path === "/operator/decision");
+  assert.equal(decision.body.values.note, "");
+  assert.equal(decision.body.values.digest, request.digest);
+  assert.ok(!operatorCalls.some(call => /releases/.test(call.path)));
   console.log("Creation and operator DOM: typed requests, authority state and independent drafts passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

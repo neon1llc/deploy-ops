@@ -98,7 +98,7 @@ element("operator-decision").onsubmit = (event) => {
   if (!note.reportValidity()) { note.focus(); return; }
   const values = choice === "resolve" ? {outcome: element("operator-outcome").value, note: element("operator-note").value}
     : {digest: request.digest, decision: choice, note: element("operator-note").value};
-  operatorRun(async () => {
+  return operatorRun(async () => {
     await api("/operator/" + (choice === "resolve" ? "resolve" : "decision"), "POST", {identifier: request.id, values});
     await operatorLoad();
   });
