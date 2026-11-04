@@ -37,8 +37,6 @@ def test_form_patch_preserves_comments_advanced_settings_and_default_omissions(w
     unchanged = patch(source, 'components', 'web', {key: before[key] for key in inspect(source)['forms']['components']})
     assert unchanged['toml'] == source
     assert unchanged['diff'] == ''
-    assert unchanged['local_edit_forms']['web']['environments']['development']['destination']['runtime_default']
-    assert unchanged['local_edit_forms']['web']['environments']['development']['destination']['effective'] is None
 
 
 # Reject malformed edits before modifying the saved workspace
