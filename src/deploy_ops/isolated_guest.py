@@ -28,6 +28,15 @@ PROVIDER_FILE = "/opt/deployops-tools/providers/registry.opentofu.org/hashicorp/
 LIMIT = 12_000_000
 
 
+# Retain only a fixed native command name and numeric exit status
+class NativeFailure(RuntimeError):
+    # Exclude arbitrary command arguments from the public failure record
+    def __init__(self, stage, exit_code):
+        self.stage = stage if stage in {"version", "init", "plan", "show", "apply", "state"} else "native"
+        self.exit_code = exit_code
+        super().__init__("Isolated native command failed")
+
+
 # Fail with a public reason without including provider output or tokens
 def require(condition, reason):
     if not condition:
@@ -82,7 +91,8 @@ def run(command, directory, environment, uid, gid, authority):
                 authority()
                 require(output.tell() + errors.tell() <= LIMIT, "Native output exceeded limit")
                 time.sleep(0.1)
-            require(process.returncode == 0, "Native command failed; inspect the approved target")
+            if process.returncode != 0:
+                raise NativeFailure(command[1], process.returncode)
             output.seek(0)
             result = output.read(LIMIT + 1)
             require(len(result) <= LIMIT, "Native output exceeded limit")
@@ -261,6 +271,9 @@ def main():
                     "Invalid temporary credential")
             result = execute(packet, secret["token"], sys.stdin.buffer, binary, account)
             emit({"result": result})
+    except NativeFailure as error:
+        emit({"error": "Isolated native command failed", "stage": error.stage, "exit_code": error.exit_code})
+        return 1
     except Exception:
         # Native details remain private; the controller records uncertainty for incomplete operations
         emit({"error": "Isolated native operation failed; inspect the target before retrying"})

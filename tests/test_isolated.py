@@ -504,7 +504,8 @@ def test_lima_cleanup_permission_race(monkeypatch, exited):
     from unittest.mock import Mock
     from deploy_ops.isolated import _stop_lima
     process = Mock()
-    process.poll.side_effect = [None, 0 if exited else None]
+    process.poll.return_value = None
+    process.wait.side_effect = None if exited else subprocess.TimeoutExpired('fixture', 0.2)
     stop = Mock(side_effect=[PermissionError('fixture'), None])
     monkeypatch.setattr('deploy_ops.isolated._stop', stop)
     if exited:
@@ -514,6 +515,7 @@ def test_lima_cleanup_permission_race(monkeypatch, exited):
         with pytest.raises(PermissionError):
             _stop_lima(process)
         assert stop.call_count == 1
+    process.wait.assert_called_once_with(timeout=0.2)
 
 
 # Still attempt descendant cleanup after the transport leader has already been reaped
@@ -527,3 +529,56 @@ def test_lima_cleanup_retains_descendant_permission_failure(monkeypatch):
     with pytest.raises(PermissionError):
         _stop_lima(process)
     assert stop.call_count == 2
+
+
+# Surface only the native command enum and exit code while withholding arbitrary guest text
+@pytest.mark.parametrize('stage,code,expected', [
+    ('plan', 1, 'native plan failed with exit code 1'),
+    ('init', -15, 'native init failed with exit code -15'),
+    (TOKEN, 1, 'Isolated operation failed'),
+    (['plan'], 1, 'Isolated operation failed'),
+    ('plan', TOKEN, 'Isolated operation failed'),
+    ('plan', True, 'Isolated operation failed'),
+    ('plan', 0, 'Isolated operation failed'),
+    ('plan', 256, 'Isolated operation failed'),
+])
+def test_lima_native_failure_is_safe(setup, monkeypatch, stage, code, expected):
+    route, _, _ = setup
+    original = subprocess.Popen
+    response = {'error': TOKEN, 'stage': stage, 'exit_code': code}
+    script = 'import sys; sys.stdout.write(' + repr(json.dumps(response) + '\n') + '); sys.stdout.flush()'
+
+    # Use an actual local protocol peer with no cloud credentials or guest invocation
+    def spawn(*args, **kwargs):
+        return original([sys.executable, '-I', '-c', script], **kwargs)
+
+    monkeypatch.setattr(subprocess, 'Popen', spawn)
+    monkeypatch.setattr(LimaRunner, 'verify', lambda self: None)
+    monkeypatch.setattr('deploy_ops.isolated.native_tool', lambda value: value)
+    with pytest.raises(Refused, match=expected) as failure:
+        LimaRunner(route.grant).run({'deadline': time.time() + 10},
+                                   lambda: pytest.fail('Unexpected credential request'), lambda: None)
+    assert TOKEN not in str(failure.value)
+
+
+# Keep provider stderr and arbitrary exception text out of the guest failure protocol
+def test_guest_native_failure_protocol(monkeypatch, capsys):
+    import contextlib
+    from deploy_ops import isolated_guest as guest
+    messages = iter([{'packet_digest': 'fixture'}, {'token': TOKEN}])
+    monkeypatch.setattr(guest, 'exclusive', contextlib.nullcontext)
+    monkeypatch.setattr(guest, 'message', lambda stream: next(messages))
+    monkeypatch.setattr(guest, 'preflight', lambda packet: ('unused', None))
+
+    # Only fixed fields survive even if the exception object contains private diagnostic text
+    def fail(*args):
+        error = guest.NativeFailure('init', 7)
+        error.args = (TOKEN,)
+        raise error
+
+    monkeypatch.setattr(guest, 'execute', fail)
+    assert guest.main() == 1
+    output = capsys.readouterr().out
+    assert TOKEN not in output
+    assert json.loads(output.splitlines()[-1]) == {
+        'error': 'Isolated native command failed', 'stage': 'init', 'exit_code': 7}

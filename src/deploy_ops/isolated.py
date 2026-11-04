@@ -103,10 +103,12 @@ def _stop_lima(process):
     process.poll()
     try:
         _stop(process)
-    except PermissionError:
-        # Darwin can deny a signal to a group containing only an unreaped zombie
-        if process.poll() is None:
-            raise
+    except PermissionError as error:
+        # Darwin can deny a signal while the last group member is becoming a zombie
+        try:
+            process.wait(timeout=0.2)
+        except subprocess.TimeoutExpired:
+            raise error
         _stop(process)
 
 
@@ -178,6 +180,11 @@ class LimaRunner:
                     value = None
                 if value:
                     if value.get("error"):
+                        # Never reflect guest diagnostics or provider-controlled text into the audit
+                        stage, code = value.get("stage"), value.get("exit_code")
+                        if (isinstance(stage, str) and stage in {"version", "init", "plan", "show", "apply", "state", "native"}
+                                and type(code) is int and -255 <= code <= 255 and code != 0):
+                            raise Refused(f"Isolated native {stage} failed with exit code {code}; inspect the target before retrying")
                         raise Refused("Isolated operation failed; inspect the target before retrying")
                     if not ready:
                         sender.join(timeout=1)
