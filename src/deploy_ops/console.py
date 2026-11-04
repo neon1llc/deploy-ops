@@ -5,8 +5,6 @@ import hmac
 import os
 import secrets
 import threading
-import tomllib
-import time
 from importlib.resources import files
 from pathlib import Path
 
@@ -224,51 +222,22 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     @app.post("/api/config/{action}", dependencies=[Depends(operator)])
     def configure(action: str, data: Input):
         nonlocal engine
-        from .delivery.spec import Workspace
         from .delivery.engine import Engine
-        from .delivery.configuration import difference, inspect, patch, source_hash
-        from pydantic import ValidationError
+        from .delivery.configuration import inspect, patch, save, validate
         if action == "inspect":
             return inspect(data.configuration)
         if action == "patch":
             return patch(data.configuration, data.section, data.name, data.values)
-        try:
-            proposed = Workspace.model_validate(tomllib.loads(data.configuration))
-        except (ValueError, ValidationError) as error:
-            raise Refused(str(error), 422) from error
-        if action == "validate":
-            return {"digest": proposed.digest, "order": proposed.order(), "status": "valid",
-                    "diff": difference(engine.path.read_text(), data.configuration)}
-        if action != "save" or engine.gate.__class__.__name__ != "LocalGate":
-            raise Refused("Only local operators may save a local workspace here", 403)
+        if action in {"validate", "diff"}:
+            return validate(data.configuration, engine.path.read_text())
+        if action != "save":
+            raise Refused("Unknown configuration action", 404)
 
-        # The same mutex excludes release creation while checking and replacing the workspace
+        # The console mutex also excludes its workers while the shared owner checks other processes
         with mutex:
-            current = engine.path.read_text()
-            if data.source_hash != source_hash(current):
-                raise Refused("The workspace changed since it was loaded. Preserve your draft and reload before saving")
-            active = any(item["status"] not in ("succeeded", "failed", "cancelled") for item in engine.ledger.list())
-            if workers or active:
-                raise Refused("Finish, cancel, or reconcile outstanding releases before changing configuration")
-
-            # Preserve the previous authored file before the atomic replacement
-            backup = engine.state / "previous-workspace.toml"
-            backup.write_text(current)
-            backup.chmod(0o600)
-            pending = engine.path.with_suffix(".pending")
-            if pending.exists():
-                raise Refused("A pending configuration file already exists. Inspect it first")
-            descriptor = os.open(pending, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            with os.fdopen(descriptor, "w") as stream:
-                stream.write(data.configuration)
-            os.replace(pending, engine.path)
-
-            # Record the contract change before rebuilding the engine from its saved owner
-            with engine.ledger.store.transaction() as connection:
-                engine.ledger.store.event(connection, int(time.time()), "local-operator", "workspace.updated", proposed.name,
-                                          {"old_digest": engine.spec.digest, "new_digest": proposed.digest})
+            result = save(engine, data.configuration, data.source_hash, bool(workers))
             engine = Engine(engine.path, engine.state)
-        return {"digest": engine.spec.digest, "status": "saved", "reload": True}
+        return result
 
 
     # Expose paging drafts and per-destination evidence without credential values

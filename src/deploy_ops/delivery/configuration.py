@@ -3,6 +3,9 @@
 
 import difflib
 import hashlib
+import os
+import time
+from contextlib import contextmanager
 import tomllib
 
 import tomlkit
@@ -105,3 +108,68 @@ def patch(source: str, section: str, name: str, values: dict) -> dict:
     revised = tomlkit.dumps(document)
     result = inspect(revised)
     return {**result, "toml": revised, "diff": difference(source, revised)}
+
+
+# Validate a proposed contract and expose both draft and saved source identities
+def validate(source: str, current: str) -> dict:
+    result = inspect(source)
+    return {key: result[key] for key in ("digest", "order", "source_hash")} | {
+        "status": "valid", "saved_source_hash": source_hash(current), "diff": difference(current, source),
+    }
+
+
+# Exclude configuration saves and release preparation across local CLI and console processes
+@contextmanager
+def boundary(engine):
+    import fcntl
+    descriptor = os.open(engine.state / "workspace.lock", os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise Refused("Workspace configuration or release preparation is active; retry after it finishes") from None
+        yield
+    finally:
+        os.close(descriptor)
+
+
+# Save the reviewed draft only while the local workspace has no outstanding delivery work
+def save(engine, source: str, expected_hash: str, worker_active: bool = False) -> dict:
+    proposed = inspect(source)
+    if engine.gate.__class__.__name__ != "LocalGate":
+        raise Refused("Only local operators may save a local workspace here", 403)
+    with boundary(engine):
+        current = engine.path.read_text()
+        if expected_hash != source_hash(current):
+            raise Refused("The workspace changed since it was loaded. Preserve your draft and reload before saving")
+        current_digest = inspect(current)["digest"]
+        with engine.ledger.store.transaction() as connection:
+            active = connection.execute(
+                "SELECT 1 FROM releases WHERE status NOT IN ('succeeded','failed','cancelled') LIMIT 1"
+            ).fetchone()
+            if worker_active or active:
+                raise Refused("Finish, cancel, or reconcile outstanding releases before changing configuration")
+
+            # Refuse an earlier interrupted write before changing the recovery copy
+            pending = engine.path.with_suffix(".pending")
+            try:
+                descriptor = os.open(pending, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError:
+                raise Refused("A pending configuration file already exists. Inspect it first") from None
+            with os.fdopen(descriptor, "w") as stream:
+                stream.write(source)
+            if source_hash(engine.path.read_text()) != expected_hash:
+                pending.unlink()
+                raise Refused("The workspace changed during saving. Preserve your draft and reload before saving")
+
+            # Preserve authored content before atomically replacing the workspace
+            backup = engine.state / "previous-workspace.toml"
+            backup_descriptor = os.open(backup, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
+            with os.fdopen(backup_descriptor, "w") as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(current)
+            os.replace(pending, engine.path)
+            engine.ledger.store.event(connection, int(time.time()), "local-operator", "workspace.updated",
+                                      proposed["configuration"]["name"],
+                                      {"old_digest": current_digest, "new_digest": proposed["digest"]})
+    return {"digest": proposed["digest"], "source_hash": proposed["source_hash"], "status": "saved", "reload": True}

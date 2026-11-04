@@ -34,8 +34,10 @@ def parser():
     provider.add_argument("action", choices=["inspect", "discard"])
     provider.add_argument("release")
     provider.add_argument("component")
-    config = commands.add_parser("config", help="Inspect or edit a configuration draft without saving it")
-    config.add_argument("action", choices=["inspect", "patch"])
+    config = commands.add_parser("config", help="Inspect, edit, validate, compare or explicitly save a workspace draft")
+    config.add_argument("action", choices=["inspect", "patch", "validate", "diff", "save"])
+    config.add_argument("--file", type=Path, help="Draft TOML input; required for validate, diff and save")
+    config.add_argument("--source-hash", help="Exact saved workspace hash from inspect; required for save")
     config.add_argument("--section", choices=["repositories", "environments", "components", "options"])
     config.add_argument("--name")
     config.add_argument("--values", type=json.loads, default={})
@@ -194,9 +196,20 @@ def dispatch(args):
         from importlib.resources import files
         return json.loads(files("deploy_ops").joinpath("catalog.json").read_text())
     if args.command == "config":
-        from .delivery.configuration import inspect, patch
-        source = args.project.read_text()
-        return inspect(source) if args.action == "inspect" else patch(source, args.section, args.name, args.values)
+        from .delivery.configuration import inspect, patch, save, validate
+        if args.action in {"validate", "diff", "save"} and not args.file:
+            raise Refused("Choose the proposed TOML draft with --file", 422)
+        if args.action == "save" and not args.source_hash:
+            raise Refused("Provide the saved workspace --source-hash from config inspect", 422)
+        source = (args.file or args.project).read_text()
+        if args.action == "inspect":
+            return inspect(source)
+        if args.action == "patch":
+            return patch(source, args.section, args.name, args.values)
+        if args.action in {"validate", "diff"}:
+            return validate(source, args.project.read_text())
+        from .delivery.engine import Engine
+        return save(Engine(args.project, args.state, args.controller), source, args.source_hash)
 
     # Stateful actions share the same workspace and ledger owner
     from .delivery.engine import Engine

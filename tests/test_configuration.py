@@ -2,6 +2,8 @@
 
 
 import json
+import subprocess
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -176,3 +178,146 @@ template = "main.json"
         patch(source, "options", "foundation/staging", {"credentials_file": "/untrusted/key"})
     with pytest.raises(Refused):
         patch(source, "options", "foundation/staging", {"capabilities": ["CAPABILITY_AUTO_EXPAND"]})
+
+
+# The CLI validates and compares a draft without creating operator state
+@pytest.mark.parametrize('action', ['validate', 'diff'])
+def test_cli_draft_review_matches_console_and_has_no_state_side_effect(workspace, tmp_path, action):
+    source = workspace.read_text()
+    draft = tmp_path / 'draft.toml'
+    draft.write_text(patch(source, 'components', 'web', {'timeout_seconds': 900})['toml'])
+    arguments = ['--project', str(workspace), 'config', action, '--file', str(draft)]
+    result = dispatch(parser().parse_args(arguments))
+    assert not (workspace.parent / '.deploy-ops').exists()
+    assert result['saved_source_hash'] == source_hash(source)
+    assert result['source_hash'] == source_hash(draft.read_text())
+    assert '+timeout_seconds = 900' in result['diff']
+    client = TestClient(create_app(Engine(workspace), 't' * 40), base_url='http://127.0.0.1:8765')
+    response = client.post('/api/config/' + action, json={'configuration': draft.read_text()},
+                           headers={'Authorization': 'Bearer ' + 't' * 40})
+    assert response.json() == result
+    assert workspace.read_text() == source
+
+
+# An explicit CLI save records the exact source, recovery copy and audit event
+def test_cli_save_requires_source_identity_and_rejects_a_stale_retry(workspace, tmp_path):
+    source = workspace.read_text()
+    draft = tmp_path / 'draft.toml'
+    draft.write_text(patch(source, 'components', 'web', {'timeout_seconds': 900})['toml'])
+    arguments = ['--project', str(workspace), 'config', 'save', '--file', str(draft)]
+    with pytest.raises(Refused, match='source-hash'):
+        dispatch(parser().parse_args(arguments))
+    assert not (workspace.parent / '.deploy-ops').exists()
+    arguments += ['--source-hash', source_hash(source)]
+    result = dispatch(parser().parse_args(arguments))
+    assert result['status'] == 'saved'
+    assert result['source_hash'] == source_hash(draft.read_text())
+    assert workspace.read_text() == draft.read_text()
+    state = workspace.parent / '.deploy-ops'
+    backup = state / 'previous-workspace.toml'
+    assert backup.read_text() == source
+    assert backup.stat().st_mode & 0o777 == 0o600
+    engine = Engine(workspace)
+    events = [json.loads(row['payload']) for row in engine.ledger.store.audit()]
+    event = next(row for row in events if row['event'] == 'workspace.updated')
+    assert event['detail'] == {'old_digest': inspect(source)['digest'], 'new_digest': result['digest']}
+    with pytest.raises(Refused, match='changed since'):
+        dispatch(parser().parse_args(arguments))
+    assert backup.read_text() == source
+
+
+# Missing or invalid input cannot silently validate or overwrite the saved file
+@pytest.mark.parametrize('action', ['validate', 'diff', 'save'])
+def test_cli_review_requires_an_explicit_draft(workspace, action):
+    with pytest.raises(Refused, match='--file'):
+        dispatch(parser().parse_args(['--project', str(workspace), 'config', action]))
+
+
+# A pending recovery artifact remains intact when a new save is refused
+def test_pending_file_is_preserved_without_overwriting_backup(workspace):
+    from deploy_ops.delivery.configuration import save
+    engine = Engine(workspace)
+    source = workspace.read_text()
+    pending = workspace.with_suffix('.pending')
+    pending.write_text('interrupted draft')
+    backup = engine.state / 'previous-workspace.toml'
+    backup.write_text('earlier backup')
+    with pytest.raises(Refused, match='pending configuration'):
+        save(engine, source, source_hash(source))
+    assert pending.read_text() == 'interrupted draft'
+    assert backup.read_text() == 'earlier backup'
+    assert workspace.read_text() == source
+
+
+# Shared locking covers a second CLI process while source capture is still running
+def test_cli_save_cannot_cross_release_preparation(workspace, tmp_path, monkeypatch):
+    import deploy_ops.delivery.engine as implementation
+    source = workspace.read_text()
+    draft = tmp_path / 'draft.toml'
+    draft.write_text(patch(source, 'components', 'web', {'timeout_seconds': 900})['toml'])
+    engine = Engine(workspace)
+    entered, proceed = threading.Event(), threading.Event()
+    original = implementation.snapshot
+
+    # Hold the real source capture before the release is recorded in the ledger
+    def capture(*args):
+        entered.set()
+        assert proceed.wait(5)
+        return original(*args)
+    monkeypatch.setattr(implementation, 'snapshot', capture)
+    arguments = ['--project', str(workspace), 'config', 'save', '--file', str(draft), '--source-hash', source_hash(source)]
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        release = pool.submit(engine.create, 'development')
+        assert entered.wait(5)
+        try:
+            response = subprocess.run([sys.executable, '-m', 'deploy_ops.cli', *arguments],
+                                      capture_output=True, text=True, timeout=5)
+            assert response.returncode == 2
+            assert 'preparation is active' in response.stderr
+        finally:
+            proceed.set()
+        assert release.result()['status'] == 'queued'
+    with pytest.raises(Refused, match='outstanding releases'):
+        dispatch(parser().parse_args(arguments))
+    assert workspace.read_text() == source
+
+
+# An engine loaded before a successful settings save cannot capture the old contract
+def test_release_creation_rechecks_saved_configuration(workspace):
+    from deploy_ops.delivery.configuration import save
+    engine = Engine(workspace)
+    source = workspace.read_text()
+    revised = patch(source, 'components', 'web', {'timeout_seconds': 900})['toml']
+    save(engine, revised, source_hash(source))
+    with pytest.raises(Refused, match='workspace changed'):
+        engine.create('development')
+    assert engine.ledger.list() == []
+
+
+# An old outstanding release still blocks saving after newer history exceeds the display limit
+def test_save_checks_outstanding_work_beyond_recent_history(workspace):
+    from deploy_ops.delivery.configuration import save
+    engine = Engine(workspace)
+    source = workspace.read_text()
+    with engine.ledger.store.transaction() as connection:
+        for number in range(202):
+            status = 'waiting' if number == 0 else 'succeeded'
+            release = {'id': str(number), 'environment': 'development', 'status': status}
+            connection.execute('INSERT INTO releases VALUES (?, ?, ?, ?)',
+                               (str(number), 'development', status, json.dumps(release)))
+    assert all(item['status'] == 'succeeded' for item in engine.ledger.list())
+    with pytest.raises(Refused, match='outstanding releases'):
+        save(engine, source, source_hash(source))
+    assert workspace.read_text() == source
+
+
+# Controller selection never permits a CLI draft to rewrite worker authority
+def test_remote_cli_cannot_save_local_workspace(workspace, tmp_path):
+    source = workspace.read_text()
+    draft = tmp_path / 'draft.toml'
+    draft.write_text(source)
+    arguments = ['--project', str(workspace), '--controller', 'https://controller.example',
+                 'config', 'save', '--file', str(draft), '--source-hash', source_hash(source)]
+    with pytest.raises(Refused, match='Only local operators'):
+        dispatch(parser().parse_args(arguments))
+    assert workspace.read_text() == source

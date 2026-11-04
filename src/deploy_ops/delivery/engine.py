@@ -188,6 +188,19 @@ class Engine:
                agent: str = "", promote: str | None = None, rollback: bool = False,
                image: str | None = None, receipts: dict[str, str] | None = None,
                preview_owner: str = "", preview_hours: int = 1, retain_preview_data: bool = False) -> dict:
+        from .configuration import boundary
+        with boundary(self):
+            if load(self.path).digest != self.spec.digest:
+                raise Refused("The workspace changed; reload it before creating a release")
+            return self._create(environment, component, with_dependencies, agent, promote, rollback, image,
+                                receipts, preview_owner, preview_hours, retain_preview_data)
+
+
+    # Capture source and persist the release while holding the workspace boundary
+    def _create(self, environment: str, component: str | None, with_dependencies: bool,
+                agent: str, promote: str | None, rollback: bool, image: str | None,
+                receipts: dict[str, str] | None, preview_owner: str, preview_hours: int,
+                retain_preview_data: bool) -> dict:
         if receipts is not None and (not isinstance(receipts, dict) or any(not isinstance(key, str) or not isinstance(value, str) for key, value in receipts.items())):
             raise Refused("Infrastructure receipts must map component names to receipt IDs", 422)
         receipts = receipts or {}
@@ -256,6 +269,8 @@ class Engine:
             from .previews import initialize
             release["preview"] = preview_metadata
             initialize(self, release)
+        if load(self.path).digest != self.spec.digest:
+            raise Refused("The workspace changed during source capture; reload it before creating a release")
         self.ledger.save(release, "release.created", {"environment": environment, "order": list(nodes),
                                                     "actor_kind": "github" if isinstance(self.gate, RemoteGate) else "local"})
         return release
