@@ -1,5 +1,6 @@
 # tests/test_delivery.py - Check complete local paths and shared deployment boundaries.
 
+
 import json
 import os
 import sys
@@ -22,11 +23,13 @@ from deploy_ops.delivery.spec import Repository, Workspace
 from deploy_ops.errors import Refused
 
 
+# Create a disposable two-repository local workspace
 @pytest.fixture
 def engine(tmp_path):
     return Engine(create(tmp_path / "workspace"))
 
 
+# Deliver and promote one artifact through the full local lifecycle
 def test_complete_delivery_and_promotion(tmp_path):
     result = run(tmp_path / "complete")
     assert result["status"] == "succeeded"
@@ -34,6 +37,7 @@ def test_complete_delivery_and_promotion(tmp_path):
     assert result["http_check"].startswith("200")
 
 
+# Reuse infrastructure while consuming only the granted application authority
 def test_bounded_delegation_and_independent_app_release(engine):
     engine.gate.delegate("development", 1, 1)
     first = engine.advance(engine.create("development")["id"])
@@ -44,6 +48,7 @@ def test_bounded_delegation_and_independent_app_release(engine):
     assert engine.ledger.events(first["id"])
 
 
+# Refuse changed source and artifacts even after approval
 @pytest.mark.parametrize("area", ["source", "artifacts", "prepared.json", "artifacts/site/node_modules", "source/.venv"])
 def test_changed_evidence_cannot_execute(engine, area):
     first = finish(engine, engine.create("development", "foundation"))
@@ -61,6 +66,7 @@ def test_changed_evidence_cannot_execute(engine, area):
     assert not list(engine.deployments.glob("**/current.json"))
 
 
+# Cancellation invalidates pending and already approved local authority
 @pytest.mark.parametrize("approved", [False, True])
 def test_cancel_prepared_release_withdraws_authority(engine, approved):
     release = engine.advance(engine.create("development", "foundation")["id"])
@@ -76,6 +82,7 @@ def test_cancel_prepared_release_withdraws_authority(engine, approved):
     assert not list(engine.deployments.rglob("resource.json"))
 
 
+# Descendants cannot outlive command supervision after their parent exits
 @pytest.mark.skipif(os.name != "posix", reason="POSIX process-group supervision")
 def test_command_cleans_descendant_after_parent_exits(tmp_path):
     child = "import signal,time,pathlib; signal.signal(signal.SIGTERM,signal.SIG_IGN); pathlib.Path('ready').touch(); time.sleep(1); pathlib.Path('escaped').touch()"
@@ -90,6 +97,7 @@ def test_command_cleans_descendant_after_parent_exits(tmp_path):
     assert not (tmp_path / "escaped").exists()
 
 
+# A newer deployment prevents an older approval from replacing its pointer
 def test_stale_local_pointer_needs_reconciliation(engine):
     finish(engine, engine.create("development"))
     first = engine.advance(engine.create("development", "web", False)["id"])
@@ -101,6 +109,7 @@ def test_stale_local_pointer_needs_reconciliation(engine):
     assert recovered["status"] == "failed"
 
 
+# Local sandbox authority cannot impersonate cloud access
 def test_local_authority_cannot_write_cloud(engine):
     with pytest.raises(Refused, match="remote OIDC"):
         engine.gate.context("unregistered-cloud-target")
@@ -108,6 +117,7 @@ def test_local_authority_cannot_write_cloud(engine):
         engine.gate.delegate("production", 1, 1)
 
 
+# Reject graph, source and revision errors before execution
 @pytest.mark.parametrize("change", ["cycle", "missing", "escape", "revision"])
 def test_invalid_project_contracts(engine, change):
     config = engine.spec.model_dump()
@@ -123,6 +133,7 @@ def test_invalid_project_contracts(engine, change):
         Workspace.model_validate(config)
 
 
+# Build subprocesses do not inherit ambient provider or workflow tokens
 def test_subprocess_does_not_inherit_personal_tokens(tmp_path, monkeypatch):
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "not-for-builds")
     monkeypatch.setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "not-for-builds")
@@ -133,6 +144,7 @@ def test_subprocess_does_not_inherit_personal_tokens(tmp_path, monkeypatch):
     assert events[-1][0] == "command.finished"
 
 
+# Require loopback and token boundaries while reusing the shared graph
 def test_console_auth_origin_and_same_core(engine):
     token = "t" * 40
     client = TestClient(create_app(engine, token), base_url="http://127.0.0.1:8765")
@@ -150,9 +162,13 @@ def test_console_auth_origin_and_same_core(engine):
     assert "frame-ancestors 'none'" in result.headers["Content-Security-Policy"]
 
 
+# A retry preserves the receiver deduplication identity
 def test_notification_retry_uses_same_id(engine):
     engine.advance(engine.create("development")["id"])
     attempts = []
+
+
+    # Simulate one transient receiver failure followed by acceptance
     def handle(request):
         attempts.append(request.headers["Idempotency-Key"])
         return httpx.Response(503 if len(attempts) == 1 else 204)
@@ -162,6 +178,7 @@ def test_notification_retry_uses_same_id(engine):
     assert attempts[0] == attempts[1]
 
 
+# Rollback reuses reviewed bytes rather than rebuilding old source
 def test_rollback_reuses_a_previous_local_artifact(engine):
     first = finish(engine, engine.create("development"))
     page = engine.path.parent / "application" / "index.html"
@@ -172,6 +189,7 @@ def test_rollback_reuses_a_previous_local_artifact(engine):
     assert rollback["nodes"]["web"]["outputs"]["digest"] == first["nodes"]["web"]["outputs"]["digest"]
 
 
+# Uncommitted edits cannot change a release frozen from Git history
 def test_committed_git_sources_are_frozen(engine):
     import subprocess
     source = engine.path.parent / "application"
@@ -194,6 +212,7 @@ def test_committed_git_sources_are_frozen(engine):
     assert second["nodes"]["web"]["outputs"]["digest"] == first["nodes"]["web"]["outputs"]["digest"]
 
 
+# Rewriting both artifact and local metadata cannot forge reuse authority
 @pytest.mark.parametrize("before_creation", [True, False])
 @pytest.mark.parametrize("rollback", [True, False])
 def test_artifact_reuse_rejects_rewritten_origin_evidence(engine, before_creation, rollback):
@@ -201,6 +220,8 @@ def test_artifact_reuse_rejects_rewritten_origin_evidence(engine, before_creatio
     finish(engine, engine.create("staging", "foundation"))
     environment = "development" if rollback else "staging"
 
+
+    # Request either promotion or rollback from the same reviewed origin
     def reuse():
         return engine.create(environment, "web", False, promote=original["id"], rollback=rollback)
 
@@ -221,6 +242,7 @@ def test_artifact_reuse_rejects_rewritten_origin_evidence(engine, before_creatio
         assert "request_id" not in result["nodes"]["web"]
 
 
+# Console actions preserve artifact identity through new approvals
 def test_console_promotes_and_rolls_back_the_same_artifact(engine):
     original = finish(engine, engine.create("development"))
     token = "t" * 40
@@ -259,6 +281,7 @@ def test_console_promotes_and_rolls_back_the_same_artifact(engine):
     assert changed.artifact_actions(original) == []
 
 
+# Configuration saves stop while releases still depend on the old contract
 def test_console_config_validation_and_active_release_boundary(engine):
     token = "t" * 40
     client = TestClient(create_app(engine, token), base_url="http://127.0.0.1:8765")
@@ -274,6 +297,7 @@ def test_console_config_validation_and_active_release_boundary(engine):
     assert client.post("/api/config/validate", headers=headers, json={"configuration": "invalid = ["}).status_code == 422
 
 
+# Environment overrides and release images retain their separate identities
 def test_environment_adapter_and_release_image_share_one_contract(engine):
     config = engine.path.read_text() + """
 [components.web.targets.staging]
@@ -298,6 +322,7 @@ container = "web"
             engine.create("staging", "web", False, image=invalid)
 
 
+# Credentialed remote workers cannot execute repository build hooks
 def test_remote_delivery_refuses_repository_build_hooks(engine):
     from deploy_ops.delivery.gate import RemoteGate
     release = engine.create("development", "web", False)
@@ -306,6 +331,7 @@ def test_remote_delivery_refuses_repository_build_hooks(engine):
         engine._prepare(release, "web")
 
 
+# Promotion requires a destination that understands the retained artifact kind
 @pytest.mark.parametrize("target_adapter", ["workflow", "compose", "terraform"])
 def test_image_promotion_requires_a_destination_that_consumes_the_artifact(engine, target_adapter):
     config = engine.spec.model_dump()

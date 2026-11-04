@@ -24,6 +24,12 @@ BLOCKED_TYPES = [
     "google_*iam*", "google_*organization*", "google_*billing*",
     "google_*service_account*", "google_*firewall*", "google_kms_*",
     "google_logging_*", "google_secret_manager*", "google_project_service*",
+    "AWS::IAM::*", "AWS::Organizations::*", "AWS::CloudTrail::*", "AWS::KMS::*",
+    "AWS::Account::*", "AWS::Budgets::*", "AWS::S3::BucketPolicy", "AWS::EC2::SecurityGroup*",
+    "AWS::EC2::NetworkAcl*", "AWS::GuardDuty::*", "AWS::Config::*", "AWS::Logs::*",
+    "AWS::SecretsManager::*", "AWS::SSM::Parameter",
+    "Microsoft.Authorization/*", "Microsoft.ManagedIdentity/*", "Microsoft.KeyVault/*",
+    "Microsoft.Insights/*", "Microsoft.Network/networkSecurityGroups*", "Microsoft.Billing/*",
 ]
 PINNED_WORKFLOW = re.compile(
     r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/\.github/workflows/"
@@ -31,15 +37,18 @@ PINNED_WORKFLOW = re.compile(
 )
 
 
+# Reject non-finite numbers before hashing or storing evidence
 def canonical(value: object) -> str:
     """Use one JSON representation for fingerprints and audit links."""
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
 
 
+# Bind authority to the canonical content rather than field ordering
 def fingerprint(value: object) -> str:
     return hashlib.sha256(canonical(value).encode()).hexdigest()
 
 
+# Keep human approval limits and delegated limits independently bounded
 class Policy(Model):
     blocked_types: list[str] = Field(default_factory=lambda: BLOCKED_TYPES.copy())
     allowed_actions: list[str] = Field(default_factory=lambda: ["create", "update", "read", "no-op"])
@@ -53,6 +62,7 @@ class Policy(Model):
     require_cost_estimate: bool = True
     allow_delegation: bool = False
 
+    # Prevent a delegated allowlist from expanding through wildcards
     @model_validator(mode="after")
     def exact_auto_types(self):
         if any(re.search(r"[*?\[\]]", name) for name in self.auto_types):
@@ -62,18 +72,21 @@ class Policy(Model):
         return self
 
 
+# Identify the remote state object without embedding backend credentials
 class StateBackend(Model):
     bucket: str = Field(pattern=r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
     key: str = Field(min_length=1, max_length=512, pattern=r"^[a-zA-Z0-9/_.-]+$")
     region: str = Field(pattern=r"^[a-z]{2}-[a-z]+-[0-9]$")
 
 
+# Bound the supported receipt format and freshness window
 class ReceiptPolicy(Model):
     format: Literal["aws-ecs-v1"] = "aws-ecs-v1"
     backend: StateBackend
     valid_seconds: int = Field(default=3600, ge=60, le=86400)
 
 
+# Bind a deployment target to source, execution identities and policy
 class Target(Model):
     repository: str = Field(pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
     repository_id: str = Field(pattern=r"^[1-9][0-9]*$")
@@ -87,6 +100,7 @@ class Target(Model):
     workdir: str = "."
     delivery_digest: str | None = None
     allow_local_operator: bool = False
+    local_cloud: bool = False
     production: bool = False
     events: list[str] = Field(default_factory=lambda: ["workflow_dispatch", "push"])
     identity: dict[str, str]
@@ -95,6 +109,7 @@ class Target(Model):
     receipt_outputs: ReceiptPolicy | None = None
     receipt_dependencies: dict[str, Slug] = Field(default_factory=dict)
 
+    # Reject incompatible authority settings before accepting a request
     @model_validator(mode="after")
     def check_boundary(self):
         if self.receipt_outputs or self.receipt_dependencies:
@@ -113,6 +128,18 @@ class Target(Model):
             raise ValueError("workdir must stay inside the checked-out repository")
         if self.planner_environment == self.environment:
             raise ValueError("Use separate planning and execution environments")
+        # Explicit local grants never inherit federated or production authority
+        if self.local_cloud:
+            if (self.cloud not in {"aws", "gcp"} or not self.allow_local_operator or self.production
+                    or self.policy.allow_delegation or self.engines != ["delivery"]
+                    or self.receipt_outputs or self.receipt_dependencies
+                    or not re.fullmatch(r"[0-9a-f]{64}", self.delivery_digest or "")
+                    or set(self.identity) != {"grant_digest", "provider"}
+                    or self.identity != self.planner_identity
+                    or self.identity["provider"] != self.cloud
+                    or not re.fullmatch(r"[0-9a-f]{64}", self.identity["grant_digest"])):
+                raise ValueError("Local cloud targets need an explicit nonproduction manual delivery grant")
+            return self
         required = {
             "local": set(),
             "aws": {"role_arn", "region"},
@@ -139,9 +166,12 @@ class Target(Model):
             raise ValueError("Production targets cannot enable unattended delegation in this release")
         return self
 
+    # Preserve approval identity when optional receipt support is unused
     @property
     def digest(self) -> str:
         value = self.model_dump()
+        if not self.local_cloud:
+            value.pop("local_cloud")
         # Optional receipts must not invalidate existing nonreceipt approvals and grants
         if not self.receipt_outputs and not self.receipt_dependencies:
             value.pop("receipt_outputs")
@@ -149,6 +179,7 @@ class Target(Model):
         return fingerprint(value)
 
 
+# Keep approver mapping in operator-owned configuration
 class SlackConfig(Model):
     team_id: str = ""
     app_id: str = ""
@@ -157,6 +188,7 @@ class SlackConfig(Model):
     approvers: dict[str, str] = Field(default_factory=dict)
 
 
+# Bound service behavior independently of repository input
 class Settings(Model):
     audience: str = "deploy-ops"
     database: str = ".state/deploy_ops.db"
@@ -169,6 +201,7 @@ class Settings(Model):
     targets: dict[str, Target]
     slack: SlackConfig = Field(default_factory=SlackConfig)
 
+    # Require each receipt dependency to name an actual producer
     @model_validator(mode="after")
     def validate_targets(self):
         if not self.targets or any(not re.fullmatch(r"[a-z][a-z0-9-]{0,62}", key) for key in self.targets):
@@ -180,6 +213,7 @@ class Settings(Model):
         return self
 
 
+# Resolve relative state paths against the configuration's own directory
 def load(path: Path) -> Settings:
     """Resolve state storage relative to the controller configuration, not its caller."""
     settings = Settings.model_validate(tomllib.loads(path.read_text()))

@@ -1,0 +1,59 @@
+# examples/aws-cloudformation/deploy-ops.toml - Link native infrastructure outputs to an independent ECS release.
+
+
+# Keep infrastructure and application histories independent
+name = "native-aws"
+
+[repositories.infrastructure]
+path = "infrastructure"
+
+[repositories.application]
+path = "application"
+
+
+# Bind the target explicitly before preparing any provider change set
+[environments.test]
+provider = "aws"
+
+[environments.test.variables]
+account = "123456789012"
+region = "us-east-1"
+vpc = "vpc-replace"
+subnets = "subnet-replace,subnet-replace-too"
+initial_image = "registry.example/app@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+application_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/replace@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+
+# Preview creates a change set but application remains a separate release node
+[components.infrastructure]
+repository = "infrastructure"
+kind = "infrastructure"
+adapter = "cloudformation"
+outputs = ["Cluster", "Service", "Container", "ImageRepository"]
+
+[components.infrastructure.options]
+account_id = "${env.account}"
+region = "${env.region}"
+stack_name = "deploy-ops-example"
+template = "stack.json"
+capabilities = ["CAPABILITY_IAM"]
+
+[components.infrastructure.options.parameters]
+VpcId = "${env.vpc}"
+SubnetIds = "${env.subnets}"
+InitialImage = "${env.initial_image}"
+
+
+# An app-only release consumes retained outputs without reapplying infrastructure
+[components.application]
+repository = "application"
+kind = "application"
+adapter = "ecs"
+needs = ["infrastructure"]
+
+[components.application.options]
+region = "${env.region}"
+cluster = "${outputs.infrastructure.Cluster}"
+service = "${outputs.infrastructure.Service}"
+container = "${outputs.infrastructure.Container}"
+image = "${env.application_image}"

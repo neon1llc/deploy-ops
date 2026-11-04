@@ -1,5 +1,6 @@
 /* ui/style.css - Map reading surfaces and controls to the shared semantic theme. */
 
+/* Use semantic theme tokens with readable platform defaults */
 :root {
   color-scheme: light dark;
   font-family: var(--font, system-ui, sans-serif);
@@ -8,6 +9,7 @@
   --space: 24px;
 }
 
+/* Keep the main reading column and headings consistent */
 * { box-sizing: border-box; }
 body { margin: 0 auto; max-width: 1280px; padding: 32px; }
 header, .row, .controls { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
@@ -26,7 +28,11 @@ section, details {
   margin-bottom: 20px;
   min-width: 0;
 }
+
+/* Separate release navigation from detailed evidence */
 .grid { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(360px, 1.7fr); gap: 20px; }
+
+/* Preserve native form semantics and clear interactive states */
 input, select, button { font: inherit; border-radius: var(--radius, 10px); padding: 11px 14px; border: 1px solid var(--line-strong, ButtonBorder); }
 input, select { background: var(--term, Field); color: inherit; max-width: 100%; }
 input[type=password] { width: min(100%, 520px); }
@@ -38,9 +44,12 @@ button:active { background: var(--neon1-press, ButtonFace); }
 button.secondary { background: var(--panel-raised, Canvas); color: var(--text, CanvasText); }
 button.secondary:hover, .release:hover { border-color: var(--neon-focus, Highlight); }
 button:disabled { cursor: wait; opacity: .65; }
+
+/* Keep keyboard focus visible across all controls */
 button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible,
 textarea:focus-visible, #detail-heading:focus-visible { outline: 3px solid var(--neon-focus, Highlight); outline-offset: 3px; }
 
+/* Distinguish status and evidence from decorative surfaces */
 .badge { border: 1px solid var(--line-strong, ButtonBorder); padding: 6px 12px; border-radius: var(--radius, 10px); }
 .muted, footer { color: var(--muted, CanvasText); }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; font: .83rem/1.6 var(--mono, monospace); background: var(--term, Canvas); padding: 14px; border-radius: var(--radius, 10px); max-height: 360px; overflow: auto; }
@@ -50,17 +59,24 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; font: .83rem/1.6 var(--mon
 .error { color: var(--error, CanvasText); }
 footer { font-size: .8rem; padding: 16px 0; }
 [hidden] { display: none !important; }
+
+/* Keep raw configuration readable and resizable */
 textarea { width: 100%; resize: vertical; padding: 16px; background: var(--term, Field); color: var(--text, FieldText); font: .85rem/1.6 var(--mono, monospace); border: 1px solid var(--line-strong, ButtonBorder); border-radius: var(--radius, 10px); margin-bottom: 16px; }
 summary { cursor: pointer; font-weight: 650; }
+
+/* Group provider settings with practical touch targets */
 fieldset { min-width: 0; border: 1px solid var(--line-strong, ButtonBorder); border-radius: var(--radius, 10px); margin-block: 16px; padding: 16px; }
 #config-form label { margin-block-start: 16px; margin-block-end: 8px; }
 #config-form input:not([type=checkbox]), #config-form select { width: 100%; min-height: 48px; }
 #config-form .check { min-height: 48px; gap: 12px; }
 #config-form button { min-height: 48px; }
+
+/* Apply density and appearance without changing deployment meaning */
 .appearance-settings__advanced { margin-top: 20px; background: var(--panel-raised, Canvas); }
 [data-theme-density=compact] { --space: 16px; }
 [data-theme-density=compact] input, [data-theme-density=compact] select, [data-theme-density=compact] button { padding: 8px 12px; }
 
+/* Collapse columns without horizontal scrolling on narrow screens */
 @media (max-width: 800px) {
   body { padding: 16px; }
   .grid { display: block; }
@@ -68,6 +84,7 @@ fieldset { min-width: 0; border: 1px solid var(--line-strong, ButtonBorder); bor
   .controls > label { min-width: 0; max-width: 100%; }
 }
 
+/* Respect reduced motion for every animated surface */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

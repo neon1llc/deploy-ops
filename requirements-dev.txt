@@ -1,6 +1,10 @@
 # requirements-dev.txt - Add the small test and repository-check toolset.
 
+
+# Reuse the same runtime pins as the deployed package
 -r requirements.txt
+
+# Pin test execution, diagnostics and YAML validation together
 iniconfig==2.3.0
 packaging==25.0
 pluggy==1.6.0

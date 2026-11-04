@@ -1,5 +1,6 @@
 # src/deploy_ops/delivery/engine.py - Move complete releases through preparation, approval, and verified delivery.
 
+
 import hashlib
 import json
 import os
@@ -24,27 +25,86 @@ from .process import Process
 from .spec import load, options
 
 
+# Coordinate immutable release evidence through one approval and deployment lifecycle
 class Engine:
+    # Bind the workspace, private ledger and selected authority backend
     def __init__(self, project: Path, state: Path | None = None, controller: str | None = None):
         self.path = project.resolve()
         self.spec = load(self.path)
         self.state = (state or self.path.parent / ".deploy-ops").resolve()
         private_directory(self.state)
         self.ledger = Ledger(Store(str(self.state / "state.db")))
-        self.gate = RemoteGate(controller) if controller else LocalGate(self.spec, self.ledger.store)
+        # Keep operator grants outside snapshots and browser-editable workspace content
+        access_path = os.environ.get("DEPLOY_OPS_CLOUD_ACCESS_FILE")
+        access = Path(access_path).expanduser().resolve() if access_path else None
+        if access and (access.is_relative_to(self.path.parent) or any(
+                access.is_relative_to((self.path.parent / repository.path).resolve())
+                for repository in self.spec.repositories.values())):
+            raise Refused("Keep local cloud access grants outside workspace and source repositories", 422)
+        self.gate = RemoteGate(controller) if controller else LocalGate(self.spec, self.ledger.store, access)
         self.deployments = self.state / "deployments"
         private_directory(self.deployments)
 
+
+    # Route owned previews into their isolated namespace
     def deployment_root(self, release: dict) -> Path:
         if release.get("preview"):
             from .previews import namespace
             return namespace(self, release)
         return self.deployments
 
+
+    # Record read-only local drift through the shared observation owner
     def observe(self, release_id: str) -> dict:
         from .observation import observe
         return observe(self, release_id)
 
+
+    # Read uncertain provider outcomes without replaying an accepted write
+    def provider_status(self, release_id: str, name: str, discard: bool = False) -> dict:
+        release = self.ledger.get(release_id)
+        if release["config_digest"] != self.spec.digest or name not in release["nodes"]:
+            raise Refused("Select a component under the unchanged workspace contract", 422)
+        node = release["nodes"][name]
+        adapter = REGISTRY[node["adapter"]]
+        action = getattr(adapter, "discard" if discard else "inspect", None)
+        if action is None:
+            raise Refused("This adapter does not support the requested provider operation", 422)
+        if discard and release["status"] not in {"waiting", "cancelled", "failed"}:
+            raise Refused("Only an unexecuted reviewed change set can be discarded", 409)
+        scope = "release:" + release_id
+        self.ledger.lock(scope, release_id)
+        try:
+            # Pending readback uses durable operation identity without inventing reviewed evidence
+            prepared_path = self.state / "releases" / release_id / name / "prepared.json"
+            envelope = None
+            if node.get("artifact_digest") and prepared_path.is_file():
+                envelope = self._reviewed_envelope(release, name)
+            elif discard:
+                raise Refused("Discard requires a reviewed provider preview; inspect the pending operation first", 409)
+            else:
+                action = getattr(adapter, "inspect_pending", None)
+                if action is None:
+                    raise Refused("This adapter has no pending-operation readback contract", 422)
+            # Readback and preview cleanup still require the current provider grant
+            target = target_name(self.spec.name, release["environment"], name)
+            credentials = self.gate.credentials(self.gate.context(target))
+            context = self._context(release, name, credentials)
+            if envelope:
+                context.options = envelope["options"]
+            self._login(context, credentials)
+            observed = action(context, envelope["prepared"]) if envelope else action(context)
+            self.ledger.event(release_id, "provider.discarded" if discard else "provider.observed",
+                              {"component": name, "result": observed})
+            if discard and release["status"] == "waiting":
+                self.cancel(release_id)
+            return observed
+        finally:
+            shutil.rmtree(self.state / "releases" / release_id / name / "home", ignore_errors=True)
+            self.ledger.unlock(scope, release_id)
+
+
+    # Expose the dependency graph without executing source or provider commands
     def describe(self, environment: str, component: str | None = None, with_dependencies: bool = True):
         """Inspect the graph without running repository code, builds, or cloud commands."""
         if environment not in self.spec.environments:
@@ -57,6 +117,8 @@ class Engine:
                                 "needs": self.spec.components[name].needs,
                                 "target": target_name(self.spec.name, environment, name)} for name in order]}
 
+
+    # Require a successful compatible artifact and a declared environment path
     def _check_promotion(self, origin: dict, environment: str, component: str | None, rollback: bool):
         if origin.get("preview") or self.spec.environments[environment].preview:
             raise Refused("Create a fresh isolated preview; preview promotion and rollback are not supported", 422)
@@ -76,6 +138,8 @@ class Engine:
         if (source_adapter == "static") != (target_adapter == "static"):
             raise Refused("Promotions must preserve artifact kind", 422)
 
+
+    # Offer only the reuse paths that release creation will accept
     def artifact_actions(self, release: dict) -> list[dict]:
         """Describe the same artifact reuse paths accepted by release creation."""
         actions = []
@@ -94,6 +158,8 @@ class Engine:
                                 "reason": "Deploy dependencies first: " + ", ".join(missing) if missing else ""})
         return actions
 
+
+    # Authenticate retained bytes before parsing deployment evidence
     def _reviewed_envelope(self, release: dict, name: str, reader=None) -> dict:
         # Authenticate the exact bytes we parse, including when reusing an earlier release
         path = self.state / "releases" / release["id"] / name / "prepared.json"
@@ -102,6 +168,8 @@ class Engine:
             raise Refused("Reviewed deployment artifact changed")
         return json.loads(content)
 
+
+    # Freeze selected repositories and bind release inputs before preparing changes
     def create(self, environment: str, component: str | None = None, with_dependencies: bool = True,
                agent: str = "", promote: str | None = None, rollback: bool = False,
                image: str | None = None, receipts: dict[str, str] | None = None,
@@ -139,9 +207,11 @@ class Engine:
             if not re.fullmatch((r"[a-z0-9][a-z0-9._:/-]*" if reference else re.escape(repository)) + r"@sha256:[0-9a-f]{64}", image):
                 raise Refused("The image must be an immutable digest in the configured image_repository", 422)
             artifact_inputs[component] = {"image": image}
+        # Reuse an earlier artifact only after checking the declared promotion contract
         origin = self.ledger.get(promote) if promote else None
         if origin:
             self._check_promotion(origin, environment, component, rollback)
+        # Create fresh private source roots without modifying the original repositories
         release_id = uuid.uuid4().hex
         root = self.state / "releases" / release_id
         private_directory(root)
@@ -176,6 +246,8 @@ class Engine:
                                                     "actor_kind": "github" if isinstance(self.gate, RemoteGate) else "local"})
         return release
 
+
+    # Resolve component dependencies and keep process authority scoped to this release
     def _context(self, release: dict, name: str, credentials: dict, lease=None) -> Context:
         component = self.spec.component(name, release["environment"])
         environment = self.spec.environments[release["environment"]]
@@ -197,6 +269,7 @@ class Engine:
                 receipt = self.gate.receipt(target, receipt_id)
                 outputs[dependency] = {**receipt["outputs"], "region": receipt["region"]}
                 release["nodes"][name].setdefault("infrastructure_receipts", {})[dependency] = receipt
+        # Reuse completed outputs only under this same environment and workspace contract
         for dependency in component.needs:
             if dependency in outputs:
                 continue
@@ -211,6 +284,7 @@ class Engine:
         if release.get("preview"):
             from .previews import active
             active(self, release)
+        # Resolve public references before applying the release-specific artifact input
         resolved = options(component, environment, release["environment"], outputs)
         resolved.update(release.get("artifact_inputs", {}).get(name, {}))
         if release.get("artifact_inputs", {}).get(name, {}).get("image"):
@@ -218,31 +292,44 @@ class Engine:
             if not re.fullmatch(re.escape(repository) + r"@sha256:[0-9a-f]{64}", resolved["image"]):
                 raise Refused("Image does not match the verified infrastructure registry", 422)
 
+        # Recheck cancellation and current authority before each native command
         def heartbeat():
             current = self.ledger.get(release["id"])
             if current["status"] == "cancel_requested":
                 raise Refused("Release cancellation requested. Inspect any in-flight provider operation")
             if lease:
                 self.gate.heartbeat(lease)
+            elif isinstance(self.gate, LocalGate):
+                self.gate.grant(target_name(self.spec.name, release["environment"], name))
 
         if component.adapter == "kubernetes":
             path = os.environ.get("DEPLOY_OPS_KUBECONFIG_FILE")
             if not path or not Path(path).is_file():
                 raise Refused("Provide a dedicated least-privilege DEPLOY_OPS_KUBECONFIG_FILE", 422)
             credentials = {**credentials, "KUBECONFIG": str(Path(path).resolve())}
+        # Keep credential caches private and attach heartbeats to every command
         process = Process(folder / "home", lambda event, detail: self.ledger.event(
             release["id"], event, {"component": name, **detail}), credentials, heartbeat,
             lease["deadline"] if lease else None)
         return Context(component, name, release["environment"], environment.provider, source,
                        folder / "artifacts", deployment_root, resolved, process, release["id"])
 
+
+    # Verify the granted local identity before initializing provider CLI state
     def _login(self, context: Context, credentials: dict):
+        if isinstance(self.gate, LocalGate):
+            from .access import verify
+            grant = self.gate.grant(target_name(self.spec.name, context.environment, context.name))
+            if grant:
+                verify(context, grant)
         # CLI login caches remain in a per-stage private home, never in the human's home
-        if context.component.adapter == "container-apps":
+        if context.component.adapter in {"container-apps", "arm", "bicep"}:
             context.command(["az", "login", "--service-principal", "--username", credentials["ARM_CLIENT_ID"],
                              "--tenant", credentials["ARM_TENANT_ID"], "--federated-token", credentials["ARM_OIDC_TOKEN"],
                              "--output", "none"])
 
+
+    # Separate source preparation from credentialed deployment execution
     def _build(self, context: Context, release: dict):
         origin = release.get("origin_release")
         previous_release = self.ledger.get(origin) if origin else None
@@ -287,9 +374,15 @@ class Engine:
                 raise Refused("Builder did not return an immutable registry digest")
             context.options["image"] = build.image + "@" + digest
 
+
+    # Freeze provider evidence before submitting the exact approval request
     def _prepare(self, release: dict, name: str):
         node = release["nodes"][name]
         component = self.spec.component(name, release["environment"])
+        # Local cloud credentials may consume reviewed artifacts, never source build hooks
+        if self.spec.environments[release["environment"]].provider != "local" and (
+                component.build.checks or component.build.command or component.build.image):
+            raise Refused("Build or synthesize in an isolated credentialless job, then provide frozen artifacts", 403)
         if isinstance(self.gate, RemoteGate):
             if component.adapter in {"opentofu", "terraform", "workflow"}:
                 raise Refused("Use the separate planning/execution gate workflow for cloud IaC and custom commands")
@@ -322,6 +415,7 @@ class Engine:
                         "previous_pointer": pointer(self.deployments, context.options.get("destination", str(self.deployments / context.environment / name)))}
         else:
             prepared = adapter.prepare(context)
+        # Bind source, artifact tree, options and provider preview into one immutable envelope
         envelope = {"schema_version": 1, "config_digest": self.spec.digest, "adapter": context.component.adapter,
                     "source_digest": digest_tree(context.stage.parent / "source"),
                     "artifact_tree": digest_tree(context.stage), "options": context.options,
@@ -335,9 +429,12 @@ class Engine:
                             receipts={key: {"id": value["id"], "digest": value["digest"]} for key, value in receipts.items()})
         request = self.gate.submit(proposal, release)
         node.update(status="prepared", request_id=request["id"], request_digest=request["digest"],
-                    artifact_digest=proposal.artifact_digest, preview=prepared["preview"])
+                    artifact_digest=proposal.artifact_digest, preview=prepared["preview"],
+                    warnings=prepared.get("warnings", []))
         self.ledger.save(release, "component.prepared", {"component": name, "request_id": request["id"]})
 
+
+    # Recheck artifacts before claiming authority and performing provider writes
     def _apply(self, release: dict, name: str, request: dict):
         node = release["nodes"][name]
         folder = self.state / "releases" / release["id"] / name
@@ -346,6 +443,7 @@ class Engine:
             raise Refused("Reviewed source or workspace changed")
         if digest_tree(folder / "artifacts") != envelope["artifact_tree"]:
             raise Refused("Prepared files changed after approval")
+        # Consume approval only after the retained source and artifact checks pass
         lease = self.gate.claim(request, release)
         node["status"] = "running"
         release["status"] = "running"
@@ -360,6 +458,7 @@ class Engine:
             self.gate.heartbeat(lease)
             outcome = "succeeded"
             node.update(status="succeeded", outputs=outputs)
+        # Report uncertain outcomes even when provider execution or heartbeat checks fail
         finally:
             report = self.gate.complete(lease, outcome)
             if report["status"] != "succeeded":
@@ -367,6 +466,8 @@ class Engine:
                 raise Refused("Execution needs operator reconciliation before this target can run again")
         self.ledger.save(release, "component.succeeded", {"component": name})
 
+
+    # Persist each component transition and stop at review or uncertainty
     def advance(self, release_id: str) -> dict:
         release = self.ledger.get(release_id)
         if release["config_digest"] != self.spec.digest:
@@ -413,12 +514,16 @@ class Engine:
                     shutil.rmtree(self.state / "releases" / release_id / name / directory, ignore_errors=True)
             self.ledger.unlock(scope, release_id)
 
+
+    # Require the exact request currently shown for this component
     def approve(self, release_id: str, component: str, digest: str):
         node = self.ledger.get(release_id)["nodes"].get(component, {})
         if node.get("status") != "waiting" or node.get("request_digest") != digest:
             raise Refused("Review the current pending request and its exact digest")
         return self.gate.approve(node["request_id"], digest)
 
+
+    # Withdraw unclaimed approval while preserving running-operation uncertainty
     def cancel(self, release_id: str):
         release = self.ledger.get(release_id)
         if release["status"] in ("uncertain", "succeeded", "failed", "cancelled"):
@@ -432,10 +537,13 @@ class Engine:
             release["status"] = "cancelled"
         return self.ledger.save(release, "release.cancel_requested")
 
+
+    # Acquire recovery ownership before resolving interrupted release state
     def recover(self, release_id: str, note: str):
         """Release a locked target only after the operator has inspected its actual state."""
         if not isinstance(note, str) or not 10 <= len(note.strip()) <= 500:
             raise Refused("Recovery needs an inspection note of 10 to 500 characters", 422)
+        # Recovery cannot replace a lock owned by a worker that may still be running
         scope = "release:" + release_id
         self.ledger.recovery_lock(scope, release_id)
         try:

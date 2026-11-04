@@ -1,5 +1,6 @@
 # tests/test_controller.py - Check authority boundaries across complete request lifecycles.
 
+
 import concurrent.futures
 import copy
 import json
@@ -11,15 +12,27 @@ from deploy_ops.errors import Refused
 from deploy_ops.models import Claim, Completion, Decision, DelegationSpec, Resolution
 
 
+# Use a separate synthetic human for exact-digest approval
 def approve(controller, request):
     return controller.decide(request["id"], Decision(digest=request["digest"], decision="approve"), "human")
 
 
+# Native resource names retain the same default protection as Terraform types
+@pytest.mark.parametrize("kind", ["AWS::IAM::Role", "AWS::EC2::SecurityGroup", "AWS::Logs::LogGroup",
+                                  "Microsoft.Authorization/roleAssignments", "Microsoft.KeyVault/vaults"])
+def test_native_resource_types_preserve_default_denials(system, kind):
+    from deploy_ops.policy import hard_denial
+    manifest = {"preview": {"findings": [], "changes": [{"address": "resource", "resource_type": kind, "action": "create"}]}}
+    assert "outside" in hard_denial(system[1], manifest)
+
+
+# Keep execution identity aligned with the requested run
 def claim(controller, target, request, run="1001"):
     return controller.claim(request["id"], Claim(digest=request["digest"], artifact_digest=request["manifest"]["artifact_digest"]),
                             sample_source(target, "execute", run))
 
 
+# A completed approval cannot authorize another execution
 def test_manual_lifecycle_and_replay(system, proposal, source):
     controller, target, _ = system
     request = controller.submit(proposal, source)
@@ -35,6 +48,7 @@ def test_manual_lifecycle_and_replay(system, proposal, source):
     assert controller.store.verify()["events"] == 4
 
 
+# A valid token alone does not authorize a different source or stage
 @pytest.mark.parametrize("field,value", [
     ("repository_id", "999"), ("repository_owner_id", "999"),
     ("repository", "attacker/application"), ("ref", "refs/heads/untrusted"),
@@ -48,6 +62,7 @@ def test_verified_identity_must_match_target(system, proposal, source, field, va
         system[0].submit(proposal, changed)
 
 
+# Changing any bound evidence invalidates the execution claim
 @pytest.mark.parametrize("change", ["artifact", "digest", "attempt", "commit", "policy", "expiry"])
 def test_stale_or_changed_authority_cannot_execute(system, proposal, source, change):
     controller, target, clock = system
@@ -71,6 +86,7 @@ def test_stale_or_changed_authority_cannot_execute(system, proposal, source, cha
         controller.claim(request["id"], body, identity)
 
 
+# Failed executions still consume the finite grant allowance
 def test_delegation_counts_at_claim_and_cannot_stack(system, proposal, source):
     controller, target, _ = system
     controller.delegate(DelegationSpec(target="sandbox", hours=1, uses=1), "human")
@@ -85,6 +101,7 @@ def test_delegation_counts_at_claim_and_cannot_stack(system, proposal, source):
         claim(controller, target, second, "1002")
 
 
+# Cost uncertainty cannot enter the unattended path
 @pytest.mark.parametrize("field,value", [("estimated_monthly_delta_cents", None), ("estimated_monthly_delta_cents", 5000)])
 def test_unknown_or_large_estimates_need_human_review(system, proposal, source, field, value):
     controller = system[0]
@@ -93,6 +110,7 @@ def test_unknown_or_large_estimates_need_human_review(system, proposal, source, 
     assert controller.submit(proposal, source)["status"] == "pending"
 
 
+# Human approval cannot expand the controller's hard authority boundary
 @pytest.mark.parametrize("action,resource", [("update", "aws_iam_role"), ("delete", "aws_ecs_service"), ("update", "aws_cloudtrail")])
 def test_denied_changes_cannot_be_manually_overridden(system, proposal, source, action, resource):
     proposal.preview["resource_changes"][0].update(type=resource, change={"actions": [action]})
@@ -102,11 +120,14 @@ def test_denied_changes_cannot_be_manually_overridden(system, proposal, source, 
         approve(system[0], request)
 
 
+# Concurrent consumers must share one transactional approval claim
 def test_concurrent_claims_have_one_winner(system, proposal, source):
     controller, target, _ = system
     request = controller.submit(proposal, source)
     approve(controller, request)
 
+
+    # Treat only a successful claim as a winning worker
     def attempt(_):
         try:
             claim(controller, target, request)
@@ -118,6 +139,7 @@ def test_concurrent_claims_have_one_winner(system, proposal, source):
         assert sum(workers.map(attempt, range(6))) == 1
 
 
+# Revocation and expiry preserve uncertainty until explicit inspection
 @pytest.mark.parametrize("stop", ["pause", "revoke", "expire", "policy"])
 def test_interruptions_require_reconciliation(system, proposal, source, stop):
     controller, target, clock = system
@@ -142,6 +164,7 @@ def test_interruptions_require_reconciliation(system, proposal, source, stop):
     assert resolved["status"] == "failed"
 
 
+# Review and execution require distinct valid authority
 def test_self_approval_and_wrong_execution_credential_are_rejected(system, proposal, source):
     controller, target, _ = system
     request = controller.submit(proposal, source)
@@ -154,6 +177,7 @@ def test_self_approval_and_wrong_execution_credential_are_rejected(system, propo
         controller.heartbeat(request["id"], "not-a-real-execution-secret")
 
 
+# Retain change evidence without leaking raw plan values
 def test_audit_detects_changed_events_without_storing_plan_values(system, proposal, source):
     controller = system[0]
     proposal.preview["resource_changes"][0]["change"]["after"]["secret"] = "do-not-retain-this-value"
@@ -166,6 +190,7 @@ def test_audit_detects_changed_events_without_storing_plan_values(system, propos
         controller.store.verify()
 
 
+# Unknown tool guarantees require manual review even for allowed resource types
 def test_generic_manifests_never_inherit_automatic_delegation(system, source):
     from deploy_ops.demo import sample_proposal
     controller, target, _ = system

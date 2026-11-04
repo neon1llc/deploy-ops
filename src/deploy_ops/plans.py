@@ -1,5 +1,6 @@
 # src/deploy_ops/plans.py - Reduce tool previews to changes without retaining secret values.
 
+
 import re
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
 from typing import Any
@@ -7,14 +8,17 @@ from typing import Any
 from .errors import Refused
 from .models import Change, Cloud, Engine, Preview
 
+# Map only recognized saved-plan operations to the policy vocabulary
 ACTIONS = {
     ("create",): "create", ("update",): "update", ("delete",): "delete",
     ("read",): "read", ("no-op",): "no-op", ("delete", "create"): "replace",
     ("create", "delete"): "replace",
 }
+# Keep provider resource namespaces explicit during normalization
 PREFIXES = {"local": ("terraform_", "local_", "random_"), "aws": ("aws_",), "azure": ("azurerm_", "azuread_"), "gcp": ("google_", "google-beta_")}
 
 
+# Find executable provisioners anywhere in nested configuration
 def _contains_provisioner(value: Any) -> bool:
     if isinstance(value, dict):
         return bool(value.get("provisioners")) or any(_contains_provisioner(v) for v in value.values())
@@ -23,6 +27,7 @@ def _contains_provisioner(value: Any) -> bool:
     return False
 
 
+# Propagate unknown planned values into manual-review requirements
 def _has_unknown(value: Any) -> bool:
     if isinstance(value, dict):
         return any(_has_unknown(item) for item in value.values())
@@ -31,6 +36,7 @@ def _has_unknown(value: Any) -> bool:
     return value is True
 
 
+# Reduce native plan details to the policy-relevant public change set
 def normalize(engine: Engine, cloud: Cloud, raw: dict) -> Preview:
     """Fail closed on unrecognized plans and reserve generic evidence for human review."""
     if engine == "delivery":
@@ -82,6 +88,7 @@ def normalize(engine: Engine, cloud: Cloud, raw: dict) -> Preview:
     return Preview(changes=changes, findings=sorted(set(findings)), manual_only=output_changed or unknown)
 
 
+# Reject invalid currencies and non-finite estimates before rounding
 def cost_delta(raw: dict) -> int:
     """Round an Infracost monthly USD estimate upward to whole cents."""
     value = raw.get("diffTotalMonthlyCost")

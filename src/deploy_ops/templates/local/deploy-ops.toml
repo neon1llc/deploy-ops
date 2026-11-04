@@ -1,40 +1,52 @@
 # deploy-ops.toml - Join separate infrastructure and application sources in a local workspace.
 
+
+# Identify the packaged local workspace contract
 schema_version = 1
 name = "hello"
 
-# These are separate source roots. Use committed Git repositories for real projects.
+# These are separate source roots. Use committed Git repositories for real projects
 [repositories.infrastructure]
 path = "infrastructure"
 allow_uncommitted = true
 
+# Keep application source and its build independent from infrastructure source
 [repositories.application]
 path = "application"
 allow_uncommitted = true
 
+# Start the complete journey with local development resources
 [environments.development]
 provider = "local"
 
+# Promote the same artifact into a separate local environment
 [environments.staging]
 provider = "local"
 promote_from = ["development"]
 
+# Create a local destination that dependent application releases can reuse
 [components.foundation]
 repository = "infrastructure"
 kind = "infrastructure"
 adapter = "directory"
+
+# Name the local resource within the environment-specific deployment root
 [components.foundation.options]
 name = "hello"
 
-# Only public infrastructure outputs cross the repository boundary.
+# Only public infrastructure outputs cross the repository boundary
 [components.web]
 repository = "application"
 kind = "application"
 adapter = "static"
 needs = ["foundation"]
+
+# Check the source before producing the static artifact
 [components.web.build]
 checks = [["python3", "check.py"]]
 command = ["python3", "build.py"]
+
+# Connect the built site to the dependency output instead of a shared arbitrary path
 [components.web.options]
 directory = "dist"
 destination = "${outputs.foundation.path}"

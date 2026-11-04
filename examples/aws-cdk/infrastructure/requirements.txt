@@ -1,0 +1,17 @@
+# examples/aws-cdk/infrastructure/requirements.txt - Pin the isolated Python synthesis dependencies.
+
+
+# The deployment worker consumes the assembly without importing this runtime
+attrs==26.1.0
+aws-cdk-lib==2.275.0
+aws-cdk.asset-awscli-v1==2.2.292
+aws-cdk.asset-node-proxy-agent-v6==2.1.3
+aws-cdk.cloud-assembly-schema==55.3.0
+cattrs==26.2.1
+constructs==10.8.1
+jsii==1.142.0
+publication==0.0.3
+python-dateutil==4.0.0
+typeguard==2.13.3
+typing_extensions==4.16.0
+tzdata==2026.6

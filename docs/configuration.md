@@ -39,6 +39,9 @@ store and pass references, not plaintext values.
 | `static` | `directory`, optional `destination` | Versioned files and atomic active pointer, no public hosting service created |
 | `compose` | `file`, optional `project` | Existing digest-pinned images only, no build, privileged mode, or host bind mounts |
 | `opentofu`, `terraform` | `remote_state=true`, or local `local_state=true` | Repo must define the remote backend. Commit provider lock file |
+| `cloudformation` | `account_id`, `region`, `stack_name`, `template` | Preview creates a remote change set; execute that exact reviewed identifier |
+| `cdk` | `account_id`, `region`, `stack_name`, `assembly`, `stack_artifact` | Consume a frozen assembly; never synthesize application code with writer credentials |
+| `arm`, `bicep` | `subscription_id`, `tenant_id`, `resource_group`, `template` | Frozen local JSON, incremental deployment only; Bicep requires compiler metadata |
 | `ecs` | `region`, `cluster`, `service`, `container`, `image` | Existing ECS-controller service |
 | `container-apps` | `name`, `resource_group`, `subscription_id`, `image` | Existing Single revision mode app |
 | `cloud-run` | `name`, `project_id`, `region`, `image` | Existing service with one 100% traffic target |
@@ -49,6 +52,16 @@ Native app images must use `registry/repository@sha256:...`. A tag such as `late
 The same registry artifact can be promoted, but cross-provider registry replication and credentials are
 not automatic. Each environment must be able to pull that artifact.
 
+Native IaC settings have one typed owner shared by files, CLI and guided forms. CloudFormation and CDK
+also accept public `parameters`, `tags`, explicitly reviewed `capabilities`, an optional `role_arn`,
+`profile` and `principal_arn`, and `operation = "deploy"` or `"destroy"`. CDK file assets additionally
+require an explicit `asset_bucket` and slash-terminated `asset_prefix`. These settings do not create a
+bootstrap stack or grant permission to publish assets.
+
+ARM and Bicep accept public `parameters` and a `deployment_name` prefix. The adapter appends a release-specific
+suffix. Only `mode = "Incremental"` and `operation = "deploy"` are accepted. See
+[native infrastructure](native-infrastructure.md) for resource, asset and cleanup restrictions.
+
 ## Separate secrets and state
 
 Use `DEPLOY_OPS_REGISTRY_CONFIG_FILE` for an `auths`-only Docker config scoped to the intended repository.
@@ -57,7 +70,9 @@ human's Docker configuration are not imported. The same OS user can still inspec
 credential hygiene, not a sandbox.
 
 Use `DEPLOY_OPS_KUBECONFIG_FILE` for a dedicated scoped Kubernetes context. Do not pass a personal
-cluster-admin kubeconfig. Native cloud credentials are obtained by the reviewed OIDC worker.
+cluster-admin kubeconfig. Native cloud credentials are obtained by the reviewed OIDC worker or an
+explicit, expiring [local AWS/GCP grant](local-cloud-access.md). Credential references remain outside
+the workspace and browser forms. Neither route grants authority to run repository code with writer credentials.
 
 `.deploy-ops/` contains the database, private source snapshots, prepared artifacts, temporary homes, and
 local deployments. Saved IaC plans can contain secrets. Back up and protect state. Do not commit or publish it.
@@ -97,8 +112,10 @@ examples, workflow inputs, validity checks and recovery behavior. Existing local
 
 The console's **Workspace configuration** panel edits existing repositories, environments and components.
 Choose the entry, adjust its fields, then **Apply fields to draft**. This preserves other form drafts,
-comments, build settings, provider options and environment overrides. It changes the visible TOML draft,
-not the saved file. Advanced settings and new entries remain available through TOML.
+comments, build settings, provider options and environment overrides. Native infrastructure option forms
+show the effective component/environment settings and save deliberate changes into that environment's
+override. They change the visible TOML draft, not the saved file. Advanced settings and new entries remain
+available through TOML.
 
 Changing a provider or tool does not translate existing provider options. Review those options and any
 per-environment adapter overrides before deployment. The whole workspace is validated, including references,

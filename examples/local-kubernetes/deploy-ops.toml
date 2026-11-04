@@ -1,36 +1,48 @@
 # deploy-ops.toml - Update existing local Kubernetes Deployments with exact image approvals.
 
+
+# Keep the local Kubernetes example in its own workspace namespace
 name = "kubernetes-example"
 
+# Retain local prerequisite source separately from image delivery
 [repositories.infrastructure]
 path = "infrastructure"
 allow_uncommitted = true
 
+# Use an independent application source root for each release
 [repositories.application]
 path = "application"
 allow_uncommitted = true
 
+# Target the local development deployment first
 [environments.development]
 provider = "local"
 
+# Allow promotion of the exact development artifact into local staging
 [environments.staging]
 provider = "local"
 promote_from = ["development"]
 
+# Track the local prerequisite dependency without claiming cluster provisioning
 [components.foundation]
 repository = "infrastructure"
 kind = "infrastructure"
 adapter = "directory"
 
+# Name the example-owned local marker
 [components.foundation.options]
+
+# Keep the local Kubernetes example in its own workspace namespace
 name = "kubernetes-example"
 
+# Update the existing deployment only after dependency approval
 [components.web]
 repository = "application"
 kind = "application"
 adapter = "kubernetes"
 needs = ["foundation"]
 
+# Pin the cluster context, namespace, container and immutable image
 [components.web.options]
 context = "kind-deployops-local"
 namespace = "deployops-local"
@@ -39,5 +51,6 @@ container = "web"
 image_repository = "python"
 image = "python@sha256:7984cf56ceaddebe4fefeb75d64000b9f45d8b77b11a09b24524da6cdc3af0c8"
 
+# Use a separate existing deployment for staging promotion
 [components.web.targets.staging]
 deployment = "web-staging"

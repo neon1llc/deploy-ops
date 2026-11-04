@@ -1,5 +1,6 @@
 # tests/test_tools.py - Exercise provider protocols and fail-closed tool behavior without cloud calls.
 
+
 import json
 import os
 import sys
@@ -16,6 +17,7 @@ from deploy_ops.plans import cost_delta, normalize
 from deploy_ops.runner import clean_environment, supervised
 
 
+# Normalize equivalent native changes without implying live provider qualification
 @pytest.mark.parametrize("engine", ["terraform", "opentofu"])
 @pytest.mark.parametrize("cloud,kind", [("aws", "aws_ecs_service"), ("azure", "azurerm_linux_web_app"), ("gcp", "google_cloud_run_v2_service")])
 def test_saved_plan_normalization_across_clouds(proposal, engine, cloud, kind):
@@ -26,6 +28,7 @@ def test_saved_plan_normalization_across_clouds(proposal, engine, cloud, kind):
     assert preview.findings == []
 
 
+# Unrecognized or executable plan content cannot become a safe default
 @pytest.mark.parametrize("mutation", ["empty", "unknown_action", "incomplete", "provisioner", "bad_type", "bad_output", "bad_values"])
 def test_unsupported_plan_shapes_do_not_become_safe_changes(proposal, mutation):
     raw = proposal.preview
@@ -49,11 +52,13 @@ def test_unsupported_plan_shapes_do_not_become_safe_changes(proposal, mutation):
         normalize("terraform", "aws", raw)
 
 
+# Keep cost rounding conservative even for negative deltas
 @pytest.mark.parametrize("amount,expected", [("1.001", 101), ("-1.001", -100), ("0", 0)])
 def test_cost_estimates_round_up(amount, expected):
     assert cost_delta({"diffTotalMonthlyCost": amount, "currency": "USD"}) == expected
 
 
+# Federation must use explicit audiences and fixed TLS endpoints
 @pytest.mark.parametrize("cloud", ["aws", "azure", "gcp"])
 def test_cloud_authentication_uses_short_lived_assertions(cloud):
     calls, audiences = [], []
@@ -63,6 +68,8 @@ def test_cloud_authentication_uses_short_lived_assertions(cloud):
         "gcp": {"workload_identity_provider": "projects/123/locations/global/workloadIdentityPools/example/providers/github", "service_account": "runner@example-project.iam.gserviceaccount.com", "project_id": "example-project"},
     }
 
+
+    # Supply synthetic provider responses without network access
     def respond(request):
         calls.append(request)
         if request.url.host.endswith("amazonaws.com"):
@@ -71,6 +78,8 @@ def test_cloud_authentication_uses_short_lived_assertions(cloud):
             return httpx.Response(200, json={"access_token": "federated"})
         return httpx.Response(200, json={"accessToken": "temporary"})
 
+
+    # Record the exact audience requested by each federation route
     def token(audience):
         audiences.append(audience)
         return "test-assertion"
@@ -83,6 +92,7 @@ def test_cloud_authentication_uses_short_lived_assertions(cloud):
     assert len(calls) == {"aws": 1, "azure": 0, "gcp": 2}[cloud]
 
 
+# Only explicitly supplied worker credentials may enter the child environment
 def test_runner_drops_ambient_credentials_and_cli_injection(monkeypatch, tmp_path):
     monkeypatch.setenv("AWS_PROFILE", "human-admin")
     monkeypatch.setenv("DEPLOY_OPS_ADMIN_TOKEN", "operator-secret")
@@ -93,12 +103,14 @@ def test_runner_drops_ambient_credentials_and_cli_injection(monkeypatch, tmp_pat
     assert result["AWS_SESSION_TOKEN"] == "temporary"
 
 
+# An expired lease must stop its local process group
 def test_supervised_process_stops_at_the_deadline(tmp_path):
     with pytest.raises(Refused, match="deadline"):
         supervised([sys.executable, "-c", "import time; time.sleep(30)"], tmp_path,
                    dict(os.environ), lambda: None, int(time.time()) + 1)
 
 
+# Keep lease files private and refuse remote plain HTTP
 def test_local_secret_files_and_remote_transport(tmp_path):
     path = tmp_path / "lease.json"
     private_json(path, {"token": "not-a-real-secret"})
@@ -108,6 +120,7 @@ def test_local_secret_files_and_remote_transport(tmp_path):
         Client("http://example.com")
 
 
+# Unknown nested values prevent unattended authorization
 @pytest.mark.parametrize("unknown", [True, {"name": True}, [False, {"id": True}]])
 def test_unknown_values_need_human_review(proposal, unknown):
     proposal.preview["resource_changes"][0]["change"]["after_unknown"] = unknown

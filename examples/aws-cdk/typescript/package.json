@@ -1,0 +1,13 @@
+{
+  "name": "deploy-ops-cdk-example",
+  "private": true,
+  "description": "Synthesize an explicit ECS stack into a frozen cloud assembly.",
+  "scripts": {
+    "synth": "node --experimental-strip-types app.ts"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.275.0",
+    "constructs": "10.8.1"
+  },
+  "type": "module"
+}

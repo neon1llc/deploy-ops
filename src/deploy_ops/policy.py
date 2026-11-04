@@ -1,14 +1,17 @@
 # src/deploy_ops/policy.py - Decide scope without consulting the agent that requested it.
 
+
 from fnmatch import fnmatchcase
 
 from .config import Target
 
 
+# Count only operations that mutate resources
 def changed_resources(manifest: dict) -> list[dict]:
     return [item for item in manifest["preview"]["changes"] if item["action"] not in ("no-op", "read")]
 
 
+# Enforce non-overridable boundaries before evaluating approval
 def hard_denial(target: Target, manifest: dict) -> str | None:
     """Keep prohibited changes outside both human approvals and overnight grants."""
     preview = manifest["preview"]
@@ -24,6 +27,7 @@ def hard_denial(target: Target, manifest: dict) -> str | None:
     return None
 
 
+# Check all cumulative limits against the current grant and policy
 def fits_delegation(target: Target, manifest: dict, grant: dict, now: int) -> bool:
     """Count only positive cost estimates and never refund a failed execution."""
     policy = target.policy

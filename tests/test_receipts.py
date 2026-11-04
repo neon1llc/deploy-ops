@@ -1,5 +1,6 @@
 # tests/test_receipts.py - Connect durable infrastructure evidence to a separate application worker.
 
+
 import json
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from deploy_ops.receipts import extract_state
 from deploy_ops.service import Controller
 from deploy_ops.store import Store
 
+# Keep the fixture output contract synthetic and internally consistent
 OUTPUTS = {
     "cluster": "arn:aws:ecs:us-east-1:111111111111:cluster/apps",
     "service": "arn:aws:ecs:us-east-1:111111111111:service/apps/web",
@@ -27,16 +29,19 @@ OUTPUTS = {
 IMAGE = OUTPUTS["image_repository"] + "@sha256:" + "a" * 64
 
 
+# Include a private state field to verify it never reaches the receipt
 def state(serial=1):
     return {"lineage": "11111111-1111-1111-1111-111111111111", "serial": serial,
             "outputs": {name: {"sensitive": False, "type": "string", "value": value} for name, value in OUTPUTS.items()},
             "resources": [{"private": "must-never-leave-state"}]}
 
 
+# Bind the synthetic operator decision to exact submitted evidence
 def approve(controller, request):
     controller.decide(request["id"], Decision(digest=request["digest"], decision="approve"), "operator")
 
 
+# Exercise the producer lifecycle before issuing any output receipt
 def producer_execution(controller, run="1001", serial=1, complete=True):
     target = controller.target("infrastructure")
     proposal = sample_proposal().model_copy(update={"target": "infrastructure"})
@@ -52,6 +57,7 @@ def producer_execution(controller, run="1001", serial=1, complete=True):
     return request, lease, completion
 
 
+# Register separate infrastructure and application identities against one controller
 @pytest.fixture
 def setup(tmp_path):
     path = create(tmp_path / "workspace")
@@ -96,6 +102,7 @@ image_repository = "${outputs.foundation.image_repository}"
     return controller, engine, clock
 
 
+# Reference the exact producer receipt from the consumer's delivery proposal
 def application_proposal(controller, receipt):
     return Proposal(target="hello-development-web", engine="delivery", artifact_digest="a" * 64,
                     preview={"config_digest": controller.target("hello-development-web").delivery_digest,
@@ -103,6 +110,7 @@ def application_proposal(controller, receipt):
                     receipts={"foundation": {"id": receipt["id"], "digest": receipt["digest"]}})
 
 
+# A separate app worker must reuse persisted infrastructure evidence without reapplying it
 def test_two_workers_reuse_controller_receipt_without_reapplying_infrastructure(setup, monkeypatch):
     controller, engine, clock = setup
     original, lease, completion = producer_execution(controller)
@@ -115,14 +123,24 @@ def test_two_workers_reuse_controller_receipt_without_reapplying_infrastructure(
     # A new service instance reads persisted evidence; the app holds no producer execution token
     controller = Controller(controller.settings, Store(str(controller.store.path)), lambda: clock[0])
     source = sample_source(controller.target("hello-development-web"), "execute", "app-run")
+
+
+    # Model the authenticated application workflow separately from its transport
     class Identity:
+
+        # Accept only the synthetic application token expected by this fixture
         def verify(self, token):
             assert token == "application-oidc-fixture"
             return source
     api = create_app(controller.settings, "x" * 43, Identity())
     api.state.controller.clock = lambda: clock[0]
     http = TestClient(api)
+
+
+    # Exercise real API routes through an in-process authenticated client
     class Transport:
+
+        # Keep operator and execution credentials distinct in API contract calls
         def call(self, method, path, body=None, operator=False, execution_token=None):
             token = execution_token or ("x" * 43 if operator else "application-oidc-fixture")
             response = http.request(method, path, json=body, headers={"Authorization": "Bearer " + token})
@@ -133,6 +151,9 @@ def test_two_workers_reuse_controller_receipt_without_reapplying_infrastructure(
     engine.gate.credentials = lambda _: {}
     calls = []
     current = ["old"]
+
+
+    # Simulate provider revision changes while retaining the shared heartbeat boundary
     def command(self, argv, cwd, timeout=600, capture=False, input_text=None):
         self.heartbeat()
         calls.append(argv)
@@ -161,6 +182,7 @@ def test_two_workers_reuse_controller_receipt_without_reapplying_infrastructure(
     assert len([r for r in controller.list_requests() if r["manifest"]["target"] == "infrastructure"]) == 1
 
 
+# Receipt validity must be checked again when approval is consumed
 @pytest.mark.parametrize("change", ["revoked", "expired", "newer", "interrupted", "failed-apply", "policy", "wrong-digest"])
 def test_receipt_rechecked_between_submission_and_claim(setup, change):
     controller, _, clock = setup
@@ -194,6 +216,7 @@ def test_receipt_rechecked_between_submission_and_claim(setup, change):
     assert controller.get(request["id"])["execution"] is None
 
 
+# Receipt revocation stops authority without claiming remote rollback
 def test_revocation_interrupts_running_consumer_without_undoing_operation(setup):
     controller, _, _ = setup
     receipt = producer_execution(controller)[0]["output_receipt"]
@@ -208,6 +231,7 @@ def test_revocation_interrupts_running_consumer_without_undoing_operation(setup)
     assert controller.get(request["id"])["status"] == "uncertain"
 
 
+# Reject secret or malformed outputs without repeating their contents
 @pytest.mark.parametrize("change", ["sensitive", "wrong-type", "missing", "secret-value", "malformed"])
 def test_state_extraction_never_exports_secret_or_untyped_values(change):
     raw = state()
@@ -226,6 +250,7 @@ def test_state_extraction_never_exports_secret_or_untyped_values(change):
     assert "private-secret-value" not in str(error.value)
 
 
+# State evidence must come from the exact registered backend and workspace
 @pytest.mark.parametrize("change", [None, "bucket", "key", "region", "type", "workspace", "version", "endpoint", "profile"])
 def test_backend_selection_is_checked_before_receipt_execution(tmp_path, change):
     from deploy_ops.receipts import verify_backend
@@ -251,13 +276,15 @@ def test_backend_selection_is_checked_before_receipt_execution(tmp_path, change)
         verify_backend(tmp_path, expected)
 
 
+# Adding optional receipts must not invalidate unrelated saved authority
 def test_nonreceipt_target_keeps_legacy_policy_digest():
     from deploy_ops.config import fingerprint
     target = sample_target()
-    original = target.model_dump(exclude={"receipt_outputs", "receipt_dependencies"})
+    original = target.model_dump(exclude={"receipt_outputs", "receipt_dependencies", "local_cloud"})
     assert target.digest == fingerprint(original)
 
 
+# Legacy requests remain deduplicated when receipt fields are absent
 def test_nonreceipt_resubmission_finds_legacy_request(system, proposal, source):
     from deploy_ops.config import fingerprint
     controller, _, _ = system
@@ -272,6 +299,7 @@ def test_nonreceipt_resubmission_finds_legacy_request(system, proposal, source):
     assert len(controller.list_requests()) == 1
 
 
+# A receipt cannot move between accounts, environments or unregistered consumers
 @pytest.mark.parametrize("change", ["account", "environment", "source", "missing", "digest"])
 def test_wrong_receipt_consumer_or_reference_is_refused(setup, change):
     controller, _, _ = setup
@@ -293,6 +321,7 @@ def test_wrong_receipt_consumer_or_reference_is_refused(setup, change):
         controller.submit(proposal, source)
 
 
+# Issue outputs only after the supervised saved-plan execution succeeds
 @pytest.mark.parametrize("expired_completion", [False, True])
 def test_trusted_runner_extracts_receipt_after_successful_apply(setup, tmp_path, monkeypatch, expired_completion):
     import subprocess
@@ -341,7 +370,12 @@ if command=="state": print({json.dumps(state())!r})
     monkeypatch.setattr(runner.time, "time", lambda: clock[0])
     import deploy_ops.delivery.process as process_module
     monkeypatch.setattr(process_module.time, "time", lambda: clock[0])
+
+
+    # Keep the synthetic runner connected to the real controller state machine
     class Client:
+
+        # Model a late completion separately from successful local execution
         def call(self, method, path, body=None, execution_token=None):
             if path.endswith("heartbeat"):
                 return controller.heartbeat(request["id"], execution_token)

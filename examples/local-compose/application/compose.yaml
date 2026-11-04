@@ -1,12 +1,18 @@
 # compose.yaml - Serve an example page with bounded container resources and no host mounts.
 
+
+# Run one immutable example image without building inside the deployment worker
 services:
   web:
     image: python@sha256:7984cf56ceaddebe4fefeb75d64000b9f45d8b77b11a09b24524da6cdc3af0c8
+
+    # Generate only disposable content in the memory-backed scratch directory
     command:
       - sh
       - -c
       - mkdir -p /tmp/site && echo 'DeployOps local container' > /tmp/site/index.html && exec python -m http.server 8080 --bind 0.0.0.0 --directory /tmp/site
+
+    # Limit filesystem writes and privileges to the temporary serving workload
     user: "65534:65534"
     read_only: true
     tmpfs:
@@ -15,10 +21,14 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+
+    # Expose the example on loopback with bounded CPU and memory
     ports:
       - "127.0.0.1:18080:8080"
     mem_limit: 128m
     cpus: 0.5
+
+    # Require an actual HTTP response before Compose reports readiness
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080', timeout=2)"]
       interval: 2s

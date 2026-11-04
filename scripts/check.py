@@ -3,7 +3,8 @@
 # scripts/check.py - Check source syntax, local documentation links, and configuration shape.
 # Usage: python scripts/check.py
 #
-# This does not replace cloud integration tests or an independent security review
+# This does not replace cloud integration tests or an independent security review.
+
 
 import ast
 import json
@@ -15,11 +16,13 @@ from pathlib import Path
 
 import yaml
 
+# Resolve repository checks relative to this script rather than the caller
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from deploy_ops.config import load  # noqa: E402
 
 
+# Parse supported files and collect all local validation failures
 def main() -> int:
     failures = []
     # Setuptools generates these archive metadata files with its own whitespace
@@ -67,5 +70,6 @@ def main() -> int:
     return 0
 
 
+# Return a failing exit status when any repository check fails
 if __name__ == "__main__":
     raise SystemExit(main())

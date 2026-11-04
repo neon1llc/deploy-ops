@@ -1,5 +1,6 @@
 # tests/test_previews.py - Verify isolated preview ownership and exact retained-data cleanup.
 
+
 import json
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from deploy_ops.delivery.spec import load
 from deploy_ops.errors import Refused
 
 
+# Opt one local environment into isolated preview behavior
 @pytest.fixture
 def preview_engine(tmp_path):
     path = create(tmp_path / 'workspace')
@@ -23,16 +25,19 @@ def preview_engine(tmp_path):
     return Engine(path)
 
 
+# Create a complete preview under explicit owner and retention settings
 def deploy(engine, retain=False):
     return finish(engine, engine.create('development', preview_owner='local-operations', retain_preview_data=retain))
 
 
+# Approve only the freshly prepared cleanup digest
 def approve(engine, release):
     prepared = prepare_cleanup(engine, release['id'])
     approve_cleanup(engine, release['id'], prepared['cleanup']['request_digest'])
     return prepared
 
 
+# Delete reviewed generated files while retaining ownership and release evidence
 def test_isolated_preview_delivery_and_exact_cleanup(preview_engine):
     engine = preview_engine
     release = deploy(engine)
@@ -55,6 +60,7 @@ def test_isolated_preview_delivery_and_exact_cleanup(preview_engine):
     assert 'retirement' in engine.observe(release['id'])['components']['web']['reason']
 
 
+# Cleanup must preserve data it cannot prove is unchanged generated content
 @pytest.mark.parametrize('retain', [False, True])
 def test_retained_modified_and_unknown_files_survive(preview_engine, retain):
     engine = preview_engine
@@ -73,6 +79,7 @@ def test_retained_modified_and_unknown_files_survive(preview_engine, retain):
     assert (root / 'unknown-empty').is_dir() and (root / '.ownership.json').is_file()
 
 
+# Changes after review require inspection and a new cleanup plan
 def test_cleanup_rechecks_target_after_authority_and_recovers(preview_engine):
     engine = preview_engine
     release = deploy(engine)
@@ -89,6 +96,7 @@ def test_cleanup_rechecks_target_after_authority_and_recovers(preview_engine):
     assert (root / 'later-data').read_text() == 'preserve after approval'
 
 
+# Partial deletion remains uncertain until a new inventory is reviewed
 def test_partial_cleanup_needs_new_plan_and_authority(preview_engine, monkeypatch):
     from deploy_ops.delivery import previews
     engine = preview_engine
@@ -96,6 +104,9 @@ def test_partial_cleanup_needs_new_plan_and_authority(preview_engine, monkeypatc
     approve(engine, release)
     original = previews._unlink
     count = [0]
+
+
+    # Fail after one deletion to retain evidence of partial progress
     def interrupted(*args):
         count[0] += 1
         if count[0] == 2:
@@ -111,6 +122,7 @@ def test_partial_cleanup_needs_new_plan_and_authority(preview_engine, monkeypatc
     assert execute_cleanup(engine, release['id'])['cleanup']['status'] == 'retired'
 
 
+# Ownership comes from verified evidence rather than a matching directory name
 def test_ownership_symlinks_and_baseline_tampering_refused(preview_engine):
     engine = preview_engine
     release = deploy(engine)
@@ -125,6 +137,7 @@ def test_ownership_symlinks_and_baseline_tampering_refused(preview_engine):
         prepare_cleanup(engine, release['id'])
 
 
+# Preview expiry neither grants deletion nor changes ordinary target authority
 def test_ordinary_target_and_preview_expiry_boundaries(tmp_path, preview_engine, monkeypatch):
     ordinary = Engine(create(tmp_path / 'ordinary'))
     old_data = ordinary.spec.model_dump()
@@ -146,6 +159,7 @@ def test_ordinary_target_and_preview_expiry_boundaries(tmp_path, preview_engine,
         active(preview_engine, preview)
 
 
+# Preview scope cannot expand through shared paths or unattended grants
 def test_preview_refuses_shared_inputs_and_delegation(preview_engine):
     engine = preview_engine
     with pytest.raises(Refused, match='owner'):
@@ -163,6 +177,7 @@ def test_preview_refuses_shared_inputs_and_delegation(preview_engine):
         Engine(engine.path).create('development', preview_owner='ops')
 
 
+# Reject unsupported preview environments before executing work
 def test_preview_contract_rejects_production_and_cloud(preview_engine):
     source = preview_engine.path.read_text()
     for replacement in ['provider = "aws"', 'provider = "local"\nproduction = true']:
@@ -171,6 +186,7 @@ def test_preview_contract_rejects_production_and_cloud(preview_engine):
             load(preview_engine.path)
 
 
+# Changed cleanup evidence or swapped namespaces must never redirect deletion
 def test_cleanup_artifact_tampering_and_namespace_swap_refused(preview_engine):
     engine = preview_engine
     release = deploy(engine)
@@ -192,6 +208,7 @@ def test_cleanup_artifact_tampering_and_namespace_swap_refused(preview_engine):
     parked.rename(root)
 
 
+# A live cleanup writer retains exclusive ownership until completion
 def test_active_cleanup_cannot_be_reconciled_or_claimed_twice(preview_engine, monkeypatch):
     import concurrent.futures
     import threading
@@ -201,6 +218,9 @@ def test_active_cleanup_cannot_be_reconciled_or_claimed_twice(preview_engine, mo
     approve(engine, release)
     entered, proceed = threading.Event(), threading.Event()
     original = previews._unlink
+
+
+    # Hold deletion open while competing recovery attempts run
     def paused(*args):
         entered.set()
         assert proceed.wait(5)
@@ -217,11 +237,15 @@ def test_active_cleanup_cannot_be_reconciled_or_claimed_twice(preview_engine, mo
         assert task.result()['cleanup']['status'] == 'retired'
 
 
+# Lost completion evidence needs inspection even after filesystem work finishes
 def test_missing_namespace_is_not_implicit_cleanup_success(preview_engine, monkeypatch):
     engine = preview_engine
     release = deploy(engine)
     approve(engine, release)
     original = engine.gate.complete
+
+
+    # Simulate a lost success report after deletion has already occurred
     def interrupted(lease, outcome):
         if outcome == 'succeeded':
             raise OSError('controller result lost after filesystem work')
@@ -241,6 +265,7 @@ def test_missing_namespace_is_not_implicit_cleanup_success(preview_engine, monke
     assert result['status'] == 'succeeded'
 
 
+# A running deployment must keep cleanup from acquiring its namespace
 def test_live_deployment_recovery_cannot_enable_cleanup(preview_engine, monkeypatch):
     import concurrent.futures
     import threading
@@ -252,6 +277,9 @@ def test_live_deployment_recovery_cannot_enable_cleanup(preview_engine, monkeypa
     engine.approve(release['id'], 'web', release['nodes']['web']['request_digest'])
     entered, proceed = threading.Event(), threading.Event()
     original = local.apply
+
+
+    # Hold application activation open while cleanup competes for the release
     def paused(context, prepared):
         if context.name == 'web':
             entered.set()
@@ -271,6 +299,7 @@ def test_live_deployment_recovery_cannot_enable_cleanup(preview_engine, monkeypa
     assert namespace(engine, completed).exists()
 
 
+# Only one recovery worker may replace a dead owner's lock
 def test_stale_lock_recovery_is_atomic(preview_engine, monkeypatch):
     import concurrent.futures
     import threading
@@ -283,6 +312,9 @@ def test_stale_lock_recovery_is_atomic(preview_engine, monkeypatch):
         connection.execute('UPDATE release_lock_owners SET owner_pid=2147483647 WHERE scope=?', (scope,))
     entered, proceed = threading.Event(), threading.Event()
     original = engine.gate.status
+
+
+    # Keep the first recovery active while another tries to acquire ownership
     def paused(request):
         entered.set()
         assert proceed.wait(5)
@@ -297,6 +329,7 @@ def test_stale_lock_recovery_is_atomic(preview_engine, monkeypatch):
         assert first.result()['cleanup']['status'] == 'reconciled'
 
 
+# Missing worker identity cannot be interpreted as a dead worker
 def test_unattributed_legacy_lock_blocks_recovery(preview_engine):
     engine = preview_engine
     release = engine.create('development', preview_owner='ops')
@@ -306,6 +339,7 @@ def test_unattributed_legacy_lock_blocks_recovery(preview_engine):
         engine.recover(release['id'], 'Legacy owner has not been independently verified')
 
 
+# Authenticated UI and CLI cleanup must use the same approval state
 def test_cli_and_console_share_preview_contract(preview_engine):
     from fastapi.testclient import TestClient
     from deploy_ops.cli import dispatch, parser

@@ -1,5 +1,6 @@
 # src/deploy_ops/delivery/spec.py - Describe repositories, environments, and dependency-aware releases.
 
+
 import re
 import tomllib
 from pathlib import Path
@@ -10,22 +11,28 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ..config import fingerprint
 from ..errors import Refused
 
+# Keep stable component names separate from the explicit adapter vocabulary
 NAME = re.compile(r"^[a-z][a-z0-9-]{0,47}$")
 ADAPTERS = {
     "directory", "static", "compose", "opentofu", "terraform", "ecs",
     "container-apps", "cloud-run", "kubernetes", "workflow",
+    "cloudformation", "cdk", "arm", "bicep",
 }
 
 
+# Reject unknown contract fields instead of silently discarding operator intent
 class Record(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+# Select a source revision and make working-tree use explicit
 class Repository(Record):
     path: str
     revision: str = "HEAD"
     allow_uncommitted: bool = False
 
+
+    # Prevent a Git revision from becoming a command option
     @model_validator(mode="after")
     def safe_revision(self):
         if not self.revision or self.revision.startswith("-") or "\x00" in self.revision:
@@ -33,6 +40,7 @@ class Repository(Record):
         return self
 
 
+# Keep provider, production and promotion choices separate from component settings
 class Environment(Record):
     provider: Literal["local", "aws", "azure", "gcp"]
     production: bool = False
@@ -41,6 +49,7 @@ class Environment(Record):
     promote_from: list[str] = Field(default_factory=list)
 
 
+# Represent trusted build inputs as argument lists and explicit artifact settings
 class Build(Record):
     checks: list[list[str]] = Field(default_factory=list)
     command: list[str] = Field(default_factory=list)
@@ -50,7 +59,9 @@ class Build(Record):
     push: bool = False
 
 
+# Bind one repository capability to dependencies and environment overrides
 class Component(Record):
+    # Source ownership and dependency edges do not imply deployment authority
     repository: str
     kind: Literal["infrastructure", "application", "workflow"]
     adapter: str
@@ -58,11 +69,15 @@ class Component(Record):
     needs: list[str] = Field(default_factory=list)
     options: dict[str, Any] = Field(default_factory=dict)
     targets: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+    # Build inputs, public outputs and bounds stay part of the approved contract
     build: Build = Field(default_factory=Build)
     outputs: list[str] = Field(default_factory=list)
     timeout_seconds: int = Field(default=600, ge=10, le=3600)
     estimated_monthly_delta_cents: int | None = Field(default=None, ge=0)
 
+
+    # Reject unknown adapters and source paths that escape their repository
     @model_validator(mode="after")
     def check_adapter(self):
         if self.adapter not in ADAPTERS:
@@ -77,6 +92,7 @@ class Component(Record):
         return self
 
 
+# Own the shared repository graph and environment contract
 class Workspace(Record):
     schema_version: Literal[1] = 1
     name: str
@@ -84,6 +100,8 @@ class Workspace(Record):
     environments: dict[str, Environment]
     components: dict[str, Component]
 
+
+    # Validate references and effective provider options before execution
     @model_validator(mode="after")
     def relationships(self):
         for key in [self.name, *self.repositories, *self.environments, *self.components]:
@@ -104,15 +122,28 @@ class Workspace(Record):
                 raise ValueError("Preview environments must be local and nonproduction")
             if set(environment.promote_from) - self.environments.keys() or name in environment.promote_from:
                 raise ValueError(f"Invalid promotion path for {name}")
+            # Validate effective native options after environment inheritance
+            from .options import MODELS
+            for component_name in self.components:
+                effective = self.component(component_name, name)
+                if effective.adapter in MODELS:
+                    expected = "aws" if effective.adapter in {"cloudformation", "cdk"} else "azure"
+                    if environment.provider != expected or effective.kind != "infrastructure":
+                        raise ValueError("Native infrastructure adapter needs its matching cloud and infrastructure kind")
+                    MODELS[effective.adapter].model_validate(effective.options)
         self.order()
         return self
 
+
+    # Traverse each dependency once and reject cycles before preparing work
     def order(self, selected: str | None = None, with_dependencies: bool = True) -> list[str]:
         """Keep shared dependencies once and reject cycles before starting work."""
         if selected and selected not in self.components:
             raise Refused("Unknown component", 422)
         result, visiting = [], set()
 
+
+        # Detect recursion before admitting a node into dependency order
         def visit(name):
             if name in visiting:
                 raise ValueError("Component dependency graph contains a cycle")
@@ -129,6 +160,8 @@ class Workspace(Record):
             visit(name)
         return result
 
+
+    # Merge the selected environment without mutating shared component defaults
     def component(self, name: str, environment: str) -> Component:
         """Resolve a target adapter without pretending provider settings are interchangeable."""
         component = self.components[name]
@@ -136,25 +169,31 @@ class Workspace(Record):
         adapter = override.pop("adapter", component.adapter)
         return component.model_copy(update={"adapter": adapter, "options": {**component.options, **override}, "targets": {}})
 
+
+    # Preserve established approvals when optional preview support is disabled
     @property
     def digest(self) -> str:
         data = self.model_dump()
-        # Disabled preview support must not invalidate existing workspace approvals.
+        # Disabled preview support must not invalidate existing workspace approvals
         for environment in data["environments"].values():
             if not environment["preview"]:
                 environment.pop("preview")
         return fingerprint(data)
 
 
+# Parse the operator workspace without executing repository code
 def load(path: Path) -> Workspace:
     """Read the operator-owned workspace. Repository content cannot rewrite its authority."""
     return Workspace.model_validate(tomllib.loads(path.read_text()))
 
 
+# Resolve only complete environment and declared dependency references
 def options(component: Component, environment: Environment, name: str, outputs: dict) -> dict:
     """Resolve complete values, without evaluating expressions or expanding a shell."""
     values = {**component.options, **component.targets.get(name, {})}
 
+
+    # Expand only the two supported public-reference namespaces
     def resolve(value):
         if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
             key = value[2:-1]

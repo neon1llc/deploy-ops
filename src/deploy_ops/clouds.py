@@ -1,5 +1,6 @@
 # src/deploy_ops/clouds.py - Exchange short-lived workflow identity for provider credentials.
 
+
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
@@ -11,12 +12,14 @@ from .errors import Refused
 from .models import Cloud
 
 
+# Exchange only through fixed provider endpoints with validated identity fields
 def environment(cloud: Cloud, identity: dict, token: Callable[[str], str],
                 session: str, client: httpx.Client) -> dict[str, str]:
     """Return credentials only to the runner, never to the approval request or ledger."""
     if cloud == "local":
         return {}
     try:
+        # AWS validates the role and region before exchanging the assertion
         if cloud == "aws":
             region = identity["region"]
             role = identity["role_arn"]
@@ -38,6 +41,7 @@ def environment(cloud: Cloud, identity: dict, token: Callable[[str], str],
                 "AWS_DEFAULT_REGION": region, "AWS_EC2_METADATA_DISABLED": "true",
             }
         elif cloud == "azure":
+            # Azure provider authentication consumes the assertion through explicit tenant settings
             for key in ("client_id", "tenant_id", "subscription_id"):
                 if not re.fullmatch(r"[0-9a-fA-F-]{36}", identity[key]):
                     raise ValueError("Invalid Azure identity")
@@ -50,6 +54,7 @@ def environment(cloud: Cloud, identity: dict, token: Callable[[str], str],
                 "ARM_USE_AZUREAD": "true",
             }
         else:
+            # GCP first exchanges the assertion, then impersonates the registered service account
             provider = identity["workload_identity_provider"]
             account = identity["service_account"]
             if not re.fullmatch(

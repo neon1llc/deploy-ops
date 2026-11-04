@@ -1,5 +1,6 @@
 # src/deploy_ops/delivery/process.py - Run bounded argument lists without inheriting personal credentials.
 
+
 import os
 from contextlib import suppress
 import re
@@ -11,9 +12,11 @@ from pathlib import Path
 
 from ..errors import Refused
 
+# Ambient credentials and arbitrary endpoint overrides are excluded from child environments
 SAFE_ENV = {"PATH", "LANG", "LC_ALL", "SSL_CERT_FILE", "SYSTEMROOT", "WINDIR"}
 
 
+# Start from a small host allowlist and add only explicit credential references
 def environment(home: Path, credentials: dict[str, str] | None = None) -> dict[str, str]:
     values = {key: value for key, value in os.environ.items() if key in SAFE_ENV}
     values.update(HOME=str(home), TMPDIR=str(home), TF_IN_AUTOMATION="1", TF_INPUT="0",
@@ -22,6 +25,7 @@ def environment(home: Path, credentials: dict[str, str] | None = None) -> dict[s
     return values
 
 
+# Remove known secrets and common credential assignments from displayed output
 def redact(text: str, secrets: list[str]) -> str:
     for secret in sorted((item for item in secrets if len(item) >= 8), key=len, reverse=True):
         text = text.replace(secret, "[redacted]")
@@ -29,7 +33,9 @@ def redact(text: str, secrets: list[str]) -> str:
     return text
 
 
+# Supervise bounded native commands with authority heartbeats
 class Process:
+    # Keep process credentials and deadlines local to this execution context
     def __init__(self, home: Path, emit, credentials: dict[str, str] | None = None,
                  heartbeat=None, deadline: int | None = None):
         self.env = environment(home, credentials)
@@ -39,6 +45,8 @@ class Process:
         self.secrets = [value for key, value in (credentials or {}).items()
                         if any(word in key for word in ("TOKEN", "SECRET", "KEY", "PASSWORD"))]
 
+
+    # Capture provider output privately while supervising the whole process group
     def run(self, argv: list[str], cwd: Path, timeout: int = 600, capture: bool = False,
             input_text: str | None = None) -> str:
         """Poll authority while commands run. Provider-side work may outlive cancellation."""
@@ -46,6 +54,8 @@ class Process:
             raise Refused("Invalid command argument list", 422)
         self.heartbeat()
         self.emit("command.started", {"tool": Path(argv[0]).name})
+
+        # Private streams keep raw provider responses out of ordinary command events
         with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as diagnostic, tempfile.TemporaryFile() as stdin:
             if input_text is not None:
                 stdin.write(input_text.encode())
@@ -56,6 +66,7 @@ class Process:
             )
             started = time.monotonic()
             try:
+                # Authority expiry and output limits interrupt local execution without claiming rollback
                 while process.poll() is None:
                     if time.monotonic() - started >= timeout or (self.deadline and time.time() >= self.deadline):
                         raise Refused("Command deadline reached. Check the target before retrying")
@@ -63,6 +74,8 @@ class Process:
                         raise Refused("Command output exceeded its 10 MB limit")
                     self.heartbeat()
                     time.sleep(0.25)
+
+                # Only bounded successful output can reach the caller
                 output.seek(0)
                 text = output.read(10_000_001).decode(errors="replace")
                 if len(text.encode()) > 10_000_000:

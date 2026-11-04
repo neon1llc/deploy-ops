@@ -1,5 +1,6 @@
 # src/deploy_ops/delivery/adapters/iac.py - Apply a saved plan and export only named, non-secret outputs.
 
+
 import json
 import re
 
@@ -10,9 +11,11 @@ from ..files import inside
 from .base import Context
 
 
+# Keep engine selection explicit without changing existing state ownership
 BINARIES = {"opentofu": "tofu", "terraform": "terraform"}
 
 
+# Save the exact plan with its provider lock and engine version
 def prepare(context: Context) -> dict:
     binary = BINARIES[context.component.adapter]
     lock = context.source / ".terraform.lock.hcl"
@@ -27,11 +30,13 @@ def prepare(context: Context) -> dict:
                      {"terraform": {"backend": {"local": {"path": str(state)}}}})
     elif not context.options.get("remote_state", False):
         raise Refused("Declare remote_state=true after configuring a remote backend, or local_state=true locally", 422)
+    # Validate the initialized workspace before retaining the plan
     initialization = init(context)
     context.command(initialization)
     context.command([binary, "validate", "-no-color"])
     saved = context.stage / "infrastructure.plan"
     arguments = [binary, "plan", "-input=false", "-no-color", "-out=" + str(saved)]
+    # Resolve declared inputs within the frozen source snapshot
     var_files = context.options.get("var_files", [])
     if not isinstance(var_files, list) or not all(isinstance(path, str) for path in var_files):
         raise Refused("var_files must be a list of repository-relative paths", 422)
@@ -52,6 +57,7 @@ def prepare(context: Context) -> dict:
             "lock_digest": file_digest(lock)}
 
 
+# Recheck tool identity before applying the retained plan
 def apply(context: Context, prepared: dict) -> dict:
     binary = BINARIES[context.component.adapter]
     version = json.loads(context.command([binary, "version", "-json"], capture=True))["terraform_version"]
@@ -59,6 +65,7 @@ def apply(context: Context, prepared: dict) -> dict:
         raise Refused("IaC tool or provider lock differs from the reviewed plan")
     context.command(init(context))
     context.command([binary, "apply", "-input=false", "-no-color", str(context.stage / "infrastructure.plan")])
+    # Export only named small public values for dependent application work
     raw = json.loads(context.command([binary, "output", "-json"], capture=True))
     result = {}
     for name in context.component.outputs:
@@ -72,6 +79,7 @@ def apply(context: Context, prepared: dict) -> dict:
     return result
 
 
+# Reuse the declared backend without changing the provider lock
 def init(context: Context) -> list[str]:
     """Backend selectors are public configuration. Credentials must come from the worker identity."""
     command = [BINARIES[context.component.adapter], "init", "-input=false", "-lockfile=readonly", "-no-color"]

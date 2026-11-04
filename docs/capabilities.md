@@ -1,6 +1,6 @@
 # Capabilities
 
-This table describes version 0.10.0. "Implemented" describes source behavior. "Live" means it actually ran
+This table describes the current preview implementation. "Implemented" describes source behavior. "Live" means it actually ran
 in this build environment. Mocked provider commands are not cloud integration evidence.
 
 | Capability | Current behavior | Evidence or limit |
@@ -13,6 +13,9 @@ in this build environment. Mocked provider commands are not cloud integration ev
 | OCI build/publish | Docker Buildx metadata produces immutable image reference | Command-contract checks; registry build/publish not exercised |
 | Docker Compose | Rendered digest-pinned images, bounded host features, health wait | Real Docker/Compose first and app-only delivery, HTTP and health checks |
 | Terraform/OpenTofu | Saved plan, tool and lock checks, state contract, named public outputs | Existing gate tests and new command-contract fixtures |
+| CloudFormation | Native change-set preview, exact execution, state checks, public outputs, events and owned-stack deletion | Live private S3 create/update/no-change/delete and additional command fixtures; preview requires scoped cloud authority |
+| AWS CDK | Frozen assembly, selected stack, file/zip assets and the CloudFormation lifecycle | Command fixtures; synthesis is external, no bootstrap mutation or Docker/executable asset builds |
+| ARM/Bicep | Frozen JSON and public parameters, manual what-if review, fresh prediction before incremental deployment, named-operation readback | ARM fixtures and real Bicep v0.41.2 sample compilation; no live Azure or native resource destruction |
 | AWS ECS app | Existing service, clone task definition, exact image, waiter, revision check | Mocked commands, no live AWS |
 | Azure Container Apps | Existing Single-mode app, revision health check | Mocked commands, no live Azure |
 | GCP Cloud Run | Existing single-traffic service, new revision, explicit 100% traffic switch | Mocked commands, no live GCP |
@@ -25,14 +28,18 @@ in this build environment. Mocked provider commands are not cloud integration ev
 | Local incidents | Explicit opening, owner label, versioned acknowledgement/resolution and bounded escalation signals | Durable/concurrent CLI/API checks and real browser; no external pager or on-call schedule |
 | External paging | JSON receiver can consume complete incident snapshots | Native pager adapter, authenticated remote acknowledgement and recipient routing remain unfinished |
 | Local GUI | Token unlock, config editor, graph preview, run, approval, local delegation, events, promotion and rollback | API tests and real headless Chrome journey on macOS, including keyboard unlock and narrow layout |
-| Guided configuration | Schema-derived existing-entry forms, comment-preserving TOML drafts, diff and stale-save refusal | Shared CLI/API tests; provider options and new entries remain TOML |
+| Guided configuration | Schema-derived existing-entry forms, effective environment options for native IaC, comment-preserving TOML drafts, diff and stale-save refusal | Shared configuration model; unsupported adapter forms and new entries remain TOML |
 | Appearance | System mode, six presets, validated import/export, density and radius | Real browser checks for drafts, storage failures and narrow layout |
 | Catalog | Curated prior-art and integration metadata | Research only, no automatic installation or subscriptions |
 | Cross-repo cloud coordination | Controller-issued typed AWS ECS receipts, pinned S3 backend and independently approved app delivery | Durable restart and two app releases checked with command fixtures; no live AWS |
 | Isolated static previews | Opt-in local namespaces, owner/expiry, exact manual cleanup, unknown/modified data retention | Local file, concurrency, recovery and browser/HTTP checks; no cloud/runtime cleanup |
 | Local drift observation | Reviewed static files, active pointer and directory marker; records findings without repair | Actual local deployment tests; cloud, Compose and application health not observed |
 | Canary, blue/green, SBOM enforcement | Research and phased plan | Not implemented |
-| Pulumi/CDK/Bicep/Argo CD/Flux | Can be invoked through a trusted manual local workflow | Native isolated adapters and cloud semantics not implemented |
+| Pulumi, Helm/Kustomize, Argo CD and Flux | Can be invoked through a trusted manual local workflow where applicable | Native lifecycle and reconciliation adapters remain unfinished |
 
 Production never allows unattended delegation in this version. The project is not limited to cloud use,
 but local execution does not simulate the semantics of AWS, Azure, or GCP.
+
+See [native infrastructure](native-infrastructure.md) for supported combinations, prerequisites,
+mutation boundaries and recovery. A compiler result, preview or provider response alone does not prove
+application health or a complete cloud journey.

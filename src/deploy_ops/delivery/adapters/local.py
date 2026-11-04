@@ -1,5 +1,6 @@
 # src/deploy_ops/delivery/adapters/local.py - Deploy local files or an exact rendered Compose configuration.
 
+
 import json
 import re
 import shutil
@@ -11,6 +12,7 @@ from ..files import digest_tree, inside
 from .base import Context, need, preview
 
 
+# Freeze static files or rendered Compose inputs before approval
 def prepare(context: Context) -> dict:
     adapter = context.component.adapter
     if adapter == "directory":
@@ -30,6 +32,7 @@ def prepare(context: Context) -> dict:
         return {"preview": preview(context.name, "application_static", False),
                 "destination": destination, "site_digest": digest_tree(target),
                 "previous_pointer": pointer(context.deployments, destination)}
+    # Render Compose once and reject host-level privileges before approval
     config = need(context.options, "file")
     file = inside(context.source, config)
     rendered = json.loads(context.command(
@@ -48,6 +51,7 @@ def prepare(context: Context) -> dict:
             "project": context.options.get("project", f"{context.environment}-{context.name}")}
 
 
+# Activate only the reviewed local artifact and target
 def apply(context: Context, prepared: dict) -> dict:
     adapter = context.component.adapter
     if adapter == "directory":
@@ -62,6 +66,7 @@ def apply(context: Context, prepared: dict) -> dict:
         destination = inside(context.deployments, prepared["destination"])
         if pointer(context.deployments, str(destination)) != prepared.get("previous_pointer"):
             raise Refused("Local deployment changed after preparation. Review a fresh release")
+        # Create a new release directory before replacing the active pointer
         releases = destination / "releases"
         releases.mkdir(parents=True, exist_ok=True, mode=0o700)
         path = releases / context.release_id
@@ -77,6 +82,7 @@ def apply(context: Context, prepared: dict) -> dict:
     return {"project": prepared["project"]}
 
 
+# Read the activation baseline used to reject stale static updates
 def pointer(root: Path, destination: str):
     """Bind a static deployment to the previous active pointer as well as its new artifact."""
     path = inside(root, destination) / "current.json"

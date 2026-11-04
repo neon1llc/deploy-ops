@@ -1,5 +1,6 @@
 # src/deploy_ops/delivery/adapters/cloud.py - Deliver immutable application images with provider-specific checks.
 
+
 import copy
 import json
 import re
@@ -9,7 +10,9 @@ from ...client import private_json
 from ...errors import Refused
 from .base import Context, need, preview
 
+# Require immutable image references before any runtime update
 IMAGE = re.compile(r"^[^\s]+@sha256:[0-9a-f]{64}$")
+# Copy only fields accepted when registering a new ECS task revision
 ECS_FIELDS = {
     "family", "taskRoleArn", "executionRoleArn", "networkMode", "containerDefinitions",
     "volumes", "placementConstraints", "requiresCompatibilities", "cpu", "memory",
@@ -18,21 +21,25 @@ ECS_FIELDS = {
 }
 
 
+# Pin every ECS request to the selected region
 def aws(context: Context, *parts: str) -> list[str]:
     return ["aws", *parts, "--region", need(context.options, "region"), "--output", "json", "--no-cli-pager"]
 
 
+# Bind Container Apps operations to one subscription and resource group
 def azure(context: Context, *parts: str) -> list[str]:
     return ["az", "containerapp", *parts, "--name", need(context.options, "name"),
             "--resource-group", need(context.options, "resource_group"),
             "--subscription", need(context.options, "subscription_id"), "--output", "json"]
 
 
+# Keep Cloud Run project and region explicit on every command
 def google(context: Context, *parts: str) -> list[str]:
     return ["gcloud", "run", *parts, "--region", need(context.options, "region"),
             "--project", need(context.options, "project_id"), "--quiet", "--format=json"]
 
 
+# Capture the current revision before reviewing an immutable image update
 def prepare(context: Context) -> dict:
     image = need(context.options, "image")
     if not IMAGE.fullmatch(image):
@@ -52,6 +59,7 @@ def prepare(context: Context) -> dict:
             raise Refused("The ECS adapter supports the ECS deployment controller only", 422)
         task = json.loads(context.command(aws(context, "ecs", "describe-task-definition", "--task-definition",
             service["taskDefinition"]), capture=True))["taskDefinition"]
+        # Freeze the next task definition while preserving unrelated container settings
         definition = {key: value for key, value in task.items() if key in ECS_FIELDS}
         container = need(context.options, "container")
         matches = [item for item in definition["containerDefinitions"] if item["name"] == container]
@@ -91,6 +99,7 @@ def prepare(context: Context) -> dict:
     return result
 
 
+# Recheck the baseline and verify the provider's resulting revision
 def apply(context: Context, prepared: dict) -> dict:
     adapter = context.component.adapter
     image = prepared["image"]
@@ -100,6 +109,7 @@ def apply(context: Context, prepared: dict) -> dict:
                                                 "--services", service), capture=True))
         if current.get("failures") or current["services"][0]["taskDefinition"] != prepared["previous_revision"]:
             raise Refused("ECS service changed after planning. Prepare a fresh release")
+        # Register and activate the prepared revision only after the baseline still matches
         task = json.loads(context.command(aws(context, "ecs", "register-task-definition", "--cli-input-json",
             "file://" + str(context.stage / "task-definition.json")), capture=True))["taskDefinition"]["taskDefinitionArn"]
         context.command(aws(context, "ecs", "update-service", "--cluster", cluster, "--service", service,
@@ -116,6 +126,7 @@ def apply(context: Context, prepared: dict) -> dict:
             raise Refused("Container App changed after planning. Prepare a fresh release")
         updated = json.loads(context.command(azure(context, "update", "--image", image), capture=True))
         revision = updated["properties"]["latestRevisionName"]
+        # Poll the requested revision rather than assuming the update response proves health
         deadline = time.monotonic() + min(context.component.timeout_seconds, 240)
         while time.monotonic() < deadline:
             state = json.loads(context.command(azure(context, "revision", "show", "--revision", revision), capture=True))
@@ -137,6 +148,7 @@ def apply(context: Context, prepared: dict) -> dict:
         ready = any(item.get("type") == "Ready" and item.get("status") == "True" for item in state.get("conditions", []))
         if not ready or not state.get("latestCreatedRevisionName") or state.get("latestReadyRevisionName") != state["latestCreatedRevisionName"]:
             raise Refused("Cloud Run did not confirm the requested revision is ready")
+        # Move traffic only after the newly created revision is confirmed ready
         traffic = json.loads(context.command(google(context, "services", "update-traffic", need(context.options, "name"),
             "--to-revisions", state["latestReadyRevisionName"] + "=100"), capture=True))
         serving = traffic.get("status", {}).get("traffic", [])
@@ -146,6 +158,7 @@ def apply(context: Context, prepared: dict) -> dict:
                 "previous_revision": prepared.get("previous_revision", "")}
     base = ["kubectl", "--context", need(context.options, "context"), "--namespace", need(context.options, "namespace")]
     deployment = "deployment/" + need(context.options, "deployment")
+    # Use atomic test operations to reject concurrent Kubernetes changes
     patch = [
         {"op": "test", "path": "/metadata/resourceVersion", "value": prepared["resource_version"]},
         {"op": "test", "path": f"/spec/template/spec/containers/{prepared['container_index']}/image", "value": prepared["previous_image"]},

@@ -1,5 +1,6 @@
 # src/deploy_ops/receipts.py - Bind typed public outputs to authenticated infrastructure execution.
 
+
 import hashlib
 import json
 from pathlib import Path
@@ -9,10 +10,12 @@ from .errors import Refused
 from .models import InfrastructureEvidence
 
 
+# Derive receipt scope from the registered execution identity
 def aws_scope(target: Target) -> tuple[str, str]:
     return target.identity["role_arn"].split(":")[4], target.identity["region"]
 
 
+# Validate resource relationships before issuing public output evidence
 def issue(request: dict, target: Target, evidence: InfrastructureEvidence, now: int, generation: int) -> dict:
     account, region = aws_scope(target)
     outputs = evidence.outputs.model_dump()
@@ -25,6 +28,7 @@ def issue(request: dict, target: Target, evidence: InfrastructureEvidence, now: 
     if not outputs["image_repository"].startswith(f"{account}.dkr.ecr.{region}.amazonaws.com/"):
         raise Refused("Receipt registry does not match the registered account and region", 422)
     policy = target.receipt_outputs
+    # Include producer identity and state freshness without copying raw state
     body = {
         "id": request["id"], "format": policy.format, "generation": generation,
         "producer_target": request["manifest"]["target"],
@@ -37,6 +41,7 @@ def issue(request: dict, target: Target, evidence: InfrastructureEvidence, now: 
     return {**body, "digest": fingerprint(body)}
 
 
+# Reject alternate state locations or hidden credential overrides
 def verify_backend(directory: Path, expected: dict) -> None:
     """Require the initialized S3 backend and default workspace before creating or applying a plan."""
     try:
@@ -60,6 +65,7 @@ def verify_backend(directory: Path, expected: dict) -> None:
         raise Refused("Receipt producer needs the registered S3 backend in the default workspace", 422) from error
 
 
+# Export only the four explicitly public typed ECS outputs
 def extract_state(raw: bytes) -> InfrastructureEvidence:
     """Discard raw state and sensitive values before constructing the public schema."""
     if len(raw) > 8_000_000:

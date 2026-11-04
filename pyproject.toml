@@ -1,18 +1,23 @@
 # pyproject.toml - Package the shared deployment core, CLI, and local operator console.
 
+
+# Use the standard wheel builder with the supported metadata format
 [build-system]
 requires = ["setuptools>=77,<83"]
 build-backend = "setuptools.build_meta"
 
+# Keep distribution identity and required license files together
 [project]
 name = "neon1-deploy-ops"
-version = "0.10.0"
+version = "0.11.0"
 description = "Infrastructure and application delivery with exact approvals and bounded authority"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE", "licenses/*"]
 authors = [{name = "neon1 LLC"}]
+
+# Declare compatible runtime ranges while requirements.txt pins verified installations
 dependencies = [
   "fastapi>=0.115,<1",
   "httpx>=0.27,<1",
@@ -22,18 +27,23 @@ dependencies = [
   "tomlkit>=0.15.2,<0.16",
 ]
 
+# Add only the tools needed by tests and repository checks
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "PyYAML>=6,<7"]
 
+# Route the installed command through the shared CLI
 [project.scripts]
 deploy-ops = "deploy_ops.cli:main"
 
+# Discover application packages only within the source tree
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# Ship the operator console and complete local starter with the package
 [tool.setuptools.package-data]
 deploy_ops = ["ui/*", "templates/local/*", "templates/local/application/*", "templates/local/infrastructure/*", "catalog.json"]
 
+# Keep normal test discovery within the maintained contract suite
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

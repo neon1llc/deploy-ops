@@ -1,4 +1,5 @@
-# src/deploy_ops/cli.py - Provide local, operator, and trusted-workflow commands.
+# src/deploy_ops/gate_cli.py - Provide local, operator, and trusted-workflow commands.
+
 
 import argparse
 import json
@@ -17,6 +18,7 @@ from .errors import Refused
 from .models import Agent, Proposal
 
 
+# Expose planning, review and execution as separate commands
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(
         prog="deploy-ops gate",
@@ -65,6 +67,7 @@ def parser() -> argparse.ArgumentParser:
     claim.add_argument("--ticket", type=Path, required=True)
     claim.add_argument("--artifact", type=Path, required=True)
     claim.add_argument("--out", type=Path, default=Path(".deploy_ops/lease.json"))
+    # Execution commands consume a secret lease instead of operator authority
     for name in ("execute", "heartbeat", "complete"):
         command = commands.add_parser(name)
         command.add_argument("--lease", type=Path, required=True)
@@ -73,6 +76,7 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--workspace", type=Path, default=Path.cwd())
         if name == "complete":
             command.add_argument("--outcome", choices=["succeeded", "failed", "aborted"], required=True)
+    # Human decisions must supply the exact reviewed digest
     for name in ("approve", "reject"):
         decision = commands.add_parser(name)
         decision.add_argument("request_id")
@@ -100,6 +104,7 @@ def parser() -> argparse.ArgumentParser:
     return root
 
 
+# Route commands through the shared controller and trusted runner
 def _dispatch(args):
     if args.command == "demo":
         from .demo import run
@@ -151,6 +156,7 @@ def _dispatch(args):
         return client.call("GET", f"/v1/targets/{args.target}/receipts/{args.receipt_id}")
     if args.command == "revoke-receipt":
         return client.call("POST", f"/v1/admin/receipts/{args.receipt_id}/revoke", operator=True)
+    # Polling never starts deployment and stops at a bounded deadline
     if args.command == "wait":
         ticket = json.loads(args.ticket.read_text())
         if not 1 <= args.seconds <= 86400 or not 1 <= args.poll <= 60:
@@ -213,6 +219,7 @@ def _dispatch(args):
     raise Refused("Unsupported command", 422)
 
 
+# Keep exception details and credential-bearing provider output off the CLI
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:

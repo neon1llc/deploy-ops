@@ -1,5 +1,6 @@
 # src/deploy_ops/slack.py - Accept signed phone approvals without trusting message text as identity.
 
+
 import hashlib
 import hmac
 import json
@@ -13,6 +14,7 @@ from .models import Decision, DelegationSpec
 from .service import Controller
 
 
+# Authenticate raw bytes before trusting any interaction fields
 def verify_signature(body: bytes, timestamp: str, signature: str, secret: str, now: int) -> str:
     """Check the raw body and a five-minute window before parsing the interaction."""
     try:
@@ -27,6 +29,7 @@ def verify_signature(body: bytes, timestamp: str, signature: str, secret: str, n
     return hashlib.sha256(message).hexdigest()
 
 
+# Render repository-controlled labels as bounded plain text
 def card(request: dict) -> dict:
     """Use plain text fields so repository labels cannot inject mentions or links."""
     manifest = request["manifest"]
@@ -60,15 +63,20 @@ def card(request: dict) -> dict:
     return {"text": "DeployOps deployment review", "blocks": blocks}
 
 
+# Keep chat delivery separate from deployment authority
 class Slack:
     """Keep workspace and approver membership checks on the controller."""
 
+
+    # Retain notification credentials only inside the transport owner
     def __init__(self, controller: Controller, settings: SlackConfig, signing_secret: str, bot_token: str):
         self.controller = controller
         self.settings = settings
         self.signing_secret = signing_secret
         self.bot_token = bot_token
 
+
+    # Resolve approver identity through configured workspace membership
     def _actor(self, team: str, app: str, user: str) -> tuple[str, str]:
         if not self.settings.team_id or team != self.settings.team_id or app != self.settings.app_id:
             raise Refused("Slack workspace or app is not authorized", 403)
@@ -77,6 +85,8 @@ class Slack:
             raise Refused("Slack member is not an approver", 403)
         return f"slack:{team}:{user}", github_id
 
+
+    # Verify the signed interaction before applying the shared controller operation
     def handle(self, body: bytes, timestamp: str, signature: str) -> dict:
         delivery = verify_signature(body, timestamp, signature, self.signing_secret, self.controller.now())
         try:
@@ -84,6 +94,7 @@ class Slack:
             if any(len(value) != 1 for value in fields.values()):
                 raise ValueError("Repeated form fields")
             form = {key: value[0] for key, value in fields.items()}
+            # Button actions bind the selected request digest to the configured approver
             if "payload" in form:
                 payload = json.loads(form["payload"])
                 actor, github_id = self._actor(payload["team"]["id"], payload["api_app_id"], payload["user"]["id"])
@@ -95,6 +106,7 @@ class Slack:
                     request_id, Decision(digest=digest, decision=action["action_id"]), actor, github_id,
                 )
                 return {"response_type": "ephemeral", **card(request)}
+            # Slash commands share the same configured identity and controller policy
             actor, github_id = self._actor(form["team_id"], form["api_app_id"], form["user_id"])
             if form.get("command") != "/deploy-ops":
                 raise ValueError("Unexpected command")
@@ -129,6 +141,8 @@ class Slack:
         except (KeyError, ValueError, TypeError, IndexError) as error:
             raise Refused("Invalid Slack command or interaction", 422) from error
 
+
+    # Record delivery failure without exposing credentials or changing approval
     def notify(self, request: dict) -> None:
         if not self.bot_token or not self.settings.channel_id:
             return

@@ -1,43 +1,56 @@
 # examples/cloud-app/deploy-ops.toml - Deliver an existing application through three explicit runtime adapters.
 # Copy this operator-reviewed contract beside an application checkout, then replace the example identifiers.
 
+
+# Identify the shared multi-provider workspace contract
 schema_version = 1
 name = "example"
 
+# Freeze application source separately from existing cloud infrastructure
 [repositories.application]
 path = "application"
 revision = "HEAD"
 
+# Start with the AWS runtime in development
 [environments.aws-development]
 provider = "aws"
+
+# Allow the same artifact to move from AWS development into Azure staging
 [environments.azure-staging]
 provider = "azure"
 promote_from = ["aws-development"]
+
+# Require an explicit staging promotion before the production target
 [environments.gcp-production]
 provider = "gcp"
 production = true
 promote_from = ["azure-staging"]
 
-# Build and publish elsewhere without cloud writer access. Supply an immutable digest with --image.
+# Build and publish elsewhere without cloud writer access. Supply an immutable digest with --image
 [components.web]
 repository = "application"
 kind = "application"
 adapter = "ecs"
+
+# Accept only images from the declared immutable artifact repository
 [components.web.options]
 image_repository = "ghcr.io/neon1llc/example-app"
 
+# Name the existing ECS service and container that receive the image
 [components.web.targets.aws-development]
 region = "us-east-1"
 cluster = "example-development"
 service = "web"
 container = "web"
 
+# Switch runtime while keeping the subscription and resource group explicit
 [components.web.targets.azure-staging]
 adapter = "container-apps"
 name = "example-staging"
 resource_group = "example-staging"
 subscription_id = "00000000-0000-0000-0000-000000000000"
 
+# Bind the Cloud Run target to one project and region
 [components.web.targets.gcp-production]
 adapter = "cloud-run"
 name = "example-production"

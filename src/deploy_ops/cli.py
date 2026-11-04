@@ -1,5 +1,6 @@
 # src/deploy_ops/cli.py - Run deployments, inspect evidence, and open the local operator console.
 
+
 import argparse
 import json
 import os
@@ -14,23 +15,32 @@ from pydantic import ValidationError
 from .errors import Refused
 
 
+# Expose read, review and mutation commands as separate operator choices
 def parser():
     root = argparse.ArgumentParser(prog="deploy-ops", description="Deploy infrastructure and applications with explicit authority")
     root.add_argument("--project", type=Path, default=Path("deploy-ops.toml"))
     root.add_argument("--state", type=Path)
     root.add_argument("--controller", default=os.environ.get("DEPLOY_OPS_URL"))
     commands = root.add_subparsers(dest="command", required=True)
+
+    # Discovery and draft editing do not start deployment workers
     for name in ("init", "demo"):
         command = commands.add_parser(name)
         command.add_argument("directory", type=Path)
     commands.add_parser("doctor")
     commands.add_parser("catalog")
     commands.add_parser("schema")
+    provider = commands.add_parser("provider", help="Read native provider status or discard an unexecuted change set")
+    provider.add_argument("action", choices=["inspect", "discard"])
+    provider.add_argument("release")
+    provider.add_argument("component")
     config = commands.add_parser("config", help="Inspect or edit a configuration draft without saving it")
     config.add_argument("action", choices=["inspect", "patch"])
-    config.add_argument("--section", choices=["repositories", "environments", "components"])
+    config.add_argument("--section", choices=["repositories", "environments", "components", "options"])
     config.add_argument("--name")
     config.add_argument("--values", type=json.loads, default={})
+
+    # Planning describes the graph while running freezes and prepares release evidence
     for name in ("plan", "run"):
         command = commands.add_parser(name)
         command.add_argument("environment")
@@ -44,6 +54,8 @@ def parser():
             command.add_argument("--preview-owner", default="")
             command.add_argument("--preview-hours", type=int, default=1)
             command.add_argument("--retain-preview-data", action="store_true")
+
+    # Existing releases keep execution, approval and recovery as explicit actions
     for name in ("resume", "cancel", "events", "observe"):
         command = commands.add_parser(name)
         command.add_argument("release")
@@ -62,6 +74,8 @@ def parser():
     recover = commands.add_parser("recover")
     recover.add_argument("release")
     recover.add_argument("--note", required=True)
+
+    # Promotion reuses artifacts while preview cleanup uses separate deletion approval
     for name in ("promote", "rollback"):
         command = commands.add_parser(name)
         command.add_argument("release")
@@ -83,6 +97,8 @@ def parser():
     preview.add_argument("release")
     preview.add_argument("--component", required=True)
     preview.add_argument("--port", type=int, default=8000)
+
+    # Incident decisions remain independent of transport delivery and release status
     incidents = commands.add_parser("incidents", help="Track local incidents separately from deployment outcomes")
     actions = incidents.add_subparsers(dest="incident_action", required=True)
     actions.add_parser("list")
@@ -102,6 +118,8 @@ def parser():
     notify.add_argument("--status", action="store_true", help="Inspect the outbox without sending")
     notify.add_argument("--url", default=os.environ.get("DEPLOY_OPS_NOTIFY_URL"))
     notify.add_argument("--kind", choices=["json", "slack", "ntfy"], default="json")
+
+    # Console access and the independent authority controller retain their own interfaces
     ui = commands.add_parser("ui")
     ui.add_argument("--port", type=int, default=8765)
     ui.add_argument("--token-file", type=Path, required=True)
@@ -110,6 +128,7 @@ def parser():
     return root
 
 
+# Wait only within the requested bound while preserving pending approvals
 def advance(engine, release, wait_seconds):
     if not 0 <= wait_seconds <= 3600:
         raise Refused("Wait must be between 0 and 3600 seconds", 422)
@@ -121,6 +140,7 @@ def advance(engine, release, wait_seconds):
         time.sleep(min(5, max(0, deadline - time.monotonic())))
 
 
+# Route every entry point through the shared deployment owners
 def dispatch(args):
     if args.command == "gate":
         from . import gate_cli
@@ -145,8 +165,12 @@ def dispatch(args):
         from .delivery.configuration import inspect, patch
         source = args.project.read_text()
         return inspect(source) if args.action == "inspect" else patch(source, args.section, args.name, args.values)
+
+    # Stateful actions share the same workspace and ledger owner
     from .delivery.engine import Engine
     engine = Engine(args.project, args.state, args.controller)
+    if args.command == "provider":
+        return engine.provider_status(args.release, args.component, args.action == "discard")
     if args.command == "plan":
         return engine.describe(args.environment, args.component, not args.only)
     if args.command == "run":
@@ -172,6 +196,8 @@ def dispatch(args):
         if args.controller:
             raise Refused("Create remote grants through the operator gate command, not the execution worker")
         return engine.gate.delegate(args.environment, args.hours, args.uses)
+
+    # Reuse, cleanup and preview serving keep their distinct artifact and lifetime checks
     if args.command in ("promote", "rollback"):
         release = engine.create(args.environment, args.component, False, promote=args.release,
                                 rollback=args.command == "rollback", receipts=args.receipts)
@@ -199,7 +225,11 @@ def dispatch(args):
             from .delivery.previews import active
             active(engine, release)
         site = inside(engine.deployment_root(release), node["outputs"]["path"])
+
+
+        # Serve only the selected artifact while checking preview lifetime on each request
         class PreviewHandler(SimpleHTTPRequestHandler):
+            # Reject expired previews and paths outside the deployed artifact
             def send_head(self):
                 if release.get("preview"):
                     from .delivery.previews import active
@@ -222,6 +252,8 @@ def dispatch(args):
         finally:
             server.server_close()
         return {"status": "preview-stopped"}
+
+    # Notification delivery cannot acknowledge or resolve an incident
     if args.command == "incidents":
         from .delivery.incidents import list_incidents, open_incident, tick, transition
         if args.incident_action == "list":
@@ -244,6 +276,7 @@ def dispatch(args):
     raise Refused("Unknown command", 422)
 
 
+# Give automation distinct exits for pending approval and unsuccessful delivery
 def main(argv=None):
     try:
         args = parser().parse_args(argv)
@@ -261,5 +294,6 @@ def main(argv=None):
         return 2
 
 
+# Preserve direct execution alongside the installed console entry point
 if __name__ == "__main__":
     raise SystemExit(main())

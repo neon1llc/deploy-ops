@@ -15,3 +15,17 @@ active lease into a differently named service or silently reuse old audience set
 
 The full prior ZIP remains a separate artifact. The retained MIT license notice remains in this repository.
 New features and the combined distribution use Apache-2.0 with NOTICE.
+
+## Native infrastructure and local cloud grants
+
+The v0.11.0 native adapters use the existing release ledger and approval state machine. No database
+schema migration is required. The optional `local_cloud` target flag defaults to false and is omitted
+from historical target fingerprints when unused. Existing federation remains separate.
+
+Default protected resource types now include CloudFormation and ARM names alongside Terraform names.
+This intentionally changes policy fingerprints for targets using the default denylist. Finish or reconcile
+in-flight work before upgrading, then prepare fresh requests and recreate any affected delegated windows.
+Do not reuse a previous approval under a changed policy. An explicit local cloud grant uses its exact
+resource-type and action allowlist instead, requires manual approval, and never enables production or
+delegation. Missing, expired or mismatched grants leave configuration editing available but cloud
+execution disabled.

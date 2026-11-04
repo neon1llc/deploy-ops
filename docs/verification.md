@@ -1,6 +1,7 @@
 # Verification
 
-**Checked:** 2026-11-03 · **Candidate:** v0.10.0 preview
+**Checked:** 2026-11-03. The local and browser observations below qualify the v0.10.0 baseline.
+The native-infrastructure section records the subsequent v0.11.0 candidate checks separately.
 
 ## Local execution
 
@@ -111,11 +112,62 @@ approving cleanup did not delete files or stop serving. Narrow layout and empty 
 An actual v0.9 pending ordinary request was approved and completed under v0.10 with unchanged workspace
 and target policy digests. These are local static checks, not cloud or runtime teardown qualification.
 
+## Native infrastructure
+
+CloudFormation/CDK contract fixtures exercise exact change-set execution, changed target/state/evidence,
+no-change, rollback outcomes, ownership-bound deletion, retained data and file-asset checks. They use
+synthetic provider responses and do not contact AWS.
+
+A separate live test used AWS CLI 2.36.34 in us-east-1 through the actual DeployOps engine. One empty
+private, encrypted S3 bucket passed stack creation, a tag update, no-change handling and owned deletion.
+CloudFormation reported DELETE_COMPLETE; an independent bucket read returned 404. No bucket or objects
+remain from that batch. This qualifies that storage lifecycle, not ECS, CDK assets or arbitrary templates.
+The live run used the native implementation before the final default protected-type policy update;
+source and regression checks cover the final candidate separately.
+
+The Python and TypeScript CDK examples both synthesized with `aws-cdk-lib` 2.275.0, `constructs` 10.8.1
+and Node.js 24.19.0. Python used 3.12. The execution boundary denied network access and home-directory
+reads except the selected Node runtime, and confined writes to a disposable directory. Sentinel and network
+checks confirmed those restrictions. The adapter consumed both real schema-55 assemblies through fixture
+AWS preparation and execution. This is native synthesis plus command-contract evidence, not live AWS.
+
+ARM fixtures exercise frozen template/parameter binding, tenant/subscription/principal mismatch,
+changed what-if results, unsupported analysis, explicit access-change refusal, secure-input refusal,
+lost responses and readback without replay. Destruction and complete-mode deployment are refused.
+These checks do not establish Azure authentication or provider deployment success.
+
+The self-contained Bicep example compiled using the standalone v0.41.2 compiler (3e403ea7c1) on macOS
+x86_64 with no external module restore. The official release asset's SHA-256 was checked before use.
+A repeated compilation with network access and home-directory reads denied and writes confined to a
+disposable directory produced the same parsed template.
+Both Azure example workspaces and their equivalent template resource/output contracts passed local
+validation. Compilation does not qualify Azure access, permissions, cost, resource state or application health.
+
+Native source comments and grouping were reviewed alongside the implementation. Syntax, fixtures,
+compiler execution and browser/provider qualification remain distinct evidence categories.
+
+The full v0.11.0 candidate suite passed 296 tests. Source syntax, local links and whitespace checks passed.
+The focused native suite passed 60 cases, including lost-response ownership recovery. A real Chrome session
+against synthetic provider responses exercised inherited native options, retained drafts, exact CloudFormation
+and ECS approvals, provider readback, app-only output reuse and a narrow layout. Browser local storage remained
+empty. These browser interactions use the shared core, but the provider responses remain fixtures.
+
+## Isolated native tooling
+
+OpenTofu 1.10.0 and Terraform 1.12.2 initialized, validated, saved and decoded a real `terraform_data`
+plan in a dedicated Linux VM. The unprivileged source worker had no host mounts, cloud configuration,
+SSH agent, sudo or Docker socket, and ran in an offline network namespace. Both plans predicted one
+resource creation; neither was applied. A separate guest Docker 26.1.5/buildx 0.13.1 process built a
+scratch fixture with network access disabled. These checks establish native local tooling behavior,
+not a cloud provider plan, credential isolation for a remote job or a registry publication.
+
 ## Remaining qualification
 
-Live AWS, Azure, GCP, Slack, registry build/publish and Terraform/OpenTofu journeys remain unqualified.
-Installed command availability does not establish account access or working integrations. No live cloud
-resources, subscriptions or access policies were changed during these checks. GitHub Actions results
+AWS application delivery, Azure deployments, GCP workloads, Slack, registry build/publish and cloud
+Terraform/OpenTofu journeys remain unqualified. GCP service-account authentication succeeded through
+native ADC and the actual DeployOps gcloud process. Project and billing reads succeeded after approved
+enablement of the Cloud Resource Manager and Cloud Billing APIs. No GCP workload was created.
+Installed command availability alone does not establish working integrations. GitHub Actions results
 must be inspected separately from local execution.
 
 This focused review is not a production security audit, penetration test, sustained reliability test or
@@ -123,7 +175,8 @@ proof of safety against a compromised runner. Controller-backed receipt exchange
 including expiry, revocation, policy changes, failed-apply invalidation and backend binding. A real supervised
 subprocess exercised extraction with a synthetic OpenTofu executable. These checks do not qualify OpenTofu
 against S3 or an isolated GitHub-to-AWS journey. Raw state secrets stayed out of receipts and audit records.
-Legacy policy digests and request resubmission identities remain compatible. See [security](../SECURITY.md) and
+Existing workspace digests remain compatible when local cloud access is absent. Native protected-type
+defaults change policy fingerprints; obtain fresh approvals as described in [migration](migration.md). See [security](../SECURITY.md) and
 [capabilities](capabilities.md) for current boundaries.
 
 ## Reproduce

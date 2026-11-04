@@ -1,5 +1,6 @@
 # tests/test_runtime_contracts.py - Exercise provider command contracts without claiming live cloud validation.
 
+
 import json
 from types import SimpleNamespace
 
@@ -10,21 +11,28 @@ from deploy_ops.delivery.adapters.base import Context
 from deploy_ops.delivery.spec import Component
 from deploy_ops.errors import Refused
 
+# Use one synthetic digest across all provider command fixtures
 IMAGE = "registry.example/app@sha256:" + "a" * 64
 
 
+# Capture command contracts without invoking a cloud provider
 class Commands:
+
+    # Keep ordered replies and calls local to each adapter case
     def __init__(self, replies):
         self.replies = iter(replies)
         self.calls = []
         self.heartbeat = lambda: None
 
+
+    # Return the next provider-shaped response while recording its command
     def run(self, argv, cwd, timeout, capture, input_text):
         self.calls.append(argv)
         reply = next(self.replies)
         return json.dumps(reply) if isinstance(reply, dict) else reply
 
 
+# Create an isolated artifact directory for each command-contract case
 def context(tmp_path, adapter, provider, options, replies):
     stage = tmp_path / "artifacts"
     stage.mkdir()
@@ -32,6 +40,7 @@ def context(tmp_path, adapter, provider, options, replies):
                    tmp_path, stage, tmp_path / "deployed", options, Commands(replies), "release")
 
 
+# Each runtime must verify the immutable image's resulting revision
 @pytest.mark.parametrize("adapter,provider,options,replies", [
     ("ecs", "aws", {"region": "us-east-1", "cluster": "cluster", "service": "app", "container": "web"}, [
         {"services": [{"taskDefinition": "old", "deploymentController": {"type": "ECS"}}]},
@@ -64,6 +73,7 @@ def test_prepare_apply_verify_contract(tmp_path, adapter, provider, options, rep
     assert ctx.process.calls
 
 
+# Refuse mutable image references before making a provider call
 @pytest.mark.parametrize("image", ["app:latest", "app:v1", "--flag", "app@sha256:123"])
 def test_mutable_or_malformed_images_refused(tmp_path, image):
     ctx = context(tmp_path, "ecs", "aws", {"image": image}, [])
@@ -71,6 +81,7 @@ def test_mutable_or_malformed_images_refused(tmp_path, image):
         cloud.prepare(ctx)
 
 
+# Changed provider state must stop execution before the first write
 def test_provider_rollout_never_writes_after_stale_revision(tmp_path):
     ctx = context(tmp_path, "ecs", "aws", {"region": "us-east-1", "cluster": "x", "service": "x"},
                   [{"services": [{"taskDefinition": "changed"}]}])
@@ -79,6 +90,7 @@ def test_provider_rollout_never_writes_after_stale_revision(tmp_path):
     assert len(ctx.process.calls) == 1
 
 
+# Both IaC engines must apply the retained plan rather than replan
 @pytest.mark.parametrize("adapter,binary", [("opentofu", "tofu"), ("terraform", "terraform")])
 def test_saved_iac_plan_is_the_applied_artifact(tmp_path, adapter, binary):
     ctx = context(tmp_path, adapter, "local", {"local_state": True}, [

@@ -1,5 +1,6 @@
 # tests/test_configuration.py - Preserve authored drafts and reject conflicting configuration saves.
 
+
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -15,11 +16,13 @@ from deploy_ops.delivery.scaffold import create
 from deploy_ops.errors import Refused
 
 
+# Keep configuration edits inside a fresh disposable workspace
 @pytest.fixture
 def workspace(tmp_path):
     return create(tmp_path / 'workspace')
 
 
+# Field edits preserve authored content and leave unchanged defaults absent
 def test_form_patch_preserves_comments_advanced_settings_and_default_omissions(workspace):
     source = '# Keep this header\n' + workspace.read_text()
     result = patch(source, 'components', 'web', {'timeout_seconds': 900})
@@ -34,6 +37,7 @@ def test_form_patch_preserves_comments_advanced_settings_and_default_omissions(w
     assert unchanged['diff'] == ''
 
 
+# Reject malformed edits before modifying the saved workspace
 @pytest.mark.parametrize('section,name,values', [
     ('components', 'web', {'needs': ['web']}),
     ('components', 'foundation', {'needs': ['web']}),
@@ -56,6 +60,7 @@ def test_invalid_guided_changes_are_refused(workspace, section, name, values):
     assert workspace.read_text() == source
 
 
+# CLI and console share one draft transformation without implicit saves
 def test_cli_and_api_produce_same_draft_without_saving(workspace):
     source = workspace.read_text()
     values = {'timeout_seconds': 900}
@@ -71,6 +76,7 @@ def test_cli_and_api_produce_same_draft_without_saving(workspace):
     assert workspace.read_text() == source
 
 
+# A stale browser cannot replace a newer authored configuration
 def test_stale_tab_and_external_editor_cannot_overwrite_configuration(workspace):
     engine = Engine(workspace)
     client = TestClient(create_app(engine, 't' * 40), base_url='http://127.0.0.1:8765')
@@ -94,6 +100,7 @@ def test_stale_tab_and_external_editor_cannot_overwrite_configuration(workspace)
     assert workspace.read_text() == external
 
 
+# Concurrent release creation blocks a conflicting configuration save
 def test_release_creation_and_save_share_a_boundary(workspace, monkeypatch):
     engine = Engine(workspace)
     client = TestClient(create_app(engine, 't' * 40), base_url='http://127.0.0.1:8765')
@@ -101,6 +108,9 @@ def test_release_creation_and_save_share_a_boundary(workspace, monkeypatch):
     source = workspace.read_text()
     entered, proceed = threading.Event(), threading.Event()
     original_create = engine.create
+
+
+    # Hold release creation open to exercise the concurrent save boundary
     def create_release(*args, **kwargs):
         entered.set()
         assert proceed.wait(5)
@@ -117,6 +127,7 @@ def test_release_creation_and_save_share_a_boundary(workspace, monkeypatch):
     assert workspace.read_text() == source
 
 
+# A remote-worker console cannot rewrite controller authority
 def test_remote_console_draft_cannot_save_authority(workspace):
     engine = Engine(workspace, controller='https://controller.example')
     client = TestClient(create_app(engine, 't' * 40), base_url='http://127.0.0.1:8765')
@@ -126,3 +137,42 @@ def test_remote_console_draft_cannot_save_authority(workspace):
     assert client.post('/api/config/inspect', json=body, headers=headers).status_code == 200
     assert client.post('/api/config/save', json=body, headers=headers).status_code == 403
     assert workspace.read_text() == source
+
+
+# Effective provider fields write only the selected environment override
+def test_native_options_share_schema_and_preserve_inheritance(tmp_path):
+    source = '''# Keep the operator's annotation
+name = "native"
+[repositories.infrastructure]
+path = "infrastructure"
+[environments.staging]
+provider = "aws"
+[environments.production]
+provider = "aws"
+[components.foundation]
+repository = "infrastructure"
+kind = "infrastructure"
+adapter = "cloudformation"
+[components.foundation.options]
+account_id = "123456789012"
+region = "us-east-1"
+stack_name = "example"
+template = "main.json"
+'''
+    before = inspect(source)
+    selected = before["option_forms"]["foundation/staging"]
+    assert selected["values"]["region"] == "us-east-1"
+    result = patch(source, "options", "foundation/staging", {"region": "us-west-2", "parameters": {"Name": "sample"}})
+    assert result["toml"].startswith("# Keep the operator's annotation")
+    assert result["configuration"]["components"]["foundation"]["options"]["region"] == "us-east-1"
+    assert result["option_forms"]["foundation/staging"]["values"]["region"] == "us-west-2"
+    assert result["option_forms"]["foundation/production"]["values"]["region"] == "us-east-1"
+    path = tmp_path / "deploy-ops.toml"
+    path.write_text(source)
+    cli = dispatch(parser().parse_args(["--project", str(path), "config", "patch", "--section", "options",
+                                      "--name", "foundation/staging", "--values", '{"region":"us-west-2"}']))
+    assert cli["option_forms"]["foundation/staging"]["values"]["region"] == "us-west-2"
+    with pytest.raises(Refused):
+        patch(source, "options", "foundation/staging", {"credentials_file": "/untrusted/key"})
+    with pytest.raises(Refused):
+        patch(source, "options", "foundation/staging", {"capabilities": ["CAPABILITY_AUTO_EXPAND"]})

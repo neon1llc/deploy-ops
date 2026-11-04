@@ -2,18 +2,26 @@
 
 import { cssVariables, defaultPreference, parsePreference, presets, resolveTheme } from "./theme.mjs";
 
+
+// Keep appearance preferences separate from deployment and authentication state
 const storageKey = "deploy-ops.appearance.v1";
+
+// Resolve stable appearance control IDs
 const element = (id) => document.getElementById(id);
 const system = matchMedia("(prefers-color-scheme: dark)");
 let preference = parsePreference(defaultPreference);
 let formDirty = false;
 let jsonDirty = false;
 
+
+// Announce appearance failures without discarding the selected theme
 function notice(message, error = false) {
   element("appearance-status").textContent = message;
   element("appearance-status").classList.toggle("error", error);
 }
 
+
+// Resolve semantic tokens and preserve unsaved appearance fields
 function render() {
   const theme = resolveTheme(preference, system.matches);
   const root = document.documentElement;
@@ -32,6 +40,8 @@ function render() {
   if (!jsonDirty) element("appearance-json").value = JSON.stringify(preference, null, 2);
 }
 
+
+// Validate preferences before applying and persisting their effects
 function save(value, message, reset = false) {
   // Validate before changing the view or persisted preference
   const next = parsePreference(value);
@@ -48,6 +58,8 @@ function save(value, message, reset = false) {
   }
 }
 
+
+// Offer only presets supplied by the licensed theme owner
 for (const preset of presets) element("appearance-theme").append(new Option(preset.label, preset.id));
 try {
   const saved = localStorage.getItem(storageKey);

@@ -1,26 +1,45 @@
 // ui/app.js - Keep the browser a thin client of the same release operations used by the CLI.
 "use strict";
+
+
+
+// Keep session identity and release selection in memory only
 let token = "";
 let selected = null;
 let workspaceConfiguration = null;
 let detailKey = "";
 let releaseKey = "";
 let acting = false;
+
+
+// Retain incident selection independently from deployment status
 let selectedIncident = null;
 let incidentRecords = [];
 let incidentKey = "";
 let incidentBusy = false;
+
+
+// Track saved text and unsaved form drafts as separate revisions
 let savedSourceHash = "";
 let savedToml = "";
 let reviewedConfiguration = null;
 let formSource = "";
 let formContract = null;
 const formDrafts = new Map();
+
+
+// Resolve stable control IDs from the static console document
 const element = (id) => document.getElementById(id);
+
+
+// Announce action results without rendering server strings as markup
 const message = (text, error = false) => {
   element("message").textContent = text;
   element("message").className = error ? "error" : "";
 };
+
+
+// Send authenticated operations to the same local core as the CLI
 async function api(path, method = "GET", body) {
   const response = await fetch("/api" + path, {
     method, headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
@@ -30,6 +49,9 @@ async function api(path, method = "GET", body) {
   if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
   return data;
 }
+
+
+// Prevent overlapping actions while preserving a stable keyboard focus key
 function button(label, action, key = label) {
   const node = document.createElement("button"); node.textContent = label;
   node.dataset.key = key;
@@ -39,12 +61,21 @@ function button(label, action, key = label) {
     try { await action(); } finally { acting = false; node.disabled = false; }
   }); return node;
 }
+
+
+// Render provider and operator values as plain text
 function text(parent, tag, value) {
   const node = document.createElement(tag); node.textContent = value; parent.append(node); return node;
 }
+
+
+// Keep recoverable errors visible without discarding drafts
 async function safe(action) {
   try { await action(); } catch (error) { message(error.message, true); }
 }
+
+
+// Translate selected environment and dependencies into one release request
 function selection() {
   return { environment: element("environment").value, component: element("component").value || null, only: element("only").checked, image: element("image").value || null,
     receipts: JSON.parse(element("receipts").value || "{}"),
@@ -52,6 +83,9 @@ function selection() {
       preview_owner: element("preview-owner").value, preview_hours: Number(element("preview-hours").value),
       retain_preview_data: element("preview-retain").checked} : {}) };
 }
+
+
+// Refresh status only when returned data changes
 async function refresh() {
   const releases = await api("/releases");
   if (!token) return;
@@ -72,6 +106,9 @@ async function refresh() {
   if (selected) await show(selected);
   await refreshIncidents();
 }
+
+
+// Explain reviewed evidence and expose actions valid for the current release
 async function show(id) {
   selected = id;
   const data = await api("/releases/" + id);
@@ -96,6 +133,21 @@ async function show(id) {
       text(area, "pre", JSON.stringify(node.infrastructure_receipts, null, 2));
     }
     if (node.preview) text(area, "pre", JSON.stringify(node.preview, null, 2));
+    for (const warning of node.warnings || []) text(area, "p", "Review: " + warning);
+    if (["cloudformation", "cdk", "arm", "bicep"].includes(node.adapter) && (node.request_digest || node.status === "uncertain")) {
+      area.append(button("Read provider status", async () => {
+        const observed = await api("/releases/" + id + "/provider/inspect", "POST", {component: name});
+        message("Provider readback: " + (observed.status || observed.stack_status || "recorded") + ". No deployment was replayed.");
+        await refresh();
+      }, "provider-" + name));
+      if (["cloudformation", "cdk"].includes(node.adapter) && release.status === "waiting") {
+        area.append(button("Discard unexecuted change set", async () => {
+          if (!window.confirm("Delete this release's unexecuted change set and cancel the release? Existing deployed resources remain.")) return;
+          await api("/releases/" + id + "/provider/discard", "POST", {component: name});
+          message("Change set discarded. Inspect any retained stack record in provider status."); await refresh();
+        }, "discard-" + name));
+      }
+    }
     if (node.request_digest) text(area, "pre", "Approval digest: " + node.request_digest);
     if (node.status === "waiting") area.append(button("Approve this exact change", async () => {
       if (!window.confirm("Approve the displayed change for " + name + "?")) return;
@@ -163,6 +215,7 @@ async function show(id) {
     (replacement || element("detail-heading")).focus({preventScroll: true});
   }
 }
+// Unlock from memory without persisting the operator token
 element("login").onsubmit = (event) => { event.preventDefault(); safe(async () => {
   token = element("token").value; element("token").value = "";
   const data = await api("/workspace");
@@ -181,22 +234,37 @@ element("login").onsubmit = (event) => { event.preventDefault(); safe(async () =
   configurePreviewFields();
   element("component").replaceChildren(new Option("All components", ""));
   for (const name of Object.keys(data.configuration.components)) element("component").append(new Option(name, name));
-  message("Unlocked. Tokens are cleared when this tab reloads."); await refresh();
+  message("Unlocked. Tokens are cleared when this tab reloads." + (data.cloud_access ? " Cloud access: " + data.cloud_access : "")); await refresh();
 }); };
+
+
+// Discard session state on explicit lock
 element("lock").onclick = () => { token = ""; selected = null; location.reload(); };
+
+
+// Describe dependencies without starting a provider operation
 element("plan").onclick = () => safe(async () => { element("plan-output").textContent = JSON.stringify(await api("/plan", "POST", selection()), null, 2); element("plan-output").hidden = false; });
+
+
+// Start preparation only through an explicit release submission
 element("release-form").onsubmit = (event) => { event.preventDefault(); safe(async () => {
   const release = await api("/releases", "POST", selection()); selected = release.id; message("Release preparation started."); await refresh();
 }); };
+
+
+// Keep bounded local delegation a separate operator decision
 element("delegation").onsubmit = (event) => { event.preventDefault(); safe(async () => {
   if (!window.confirm("Grant bounded local authority for the selected environment?")) return;
   await api("/delegations", "POST", { environment: element("environment").value, hours: Number(element("hours").value), uses: Number(element("uses").value) });
   message("Local delegation granted. Production and unknown operations remain gated.");
 }); };
+
+
+// Poll observations without replaying a deployment action
 element("refresh").onclick = () => safe(refresh);
 setInterval(() => { if (token) safe(refresh); }, 4000);
 
-// Configuration is operator-owned. Saving cannot grant cloud authority or alter the remote controller.
+// Configuration is operator-owned. Saving cannot grant cloud authority or alter the remote controller
 element("validate-config").onclick = () => safe(async () => {
   const source = element("config").value;
   const result = await api("/config/validate", "POST", { configuration: source });
@@ -215,14 +283,94 @@ element("save-config").onclick = () => safe(async () => {
   token = ""; location.reload();
 });
 
+
+// Keep drafts separate for every settings group and entry
 function formKey() { return element("config-section").value + "/" + element("config-name").value; }
+
+
+// Render typed provider inputs without making cloud authority editable in the browser
+function fillOptionFields(name) {
+  const root = element("config-fields"); root.replaceChildren();
+  const contract = formContract.option_forms?.[name];
+  if (!contract) { text(root, "p", "No native infrastructure components in this workspace. Import a CloudFormation, CDK, ARM or Bicep example first."); return; }
+  const current = formDrafts.get(formKey()) || structuredClone(contract.values);
+  formDrafts.set(formKey(), current);
+  text(root, "p", "Effective " + contract.adapter + " settings for " + contract.component + " in " + contract.environment + ". Changes become environment overrides. Public inputs only; credentials and live-test grants stay outside this workspace.");
+  const advanced = document.createElement("details"); text(advanced, "summary", "Parameters and advanced settings");
+  for (const [key, field] of Object.entries(contract.fields)) {
+    const required = contract.required.includes(key);
+    const parent = required ? root : advanced;
+    if (field.type === "object") {
+      const group = document.createElement("fieldset"); text(group, "legend", field.title); parent.append(group);
+      const rows = document.createElement("div"); group.append(rows);
+      // Public scalar maps use named rows rather than an opaque JSON editor
+      const collect = () => {
+        const values = {}; let duplicate = false;
+        for (const row of rows.children) {
+          const [nameInput, valueInput] = row.querySelectorAll("input");
+          if (!nameInput.value) continue;
+          if (Object.hasOwn(values, nameInput.value)) duplicate = true;
+          values[nameInput.value] = valueInput.value;
+        }
+        rows.querySelector("input")?.setCustomValidity(duplicate ? "Use each parameter name once." : "");
+        current[key] = values;
+      };
+      const add = (name = "", value = "") => {
+        const row = document.createElement("div"); rows.append(row);
+        for (const [part, initial] of [["name", name], ["value", value]]) {
+          const label = document.createElement("label"); label.textContent = part === "name" ? "Name" : "Public value";
+          const input = document.createElement("input"); input.name = key + "-" + part;
+          input.value = initial; input.spellcheck = false; input.autocapitalize = "off";
+          input.oninput = collect; label.append(input); row.append(label);
+        }
+        const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "Remove row";
+        remove.onclick = () => { row.remove(); collect(); }; row.append(remove);
+      };
+      for (const [name, value] of Object.entries(current[key])) add(name, value);
+      const addButton = document.createElement("button"); addButton.type = "button"; addButton.textContent = "Add " + field.title.toLowerCase() + " row";
+      addButton.onclick = () => { add(); rows.lastElementChild.querySelector("input").focus(); }; group.append(addButton);
+      continue;
+    }
+    if (field.type === "array") {
+      const group = document.createElement("fieldset"); text(group, "legend", field.title); parent.append(group);
+      for (const value of field.items.enum || []) {
+        const label = document.createElement("label"); label.className = "check";
+        const input = document.createElement("input"); input.type = "checkbox"; input.name = key; input.value = value;
+        input.checked = current[key].includes(value);
+        input.onchange = () => { current[key] = [...group.querySelectorAll("input:checked")].map(item => item.value); };
+        label.append(input, document.createTextNode(value)); group.append(label);
+      }
+      continue;
+    }
+    const label = document.createElement("label"); label.htmlFor = "option-" + key;
+    label.textContent = field.title + (required ? " (required)" : ""); parent.append(label);
+    const choices = field.enum || (field.const ? [field.const] : null);
+    const input = document.createElement(choices ? "select" : "input"); input.id = label.htmlFor; input.name = key;
+    if (choices) input.append(...choices.map(value => new Option(value, value)));
+    input.value = current[key]; input.required = required; input.spellcheck = false;
+    input.autocapitalize = "off"; input.setAttribute("autocorrect", "off");
+    input.oninput = () => { current[key] = input.value; }; parent.append(input);
+    if (field.description) {
+      const hint = text(parent, "p", field.description); hint.id = "hint-" + key; input.setAttribute("aria-describedby", hint.id);
+    }
+  }
+  root.append(advanced);
+}
+
+
+// Offer only entries described by the shared server schema
 function fillConfigNames() {
   const section = element("config-section").value;
-  element("config-name").replaceChildren(...Object.keys(formContract.configuration[section]).map(name => new Option(name, name)));
+  const entries = section === "options" ? formContract.option_forms : formContract.configuration[section];
+  element("config-name").replaceChildren(...Object.keys(entries || {}).map(name => new Option(name, name)));
   fillConfigFields();
 }
+
+
+// Render ordinary settings with native controls and retained values
 function fillConfigFields() {
   const section = element("config-section").value, name = element("config-name").value;
+  if (section === "options") { fillOptionFields(name); return; }
   const current = formDrafts.get(formKey()) || structuredClone(formContract.configuration[section][name]);
   formDrafts.set(formKey(), current);
   const root = element("config-fields"); root.replaceChildren();
@@ -254,8 +402,14 @@ function fillConfigFields() {
     input.oninput = () => { current[key] = field.type === "boolean" ? input.checked : field.type === "integer" ? Number(input.value) : input.value; };
   }
 }
+
+
+// Switch panels without clearing other entry drafts
 element("config-section").onchange = fillConfigNames;
 element("config-name").onchange = fillConfigFields;
+
+
+// Reload forms only from the exact currently displayed TOML draft
 element("load-forms").onclick = () => safe(async () => {
   const source = element("config").value;
   const result = await api("/config/inspect", "POST", {configuration: source});
@@ -263,6 +417,9 @@ element("load-forms").onclick = () => safe(async () => {
   formContract = result; formSource = source; formDrafts.clear(); fillConfigNames();
   element("config-status").textContent = "Forms loaded from the current draft. Applying fields does not save the file.";
 });
+
+
+// Apply fields to a draft while rejecting concurrent text changes
 element("config-form").onsubmit = (event) => {
   event.preventDefault();
   safe(async () => {
@@ -270,7 +427,8 @@ element("config-form").onsubmit = (event) => {
     if (source !== formSource) throw new Error("TOML draft changed. Load forms from the current draft before applying fields.");
     const section = element("config-section").value, name = element("config-name").value;
     const current = formDrafts.get(formKey());
-    const values = Object.fromEntries(Object.keys(formContract.forms[section]).map(key => [key, current[key]]));
+    const fields = section === "options" ? formContract.option_forms[name].fields : formContract.forms[section];
+    const values = Object.fromEntries(Object.keys(fields).map(key => [key, current[key]]));
     element("config-controls").disabled = true;
     element("load-forms").disabled = true;
     try {
@@ -286,7 +444,7 @@ element("config-form").onsubmit = (event) => {
 };
 
 
-// Incident forms stay mounted while polling, so a new event cannot discard an operator's note.
+// Incident forms stay mounted while polling, so a new event cannot discard an operator's note
 async function refreshIncidents() {
   const [records, outbox] = await Promise.all([api("/incidents"), api("/notifications")]);
   if (!token) return;
@@ -309,6 +467,9 @@ async function refreshIncidents() {
   renderIncident();
   element("notification-status").textContent = outbox.pending + " pending · " + outbox.delivered + " HTTP accepted · " + outbox.superseded + " superseded · " + outbox.exhausted + " exhausted (" + outbox.attempt_limit + " attempts).";
 }
+
+
+// Show incident response state without changing deployment authority
 function renderIncident() {
   const record = incidentRecords.find(item => item.id === selectedIncident);
   element("incident-decision-form").hidden = !record || record.status === "resolved";
@@ -318,6 +479,9 @@ function renderIncident() {
       "next due " + new Date(record.next_escalation_at * 1000).toLocaleString() : "no further escalation scheduled") + ". Release: " + record.release_id;
   element("incident-acknowledge").hidden = record.status === "acknowledged";
 }
+
+
+// Serialize incident decisions and restore focus after network work
 async function incidentAction(form, action) {
   if (incidentBusy) return;
   incidentBusy = true;
@@ -334,9 +498,15 @@ async function incidentAction(form, action) {
     if (document.activeElement === document.body) element("incident-status").focus({preventScroll: true});
   }
 }
+
+
+// Announce incident results through their own status region
 function incidentMessage(value) {
   element("incident-status").textContent = value; element("incident-status").className = "";
 }
+
+
+// Open an incident without treating notification delivery as acknowledgement
 element("incident-open-form").onsubmit = event => {
   event.preventDefault();
   incidentAction(event.currentTarget, async () => {
@@ -348,6 +518,9 @@ element("incident-open-form").onsubmit = event => {
     incidentMessage("Incident recorded. Its notification is queued separately; no responder has been contacted by this action.");
   });
 };
+
+
+// Bind response decisions to the selected incident version
 element("incident-decision-form").onsubmit = event => {
   event.preventDefault();
   const action = event.submitter?.value;
@@ -360,19 +533,29 @@ element("incident-decision-form").onsubmit = event => {
     incidentMessage("Incident " + updated.status + ". Deployment outcome is unchanged.");
   });
 };
+
+
+// Advance due local escalation only through an explicit operator action
 element("incident-tick").onclick = () => incidentAction(element("incident-panel"), async () => {
   const result = await api("/incidents/tick", "POST", {});
   if (token) incidentMessage(result.escalated.length + " escalation signals queued. Delivery requires a separate notification flush.");
 });
 
 
+// Require ownership fields only for an opted-in local preview
 function configurePreviewFields() {
   const preview = Boolean(workspaceConfiguration?.environments[element("environment").value]?.preview);
   element("preview-options").hidden = !preview;
   element("preview-owner").required = preview;
   element("preview-hours").required = preview;
 }
+
+
+// Refresh preview requirements when the selected target changes
 element("environment").onchange = configurePreviewFields;
+
+
+// Expose exact cleanup approval separately from deployment results
 function renderPreview(root, data) {
   const release = data.release;
   const id = release.id;

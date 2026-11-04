@@ -1,5 +1,6 @@
 # src/deploy_ops/identity.py - Verify GitHub-issued identity before accepting a deployment request.
 
+
 import time
 
 import jwt
@@ -8,6 +9,7 @@ from pydantic import ValidationError
 from .errors import Refused
 from .models import Source
 
+# Trust one issuer and require the claims used by target authorization
 ISSUER = "https://token.actions.githubusercontent.com"
 JWKS = ISSUER + "/.well-known/jwks"
 CLAIMS = (
@@ -17,13 +19,18 @@ CLAIMS = (
 )
 
 
+# Authenticate workflow claims before they become deployment authority
 class GithubVerifier:
     """Use GitHub's fixed key endpoint rather than a URL supplied in the token."""
 
+
+    # Cache keys only from the fixed GitHub issuer
     def __init__(self, audience: str):
         self.audience = audience
         self.keys = jwt.PyJWKClient(JWKS, cache_jwk_set=True, lifespan=300, timeout=5)
 
+
+    # Check signature, required claims and bounded token lifetime together
     def verify(self, token: str) -> Source:
         if len(token) > 20000:
             raise Refused("Invalid workflow credential", 401)

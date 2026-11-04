@@ -1,5 +1,6 @@
 # src/deploy_ops/delivery/demo.py - Exercise real local deployment and HTTP verification without cloud access.
 
+
 import functools
 import json
 import threading
@@ -12,11 +13,15 @@ from .engine import Engine
 from .scaffold import create
 
 
+# Keep the demonstration's result separate from HTTP access logs
 class QuietHandler(SimpleHTTPRequestHandler):
+
+    # Suppress the standard handler's diagnostic output
     def log_message(self, format, *args):
         pass
 
 
+# Drive the explicitly requested demo through its normal approval gates
 def finish(engine: Engine, release: dict) -> dict:
     """Approve only this explicit demonstration's current exact requests."""
     while release["status"] not in ("succeeded", "failed", "uncertain", "cancelled"):
@@ -30,6 +35,7 @@ def finish(engine: Engine, release: dict) -> dict:
     return release
 
 
+# Exercise app-only reuse and promotion before checking the served page
 def run(directory: Path) -> dict:
     project = create(directory)
     engine = Engine(project)
@@ -37,6 +43,7 @@ def run(directory: Path) -> dict:
     app_only = finish(engine, engine.create("development", "web", False))
     finish(engine, engine.create("staging", "foundation"))
     promoted = finish(engine, engine.create("staging", "web", False, promote=app_only["id"]))
+    # Serve the promoted artifact through a disposable loopback HTTP server
     site = Path(promoted["nodes"]["web"]["outputs"]["path"])
     handler = functools.partial(QuietHandler, directory=str(site))
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)

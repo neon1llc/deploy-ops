@@ -1,5 +1,6 @@
 # src/deploy_ops/runner.py - Apply an approved saved plan on a separate trusted runner.
 
+
 import contextlib
 import json
 import os
@@ -17,15 +18,18 @@ from .clouds import environment
 from .errors import Refused
 from .models import Agent, Proposal
 
+# Support only engines with a saved-plan execution contract
 BINARIES = {"terraform": "terraform", "opentofu": "tofu"}
 
 
+# Select a supported engine from the trusted runner's installed tools
 def executable(engine: str) -> str:
     if engine not in BINARIES or not (binary := shutil.which(BINARIES[engine])):
         raise Refused("Install the pinned Terraform or OpenTofu binary on the trusted runner", 422)
     return binary
 
 
+# Require the approved commit and unchanged tracked infrastructure
 def workdir(workspace: Path, relative: str, commit: str) -> Path:
     root = workspace.resolve()
     path = (root / relative).resolve()
@@ -42,6 +46,7 @@ def workdir(workspace: Path, relative: str, commit: str) -> Path:
     return path
 
 
+# Pass only reviewed credentials and necessary process settings
 def clean_environment(home: str, credentials: dict) -> dict[str, str]:
     """Do not pass human credentials, GitHub tokens, or CLI injection flags to providers."""
     inherited = ("PATH", "LANG", "LC_ALL", "TMPDIR", "SSL_CERT_FILE")
@@ -55,6 +60,7 @@ def clean_environment(home: str, credentials: dict) -> dict[str, str]:
     return result
 
 
+# Terminate descendants even when the original CLI has already exited
 def _stop(process: subprocess.Popen) -> None:
     # Clean up the process group even if a provider outlives the CLI process
     with contextlib.suppress(ProcessLookupError):
@@ -66,6 +72,7 @@ def _stop(process: subprocess.Popen) -> None:
     process.wait()
 
 
+# Enforce heartbeat and deadline checks around a process group
 def supervised(command: list[str], cwd: Path, env: dict, heartbeat, deadline: int) -> int:
     """Stop local execution when authority expires or the controller cannot be reached."""
     if os.name != "posix":
@@ -88,11 +95,14 @@ def supervised(command: list[str], cwd: Path, env: dict, heartbeat, deadline: in
         _stop(process)
 
 
+# Verify the retained artifact before obtaining writer credentials
 def execute(client: Client, lease: dict, artifact: Path, workspace: Path) -> int:
     """Recheck authority online before reading credentials or starting a cloud command."""
     request_id, token = lease["request_id"], lease["token"]
     route = f"/v1/executions/{request_id}"
 
+
+    # Use the execution lease for each online authority check
     def heartbeat():
         return client.call("POST", route + "/heartbeat", execution_token=token)
 
@@ -152,6 +162,7 @@ def execute(client: Client, lease: dict, artifact: Path, workspace: Path) -> int
     return result or 0
 
 
+# Use separate planning authority to create and submit immutable evidence
 def plan(client: Client, target: str, engine: str, workspace: Path, output: Path,
          agent: Agent, cost_file: Path | None = None) -> dict:
     """Create a saved plan using the controller's separate planning identity."""
@@ -165,6 +176,7 @@ def plan(client: Client, target: str, engine: str, workspace: Path, output: Path
     lock = directory / ".terraform.lock.hcl"
     if not lock.is_file():
         raise Refused("Commit a reviewed .terraform.lock.hcl before using this workflow", 422)
+    # Keep planning credentials separate from the approved execution identity
     with tempfile.TemporaryDirectory(prefix="deploy_ops-plan-") as home:
         with httpx.Client(timeout=10, follow_redirects=False) as http:
             credentials = environment(context["cloud"], context["identity"], github_token,

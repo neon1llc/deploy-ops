@@ -1,5 +1,6 @@
 # tests/test_observation.py - Observe actual local drift while preserving deployments and original outcomes.
 
+
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,7 @@ from deploy_ops.delivery.observation import tree_digest
 from deploy_ops.delivery.scaffold import create
 
 
+# Provide an actually deployed local baseline for read-only observation
 @pytest.fixture
 def deployed(tmp_path):
     engine = Engine(create(tmp_path / 'workspace'))
@@ -23,6 +25,7 @@ def deployed(tmp_path):
     return engine, release
 
 
+# Observation may add evidence but cannot repair files or rewrite outcomes
 def test_complete_local_observation_records_no_repair_or_release_mutation(deployed):
     engine, release = deployed
     before = digest_tree(engine.deployments)
@@ -35,6 +38,7 @@ def test_complete_local_observation_records_no_repair_or_release_mutation(deploy
     assert engine.ledger.store.verify()['events'] > 0
 
 
+# Unsafe or missing evidence must not become a matching result
 @pytest.mark.parametrize('change,status', [('file', 'drifted'), ('missing-file', 'drifted'), ('missing-pointer', 'drifted'),
                                          ('pointer', 'drifted'), ('symlink', 'unknown'), ('root-symlink', 'unknown'),
                                          ('fifo', 'unknown'), ('malformed', 'unknown'), ('missing-baseline', 'unknown'),
@@ -75,6 +79,7 @@ def test_observation_distinguishes_drift_from_unreadable_evidence(deployed, tmp_
     assert engine.ledger.get(release['id'])['status'] == 'succeeded'
 
 
+# Activation follows completion order rather than creation time or list limits
 def test_superseded_artifact_and_last_activation_follow_completion_order(deployed):
     engine, original = deployed
     older = engine.create('development', 'web', False)
@@ -95,16 +100,23 @@ def test_superseded_artifact_and_last_activation_follow_completion_order(deploye
     assert damaged['activation']['status'] == 'matching'
 
 
+# A failed or racing read cannot establish stable deployment state
 def test_unreadable_or_changing_target_is_unknown(deployed, monkeypatch):
     from deploy_ops.delivery import observation
     engine, release = deployed
     original = observation.tree_digest
+
+
+    # Simulate a private filesystem error that must not escape the result
     def unreadable(_):
         raise PermissionError('private path must not be exposed')
     monkeypatch.setattr(observation, 'tree_digest', unreadable)
     result = engine.observe(release['id'])
     assert result['components']['web']['status'] == 'unknown'
     assert 'private path' not in json.dumps(result)
+
+
+    # Change the audit generation during artifact inspection
     def concurrent(path):
         engine.ledger.event(release['id'], 'component.running', {'component': 'web'})
         return original(path)
@@ -112,6 +124,7 @@ def test_unreadable_or_changing_target_is_unknown(deployed, monkeypatch):
     assert engine.observe(release['id'])['status'] == 'unknown'
 
 
+# Do not imply runtime or cloud coverage from a local marker check
 def test_directory_marker_scope_and_unsupported_adapters(deployed):
     engine, release = deployed
     marker = Path(release['nodes']['foundation']['outputs']['path']) / 'resource.json'
@@ -122,6 +135,7 @@ def test_directory_marker_scope_and_unsupported_adapters(deployed):
     assert engine.observe(release['id'])['components']['web']['status'] == 'unsupported'
 
 
+# Nested paths and sibling files must hash in the established order
 def test_artifact_order_matches_existing_digest_contract(tmp_path):
     (tmp_path / 'a').mkdir()
     (tmp_path / 'a' / 'index').write_text('nested')
@@ -129,6 +143,7 @@ def test_artifact_order_matches_existing_digest_contract(tmp_path):
     assert tree_digest(tmp_path) == digest_tree(tmp_path)
 
 
+# Require authentication and retain observation evidence across service restarts
 def test_console_observation_requires_operator_and_survives_restart(deployed):
     engine, release = deployed
     client = TestClient(create_app(engine, 't' * 40), base_url='http://127.0.0.1:8765')
@@ -139,6 +154,7 @@ def test_console_observation_requires_operator_and_survives_restart(deployed):
     assert restarted.ledger.events(release['id'])[-1]['name'] == 'release.observed'
 
 
+# Outstanding writes prevent a claim of stable observed state
 def test_active_or_uncertain_execution_prevents_stable_observation(deployed):
     engine, original = deployed
     release = engine.advance(engine.create('development', 'web', False)['id'])
@@ -151,6 +167,7 @@ def test_active_or_uncertain_execution_prevents_stable_observation(deployed):
     assert engine.observe(original['id'])['status'] == 'unknown'
 
 
+# An older release cannot hide corruption in the current activation evidence
 def test_changed_activation_baseline_does_not_validate_an_old_release(deployed):
     engine, original = deployed
     latest = finish(engine, engine.create('development', 'web', False))

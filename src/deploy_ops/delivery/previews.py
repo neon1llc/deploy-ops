@@ -1,5 +1,6 @@
 # src/deploy_ops/delivery/previews.py - Own isolated static previews and exact, manually reviewed cleanup.
 
+
 import hashlib
 import json
 import os
@@ -18,10 +19,12 @@ from .gate import LocalGate, target_name
 from .observation import checked_path, read_regular, reviewed, tree_digest
 
 
+# Match the retained ownership record's exact serialized bytes
 def _bytes(value):
     return (json.dumps(value, indent=2, allow_nan=False) + "\n").encode()
 
 
+# Limit previews to an isolated local graph with explicit retention
 def validate_creation(engine, graph, owner, hours, retain, with_dependencies):
     if not isinstance(engine.gate, LocalGate) or not with_dependencies:
         raise Refused("Static previews require local mode and their complete dependency graph", 422)
@@ -42,6 +45,7 @@ def validate_creation(engine, graph, owner, hours, retain, with_dependencies):
             "retain_data": retain, "contract": "generated-static-v1"}
 
 
+# Create ownership evidence before any preview deployment writes
 def initialize(engine, release):
     metadata = release["preview"]
     metadata.update(id=release["id"], environment=release["environment"], config_digest=release["config_digest"],
@@ -50,11 +54,12 @@ def initialize(engine, release):
     parent.mkdir(exist_ok=True, mode=0o700)
     root = parent / release["id"]
     root.mkdir(mode=0o700)
-    # Ledger serialization sorts keys; keep the ownership bytes stable across a restart.
+    # Ledger serialization sorts keys; keep the ownership bytes stable across a restart
     release["preview"] = dict(sorted(metadata.items()))
     private_json(root / ".ownership.json", release["preview"])
 
 
+# Verify the marker before trusting the preview directory
 def namespace(engine, release):
     metadata = release.get("preview")
     if not metadata or metadata.get("id") != release["id"] or metadata.get("config_digest") != release["config_digest"]:
@@ -65,12 +70,14 @@ def namespace(engine, release):
     return root
 
 
+# Prevent expired or retiring previews from accepting more deployment work
 def active(engine, release):
     namespace(engine, release)
     if release.get("preview_retiring") or int(time.time()) >= release["preview"]["expires_at"]:
         raise Refused("This preview is expired or retiring. Create a fresh isolated preview")
 
 
+# Expose expiry and cleanup state without automatically deleting anything
 def list_previews(engine):
     with engine.ledger.store.connect() as connection:
         releases = [json.loads(row[0]) for row in connection.execute("SELECT data FROM releases ORDER BY rowid DESC")]
@@ -79,8 +86,12 @@ def list_previews(engine):
             for release in releases if release.get("preview")]
 
 
+# Inventory bounded regular files and directories without following links
 def _scan(root):
     files, directories, total = {}, [], 0
+
+
+    # Reject unexpected file types instead of treating them as owned content
     def walk(folder):
         nonlocal total
         with os.scandir(folder) as entries:
@@ -103,11 +114,15 @@ def _scan(root):
     return {"files": dict(sorted(files.items())), "directories": sorted(directories)}
 
 
+# Separate unchanged generated files from retained or unrecognized data
 def inventory(engine, release):
     root = namespace(engine, release)
     actual = _scan(root)
     expected = {".ownership.json": hashlib.sha256(_bytes(release["preview"])).hexdigest()}
     expected_dirs = set()
+
+
+    # Reject conflicting component ownership of the same file
     def add(path, digest):
         relative = checked_path(root, path).relative_to(root)
         if relative.as_posix() in expected and expected[relative.as_posix()] != digest:
@@ -140,6 +155,7 @@ def inventory(engine, release):
             add(destination / "current.json", hashlib.sha256(_bytes(pointer)).hexdigest())
         else:
             raise Refused("This preview adapter has no cleanup contract")
+    # Preserve every file whose ownership or unchanged contents cannot be established
     retained = []
     delete = []
     for path, digest in actual["files"].items():
@@ -160,6 +176,7 @@ def inventory(engine, release):
             "retain_ownership_record": True}
 
 
+# Require the original preview contract before cleanup preparation
 def _eligible(engine, release):
     if not isinstance(engine.gate, LocalGate) or not release.get("preview"):
         raise Refused("Only an owned local preview can be cleaned up", 422)
@@ -169,6 +186,7 @@ def _eligible(engine, release):
         raise Refused("Finish or reconcile the preview deployment before preparing cleanup")
 
 
+# Freeze the exact deletion inventory under a fresh manual approval
 def prepare_cleanup(engine, release_id):
     scope = "release:" + release_id
     engine.ledger.lock(scope, release_id)
@@ -183,7 +201,7 @@ def prepare_cleanup(engine, release_id):
         path = engine.state / "cleanup" / operation / "prepared.json"
         private_json(path, plan)
         artifact_digest = hashlib.sha256(_bytes(plan)).hexdigest()
-        # The same target/controller owns deletion; opt-in preview targets always require manual authority.
+        # The same target/controller owns deletion; opt-in preview targets always require manual authority
         component = release["order"][-1]
         proposal = Proposal(target=target_name(engine.spec.name, release["environment"], component),
                             engine="delivery", artifact_digest=artifact_digest, tool_version=__version__,
@@ -201,6 +219,7 @@ def prepare_cleanup(engine, release_id):
         engine.ledger.unlock(scope, release_id)
 
 
+# Approve only the cleanup request currently shown to the operator
 def approve_cleanup(engine, release_id, digest):
     release = engine.ledger.get(release_id)
     _eligible(engine, release)
@@ -210,8 +229,9 @@ def approve_cleanup(engine, release_id, digest):
     return engine.gate.approve(cleanup["request_id"], digest)
 
 
+# Recheck file identity through owned directory handles before removal
 def _unlink(root, relative, digest):
-    # Open parent directories without following symlinks; unlink stays inside those owned directory handles.
+    # Open parent directories without following symlinks; unlink stays inside those owned directory handles
     descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         parts = Path(relative).parts
@@ -234,6 +254,7 @@ def _unlink(root, relative, digest):
         os.close(descriptor)
 
 
+# Remove only an empty directory reached without following links
 def _rmdir(root, relative):
     descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
@@ -247,6 +268,7 @@ def _rmdir(root, relative):
         os.close(descriptor)
 
 
+# Revalidate the inventory and retain partial progress on uncertainty
 def execute_cleanup(engine, release_id):
     scope = "release:" + release_id
     engine.ledger.lock(scope, release_id)
@@ -263,12 +285,14 @@ def execute_cleanup(engine, release_id):
         plan = json.loads(content)
         request = engine.gate.status(cleanup["request_id"])
         source = {**release, "id": cleanup["id"], "source_digest": cleanup["source"]}
+        # Persist cleanup ownership before performing any deletion
         lease = engine.gate.claim(request, source)
         cleanup.update(status="running", worker_pid=os.getpid())
         release["preview_retiring"] = True
         engine.ledger.save(release, "preview.cleanup.running", {"operation": cleanup["id"]})
         deleted = []
         try:
+            # Recompute the entire inventory after claiming authority to catch changes since review
             if inventory(engine, release) != plan:
                 raise Refused("Preview changed after cleanup preparation")
             root = namespace(engine, release)
@@ -280,7 +304,7 @@ def execute_cleanup(engine, release_id):
                 engine.gate.heartbeat(lease)
                 _rmdir(root, relative)
             # Keep an ownership tombstone even when all generated content is gone, so interrupted
-            # completion can be inspected and replanned without adopting an unmarked directory.
+            # completion can be inspected and replanned without adopting an unmarked directory
             result = engine.gate.complete(lease, "succeeded")
             if result["status"] != "succeeded":
                 raise Refused("Cleanup authority outcome needs reconciliation")
@@ -300,6 +324,7 @@ def execute_cleanup(engine, release_id):
         engine.ledger.unlock(scope, release_id)
 
 
+# Inspect interrupted cleanup before preparing another deletion plan
 def reconcile_cleanup(engine, release_id, note, confirm_removed=False):
     if not isinstance(note, str) or not 10 <= len(note.strip()) <= 500:
         raise Refused("Record an inspection note of 10 to 500 characters", 422)
@@ -316,7 +341,7 @@ def reconcile_cleanup(engine, release_id, note, confirm_removed=False):
             if root.exists() or cleanup["plan"]["retain"]:
                 raise Refused("Confirm removal only after inspecting an absent namespace with no retained data")
         if not cleanup.get("request_id"):
-            # A crash after submit but before saving the returned ID must not leave an approvable orphan.
+            # A crash after submit but before saving the returned ID must not leave an approvable orphan
             with engine.ledger.store.connect() as connection:
                 for row in connection.execute("SELECT data FROM requests"):
                     candidate = json.loads(row[0])

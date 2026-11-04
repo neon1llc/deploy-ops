@@ -1,5 +1,6 @@
 # src/deploy_ops/demo.py - Exercise the approval path without cloud accounts or network access.
 
+
 import copy
 import tempfile
 from pathlib import Path
@@ -11,6 +12,7 @@ from .service import Controller
 from .store import Store
 
 
+# Define an offline policy fixture without real account access
 def sample_target() -> Target:
     """Use obviously synthetic identities only in the local demonstration."""
     return Target(
@@ -23,6 +25,7 @@ def sample_target() -> Target:
     )
 
 
+# Vary workflow stage and run while preserving the synthetic target binding
 def sample_source(target: Target, stage: str = "plan", run: str = "1001") -> Source:
     return Source(
         repository=target.repository, repository_id=target.repository_id,
@@ -33,6 +36,7 @@ def sample_source(target: Target, stage: str = "plan", run: str = "1001") -> Sou
     )
 
 
+# Provide one small plan with deterministic evidence digests
 def sample_proposal() -> Proposal:
     return Proposal(
         target="sandbox", engine="opentofu", artifact_digest="c" * 64, lock_digest="d" * 64,
@@ -43,6 +47,7 @@ def sample_proposal() -> Proposal:
     )
 
 
+# Exercise approval, replay refusal and delegation limits in temporary state
 def run() -> dict:
     """Show successful paths and refusals with explicitly synthetic plan data."""
     results = []

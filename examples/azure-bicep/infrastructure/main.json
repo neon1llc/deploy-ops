@@ -1,0 +1,82 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.41.2.15936",
+      "templateHash": "9393879302705661707"
+    },
+    "description": "Create a private application in an existing Container Apps environment."
+  },
+  "parameters": {
+    "applicationName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the application to create or update."
+      }
+    },
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure region of the existing managed environment."
+      }
+    },
+    "environmentId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of an existing, approved Container Apps managed environment."
+      }
+    },
+    "image": {
+      "type": "string",
+      "metadata": {
+        "description": "Public container image pinned by its sha256 digest."
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-03-01",
+      "name": "[parameters('applicationName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "managedEnvironmentId": "[parameters('environmentId')]",
+        "configuration": {
+          "activeRevisionsMode": "Single"
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "web",
+              "image": "[parameters('image')]",
+              "resources": {
+                "cpu": "[json('0.25')]",
+                "memory": "0.5Gi"
+              }
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 1
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "name": {
+      "type": "string",
+      "value": "[parameters('applicationName')]"
+    },
+    "resource_group": {
+      "type": "string",
+      "value": "[resourceGroup().name]"
+    },
+    "subscription_id": {
+      "type": "string",
+      "value": "[subscription().subscriptionId]"
+    }
+  }
+}

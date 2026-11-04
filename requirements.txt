@@ -1,6 +1,8 @@
 # requirements.txt - Exact runtime versions used by the local verification run.
 # Install these before installing this project. These are version pins, not wheel hashes.
 
+
+# Keep the resolved runtime dependency set reproducible
 annotated-doc==0.0.4
 annotated-types==0.8.0
 anyio==4.13.0

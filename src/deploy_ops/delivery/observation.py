@@ -1,5 +1,6 @@
 # delivery/observation.py - Observe local deployment drift without granting repair authority.
 
+
 import hashlib
 import json
 import os
@@ -11,6 +12,7 @@ from ..config import fingerprint
 from ..errors import Refused
 
 
+# Reject path escapes and symlinked ancestors before inspection
 def checked_path(root: Path, value: str | Path) -> Path:
     path = Path(value)
     if not path.is_absolute():
@@ -23,6 +25,7 @@ def checked_path(root: Path, value: str | Path) -> Path:
     return path
 
 
+# Check file identity and size around a bounded read
 def read_regular(path: Path, limit: int) -> bytes:
     info = path.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
@@ -39,10 +42,14 @@ def read_regular(path: Path, limit: int) -> bytes:
     return data
 
 
+# Hash only regular files without silently skipping unreadable entries
 def tree_digest(root: Path) -> str:
     if not stat.S_ISDIR(root.lstat().st_mode):
         raise Refused('Observed artifact is not a directory')
     entries, count, total = [], 0, 0
+
+
+    # Count directory entries and bytes before accumulating evidence
     def walk(folder):
         nonlocal count, total
         # scandir propagates permission errors instead of silently skipping an unreadable subtree
@@ -65,6 +72,7 @@ def tree_digest(root: Path) -> str:
     return fingerprint(sorted(entries, key=lambda entry: Path(entry[0]).parts))
 
 
+# Read the approval-bound baseline through the same safe file checks
 def reviewed(engine, release: dict, name: str) -> dict:
     try:
         return engine._reviewed_envelope(release, name, lambda path: read_regular(checked_path(engine.state, path), 2_000_000))
@@ -72,6 +80,7 @@ def reviewed(engine, release: dict, name: str) -> dict:
         raise Refused('Reviewed baseline is unavailable') from error
 
 
+# Find the last successful activation rather than the newest created release
 def activation(engine, pointer: Path):
     # Completion event order handles releases created earlier but applied later, without a listing limit
     with engine.ledger.store.connect() as connection:
@@ -91,6 +100,7 @@ def activation(engine, pointer: Path):
     raise Refused('No successful activation evidence exists for this target')
 
 
+# Keep unknown evidence distinct from observed drift
 def local_component(engine, release: dict, name: str) -> dict:
     if release.get("preview_retiring"):
         return {"status": "unsupported", "reason": "Preview retirement started; inspect its cleanup and retained-data record instead"}
@@ -115,6 +125,7 @@ def local_component(engine, release: dict, name: str) -> dict:
         artifact = checked_path(deployment_root, destination / 'releases' / release['id'])
         pointer = checked_path(deployment_root, destination / 'current.json')
         expected = activation(engine, pointer)
+        # Check both the selected artifact and the current activation without changing either
         first_pointer = read_regular(pointer, 65536)
         actual = json.loads(first_pointer)
         observed = tree_digest(artifact)
@@ -136,6 +147,7 @@ def local_component(engine, release: dict, name: str) -> dict:
         return {'status': 'unknown', 'reason': 'Evidence is unreadable, unsafe or changed. Inspect the target before acting'}
 
 
+# Detect concurrent execution before recording a stable observation
 def observe(engine, release_id: str) -> dict:
     release = engine.ledger.get(release_id)
     with engine.ledger.store.connect() as connection:
@@ -146,6 +158,7 @@ def observe(engine, release_id: str) -> dict:
                       for name in release['nodes']}
     else:
         components = {name: local_component(engine, release, name) for name in release['nodes']}
+    # Reject stability if another operation changed execution evidence during inspection
     with engine.ledger.store.transaction() as connection:
         current = connection.execute('SELECT COALESCE(MAX(sequence),0) FROM audit').fetchone()[0]
         if current != generation:

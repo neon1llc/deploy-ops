@@ -1,6 +1,7 @@
 # Support and qualification
 
-These are bounded observations for the 0.10.0 preview, checked on 2026-11-03. A supported configuration
+These are bounded observations for the v0.10.0 baseline and v0.11.0 native-infrastructure increment,
+checked on 2026-11-03. A supported configuration
 schema does not prove runtime or cloud compatibility. Versions outside this table may work but have not
 been qualified here. No production reliability or security certification is claimed.
 
@@ -14,7 +15,12 @@ been qualified here. No production reliability or security certification is clai
 | Compose application | Docker 29.1.3, Compose 2.40.3 | First deployment, health wait, app-only update, HTTP content and cleanup | Image build/publish, promotion and production host policy |
 | Kubernetes application | kind 0.31.0, Kubernetes/kubectl 1.35.0 | First rollout, app-only reuse, same-image promotion, rollback, stale-target refusal and reconciled retry | Managed clouds, admission controls, multi-node or multi-architecture behavior |
 | AWS ECS, Azure Container Apps, GCP Cloud Run | Command fixtures | Exact command and selected refusal contracts | No live provider journey |
+| Native IaC tooling | OpenTofu 1.10.0, Terraform 1.12.2 in isolated Linux VM | Offline init/validate/saved-plan/show of `terraform_data` | No cloud provider plan or apply |
 | OpenTofu receipt producer | 1.10.0 command/state fixtures | S3 backend binding, typed public outputs, receipt expiry/revocation and failed-apply invalidation | No live S3 or IaC apply |
+| CloudFormation | AWS CLI 2.36.34, us-east-1; additional command fixtures | Live private S3 create, tag update, no-change and owned deletion; independent bucket-absence check | Other resources, CDK assets and live rollback remain unqualified |
+| AWS CDK assembly | Python 3.12 and Node.js 24.19.0, aws-cdk-lib 2.275.0, constructs 10.8.1, schema 55 | Native Python/TypeScript synthesis under filesystem/network restrictions; both assemblies consumed through fixture CloudFormation | No live asset publication, bootstrap change, Docker asset build or cloud stack |
+| ARM deployment | Azure CLI 2.76.0 contract fixtures | Frozen JSON, tenant/subscription/principal checks, full what-if digest, changed prediction refusal and uncertain-operation readback | No live Azure authentication, deployment or resource deletion |
+| Bicep compilation | Standalone v0.41.2 (3e403ea7c1), macOS x86_64 | Sample compiled with network/home reads denied and writes restricted; equivalent template and both example workspaces checked | Does not qualify permissions, Azure state, cost or application health |
 | Isolated static previews | Local filesystem, SQLite and Chrome | Owned namespace, manual cleanup, retained data, recovery and HTTP200 to410 | No cloud/runtime teardown or shared data ownership |
 | Local incidents | Local SQLite, CLI/API and Chrome | Durable decisions, bounded explicit escalation, concurrent outbox and browser workflow | No live pager or recipient scheduling |
 | Slack and notification destinations | HTTP/interface fixtures | Signature/approver checks, stable event IDs and retry behavior | No live workspace or paging acknowledgement |

@@ -17,24 +17,31 @@ from .policy import changed_resources, fits_delegation, hard_denial
 from .store import Store
 
 
+# Keep authorization transitions and audit events in one owner
 class Controller:
     """Keep each state change atomic with its audit event."""
 
+    # Share settings, storage and clock across every lifecycle operation
     def __init__(self, settings: Settings, store: Store, clock: Callable[[], float] = time.time):
         self.settings = settings
         self.store = store
         self.clock = clock
 
+    # Use the injected clock consistently for authority windows
     def now(self) -> int:
         return int(self.clock())
 
+    # Reject unregistered targets before considering caller evidence
     def target(self, name: str) -> Target:
         if name not in self.settings.targets:
             raise Refused("Target is not registered", 404)
         return self.settings.targets[name]
 
+    # Match authenticated workflow claims to the requested stage
     def check_source(self, target: Target, source: Source, stage: str) -> None:
-        if source.kind == "local" and not (target.cloud == "local" and target.allow_local_operator):
+        if target.local_cloud and source.kind != "local":
+            raise Refused("Local cloud grants cannot be used by federated workers", 403)
+        if source.kind == "local" and not (target.allow_local_operator and (target.cloud == "local" or target.local_cloud)):
             raise Refused("Local operator authority cannot reach this target", 403)
         expected_environment = target.planner_environment if stage == "plan" else target.environment
         checks = (
@@ -50,6 +57,7 @@ class Controller:
         if not all(checks):
             raise Refused("Workflow identity is not authorized for this target and stage", 403)
 
+    # Remove execution credential hashes from returned records
     @staticmethod
     def public(request: dict) -> dict:
         result = copy.deepcopy(request)
@@ -57,15 +65,18 @@ class Controller:
             result["execution"].pop("token_hash", None)
         return result
 
+    # Attach controller time and request identity to each audit entry
     def _event(self, connection, actor: str, name: str, request: dict, **detail) -> None:
         self.store.event(connection, self.now(), actor, name, request["id"], detail)
 
+    # Refuse authority created under a different target policy
     def _current(self, request: dict) -> Target:
         target = self.target(request["manifest"]["target"])
         if target.digest != request["manifest"]["policy_digest"]:
             raise Refused("Target or policy changed. Submit a fresh plan")
         return target
 
+    # Reject stale, superseded or cross-scope infrastructure evidence
     def _output_receipt(self, connection, receipt_id: str, consumer: Target) -> dict:
         request = self.store.request(connection, receipt_id)
         receipt = request.get("output_receipt")
@@ -90,6 +101,7 @@ class Controller:
             raise Refused("Infrastructure has newer or unresolved work. Use a fresh receipt")
         return receipt
 
+    # Require the complete registered dependency set with exact digests
     def _check_receipts(self, connection, target: Target, references: dict):
         if set(references) != set(target.receipt_dependencies):
             raise Refused("Provide exactly the registered infrastructure receipt dependencies", 422)
@@ -98,12 +110,14 @@ class Controller:
             if receipt["producer_target"] != target.receipt_dependencies[dependency] or receipt["digest"] != reference["digest"]:
                 raise Refused("Infrastructure receipt binding changed")
 
+    # Authenticate the consumer before resolving a receipt
     def output_receipt(self, receipt_id: str, target_name: str, source: Source) -> dict:
         target = self.target(target_name)
         self.check_source(target, source, "execute")
         with self.store.connect() as connection:
             return self._output_receipt(connection, receipt_id, target)
 
+    # Invalidate future receipt use in the same transaction as its audit event
     def revoke_receipt(self, receipt_id: str, approver: str) -> dict:
         with self.store.transaction() as connection:
             request = self.store.request(connection, receipt_id)
@@ -114,6 +128,7 @@ class Controller:
             self._event(connection, approver, "receipt.revoked", request)
         return {"id": receipt_id, "revoked": True}
 
+    # Deduplicate exact evidence before applying denial or delegation rules
     def submit(self, proposal: Proposal, source: Source) -> dict:
         target = self.target(proposal.target)
         self.check_source(target, source, "execute" if proposal.engine == "delivery" else "plan")
@@ -169,6 +184,7 @@ class Controller:
                         digest=digest, status=request["status"], run_id=source.run_id)
         return self.public(request)
 
+    # Compute expiry at read time without rewriting execution history
     def get(self, request_id: str, source: Source | None = None) -> dict:
         with self.store.connect() as connection:
             request = self.store.request(connection, request_id)
@@ -183,16 +199,19 @@ class Controller:
             result["reason"] = "Approval window expired. Submit a fresh request"
         return result
 
+    # Return bounded history with current expiry interpretation
     def list_requests(self, limit: int = 100) -> list[dict]:
         with self.store.connect() as connection:
             rows = connection.execute("SELECT id FROM requests ORDER BY rowid DESC LIMIT ?", (limit,))
             ids = [row[0] for row in rows]
         return [self.get(request_id) for request_id in ids]
 
+    # Use the earliest request or approval expiry
     @staticmethod
     def _deadline(request: dict) -> int:
         return min(request["expires_at"], (request["approval"] or {}).get("expires_at", request["expires_at"]))
 
+    # Bind human review to current evidence before changing authority
     def decide(self, request_id: str, decision: Decision, approver: str, github_id: str = "") -> dict:
         with self.store.transaction() as connection:
             request = self.store.request(connection, request_id)
@@ -220,6 +239,7 @@ class Controller:
                         decision=decision.decision, digest=decision.digest, note=decision.note)
         return self.public(request)
 
+    # Create a single bounded grant without stacking target allowances
     def delegate(self, spec: DelegationSpec, approver: str, delivery_id: str = "") -> dict:
         target = self.target(spec.target)
         if not target.policy.allow_delegation or target.production or not target.policy.auto_types:
@@ -248,12 +268,14 @@ class Controller:
                         expires_at=grant["expires_at"], max_uses=spec.uses)
         return grant
 
+    # Reject replayed signed commands within the replay window
     def _deduplicate(self, connection, delivery_id: str) -> None:
         connection.execute("DELETE FROM deliveries WHERE expires_at < ?", (self.now(),))
         if connection.execute("SELECT 1 FROM deliveries WHERE id=?", (delivery_id,)).fetchone():
             raise Refused("This signed command was already handled")
         connection.execute("INSERT INTO deliveries VALUES (?, ?)", (delivery_id, self.now() + 600))
 
+    # Withdraw grant authority while preserving uncertain execution evidence
     def revoke(self, delegation_id: str, approver: str) -> dict:
         with self.store.transaction() as connection:
             grant = self.store.delegation(connection, delegation_id)
@@ -267,6 +289,7 @@ class Controller:
             self._event(connection, approver, "delegation.revoked", grant)
         return grant
 
+    # Revoke outstanding work without pretending accepted cloud calls rolled back
     def pause(self, paused: bool, approver: str, delivery_id: str = "") -> dict:
         with self.store.transaction() as connection:
             if delivery_id:
@@ -295,6 +318,7 @@ class Controller:
             )
         return {"paused": paused}
 
+    # Atomically bind one execution and consume its delegation allowance
     def claim(self, request_id: str, claim: Claim, source: Source) -> dict:
         with self.store.transaction() as connection:
             request = self.store.request(connection, request_id)
@@ -350,6 +374,7 @@ class Controller:
             receipt["token"] = token
         return receipt
 
+    # Return only the registered execution context needed by the runner
     @staticmethod
     def _receipt(request: dict, target: Target) -> dict:
         manifest = request["manifest"]
@@ -362,6 +387,7 @@ class Controller:
             "receipt_outputs": target.receipt_outputs.model_dump() if target.receipt_outputs else None,
         }
 
+    # Compare the presented credential against its stored hash
     @staticmethod
     def _check_execution_token(request: dict, token: str) -> None:
         expected = (request.get("execution") or {}).get("token_hash", "")
@@ -369,6 +395,7 @@ class Controller:
         if not expected or not hmac.compare_digest(expected, actual):
             raise Refused("Invalid execution credential", 401)
 
+    # Persist authority loss as uncertainty before refusing continued execution
     def heartbeat(self, request_id: str, token: str) -> dict:
         failure = None
         with self.store.transaction() as connection:
@@ -400,6 +427,7 @@ class Controller:
             raise failure
         return receipt
 
+    # Validate reported outputs before recording the final execution result
     def complete(self, request_id: str, token: str, result: Completion) -> dict:
         with self.store.transaction() as connection:
             request = self.store.request(connection, request_id)
@@ -447,6 +475,7 @@ class Controller:
             self._event(connection, "executor", "execution.reported", request, **result.model_dump())
         return self.public(request)
 
+    # Require explicit inspection to close running or uncertain work
     def resolve(self, request_id: str, resolution: Resolution, approver: str) -> dict:
         with self.store.transaction() as connection:
             request = self.store.request(connection, request_id)

@@ -1,5 +1,6 @@
 # src/deploy_ops/api.py - Expose authenticated controller operations and signed Slack callbacks.
 
+
 import hmac
 import os
 from pathlib import Path
@@ -19,13 +20,18 @@ from .slack import Slack
 from .store import Store
 
 
+# Apply the byte limit before request parsing or authentication handlers
 class BodyLimit:
     """Bound actual streamed bytes, not just the caller's Content-Length header."""
 
+
+    # Keep the limit on the middleware instance
     def __init__(self, app, limit: int):
         self.app = app
         self.limit = limit
 
+
+    # Collect HTTP bodies once and leave other ASGI protocols untouched
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
@@ -42,6 +48,7 @@ class BodyLimit:
                 break
         delivered = False
 
+        # Return the buffered body once before resuming disconnect reads
         async def replay():
             nonlocal delivered
             if delivered:
@@ -52,6 +59,7 @@ class BodyLimit:
         await self.app(scope, replay, send)
 
 
+# Wire all routes to the same controller and authentication boundaries
 def create_app(settings: Settings, admin_token: str, verifier=None) -> FastAPI:
     """Require an operator credential even when Slack is configured."""
     if len(admin_token) < 43:
@@ -66,29 +74,41 @@ def create_app(settings: Settings, admin_token: str, verifier=None) -> FastAPI:
     app.add_middleware(BodyLimit, limit=settings.max_body_bytes)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
 
+
+    # Accept credentials only from the bearer header
     def token(request: Request) -> str:
         kind, _, value = request.headers.get("authorization", "").partition(" ")
         if kind.lower() != "bearer" or not value:
             raise Refused("Bearer authentication is required", 401)
         return value
 
+
+    # Compare operator credentials without content-dependent timing
     def admin(request: Request) -> None:
         if not hmac.compare_digest(token(request).encode(), admin_token.encode()):
             raise Refused("Operator authentication is required", 401)
 
+
+    # Use verified workflow claims for machine operations
     def machine(request: Request):
         return identity.verify(token(request))
 
+
+    # Expose only the safe refusal message and its intended status
     @app.exception_handler(Refused)
     async def refusal(request, error):
         return JSONResponse({"detail": str(error)}, status_code=error.status)
 
+
+    # Keep rejected input values out of error responses
     @app.exception_handler(RequestValidationError)
     @app.exception_handler(ValidationError)
     async def validation(request, error):
         # Pydantic's default errors can echo the submitted plan, including its secrets
         return JSONResponse({"detail": "Invalid request fields or values"}, status_code=422)
 
+
+    # Prevent sensitive responses from being cached or content-sniffed
     @app.middleware("http")
     async def response_headers(request, call_next):
         response = await call_next(request)
@@ -96,10 +116,14 @@ def create_app(settings: Settings, admin_token: str, verifier=None) -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         return response
 
+
+    # Report process availability without exposing controller state
     @app.get("/healthz")
     def health():
         return {"status": "ok"}
 
+
+    # Reveal planning scope only to the registered planning workflow
     @app.get("/v1/targets/{target_name}/plan-context")
     def plan_context(target_name: str, request: Request):
         source = machine(request)
@@ -109,6 +133,8 @@ def create_app(settings: Settings, admin_token: str, verifier=None) -> FastAPI:
                 "workdir": target.workdir, "engines": target.engines, "commit": source.sha,
                 "receipt_outputs": target.receipt_outputs.model_dump() if target.receipt_outputs else None}
 
+
+    # Bind delivery workers to the registered workspace contract
     @app.get("/v1/targets/{target_name}/delivery-context")
     def delivery_context(target_name: str, request: Request):
         source = machine(request)
@@ -119,15 +145,21 @@ def create_app(settings: Settings, admin_token: str, verifier=None) -> FastAPI:
         return {"cloud": target.cloud, "identity": target.planner_identity,
                 "config_digest": target.delivery_digest, "receipt_dependencies": target.receipt_dependencies}
 
+
+    # Verify the requesting consumer before returning public outputs
     @app.get("/v1/targets/{target_name}/receipts/{receipt_id}")
     def output_receipt(target_name: str, receipt_id: str, request: Request):
         return controller.output_receipt(receipt_id, target_name, machine(request))
 
+
+    # Reserve receipt invalidation for an authenticated operator
     @app.post("/v1/admin/receipts/{receipt_id}/revoke")
     def revoke_receipt(receipt_id: str, request: Request):
         admin(request)
         return controller.revoke_receipt(receipt_id, "operator-token")
 
+
+    # Persist the request before scheduling review notification
     @app.post("/v1/requests", status_code=201)
     def submit(body: Proposal, request: Request, tasks: BackgroundTasks):
         record = controller.submit(body, machine(request))
@@ -135,6 +167,8 @@ def create_app(settings: Settings, admin_token: str, verifier=None) -> FastAPI:
             tasks.add_task(slack.notify, record)
         return record
 
+
+    # Allow operators and matching workflows to inspect the same request
     @app.get("/v1/requests/{request_id}")
     def get_request(request_id: str, request: Request):
         credential = token(request)
@@ -142,38 +176,54 @@ def create_app(settings: Settings, admin_token: str, verifier=None) -> FastAPI:
         source = None if is_operator else identity.verify(credential)
         return controller.get(request_id, source)
 
+
+    # Consume exact approval through the shared transactional claim
     @app.post("/v1/requests/{request_id}/claim")
     def claim(request_id: str, body: Claim, request: Request):
         return controller.claim(request_id, body, machine(request))
 
+
+    # Recheck ongoing authority using the execution-specific credential
     @app.post("/v1/executions/{request_id}/heartbeat")
     def heartbeat(request_id: str, request: Request):
         return controller.heartbeat(request_id, token(request))
 
+
+    # Record the runner's result without accepting an operator credential
     @app.post("/v1/executions/{request_id}/complete")
     def complete(request_id: str, body: Completion, request: Request):
         return controller.complete(request_id, token(request), body)
 
+
+    # Require operator access for cross-target request history
     @app.get("/v1/admin/requests")
     def list_requests(request: Request):
         admin(request)
         return controller.list_requests()
 
+
+    # Apply an operator decision to the reviewed request digest
     @app.post("/v1/admin/requests/{request_id}/decision")
     def decide(request_id: str, body: Decision, request: Request):
         admin(request)
         return controller.decide(request_id, body, "operator-token")
 
+
+    # Record explicit inspection of an uncertain execution
     @app.post("/v1/admin/requests/{request_id}/resolve")
     def resolve(request_id: str, body: Resolution, request: Request):
         admin(request)
         return controller.resolve(request_id, body, "operator-token")
 
+
+    # Create a bounded grant under the target's existing policy
     @app.post("/v1/admin/delegations", status_code=201)
     def delegate(body: DelegationSpec, request: Request):
         admin(request)
         return controller.delegate(body, "operator-token")
 
+
+    # Read grant history without changing its limits or validity
     @app.get("/v1/admin/delegations")
     def delegations(request: Request):
         admin(request)
@@ -182,31 +232,43 @@ def create_app(settings: Settings, admin_token: str, verifier=None) -> FastAPI:
             rows = connection.execute("SELECT data FROM delegations ORDER BY rowid DESC")
             return [json.loads(row[0]) for row in rows]
 
+
+    # Stop future grant use and mark active work for inspection
     @app.post("/v1/admin/delegations/{delegation_id}/revoke")
     def revoke(delegation_id: str, request: Request):
         admin(request)
         return controller.revoke(delegation_id, "operator-token")
 
+
+    # Suspend new work and revoke outstanding authority
     @app.post("/v1/admin/pause")
     def pause(request: Request):
         admin(request)
         return controller.pause(True, "operator-token")
 
+
+    # Resume requests without restoring revoked grants
     @app.post("/v1/admin/resume")
     def resume(request: Request):
         admin(request)
         return controller.pause(False, "operator-token")
 
+
+    # Export stored event evidence only to an authenticated operator
     @app.get("/v1/admin/audit")
     def audit(request: Request):
         admin(request)
         return controller.store.audit()
 
+
+    # Check the retained chain before presenting its head
     @app.get("/v1/admin/audit/verify")
     def verify_audit(request: Request):
         admin(request)
         return controller.store.verify()
 
+
+    # Pass original bytes to signature verification before parsing
     @app.post("/v1/slack")
     async def slack_callback(request: Request):
         return slack.handle(await request.body(), request.headers.get("x-slack-request-timestamp", ""),
@@ -215,6 +277,7 @@ def create_app(settings: Settings, admin_token: str, verifier=None) -> FastAPI:
     return app
 
 
+# Load operator-owned configuration at service startup
 def from_environment() -> FastAPI:
     path = Path(os.environ.get("DEPLOY_OPS_CONFIG", "config/controller.toml"))
     return create_app(load(path), os.environ.get("DEPLOY_OPS_ADMIN_TOKEN", ""))

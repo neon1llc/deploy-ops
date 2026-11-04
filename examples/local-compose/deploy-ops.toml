@@ -1,32 +1,43 @@
 # deploy-ops.toml - Deliver a digest-pinned container through a separate local infrastructure dependency.
 
+
+# Give the local example its own target namespace
 name = "compose-example"
 
+# Read local infrastructure fixture files without a cloud identity
 [repositories.infrastructure]
 path = "infrastructure"
 allow_uncommitted = true
 
+# Keep the Compose application source separate from the dependency
 [repositories.application]
 path = "application"
 allow_uncommitted = true
 
+# Run this example only against local resources
 [environments.development]
 provider = "local"
 
+# Create the local dependency through the ordinary approval lifecycle
 [components.foundation]
 repository = "infrastructure"
 kind = "infrastructure"
 adapter = "directory"
 
+# Keep the dependency marker within the example namespace
 [components.foundation.options]
+
+# Give the local example its own target namespace
 name = "compose-example"
 
+# Require the infrastructure dependency before starting the Compose application
 [components.web]
 repository = "application"
 kind = "application"
 adapter = "compose"
 needs = ["foundation"]
 
+# Bind the rendered Compose configuration to a dedicated project name
 [components.web.options]
 file = "compose.yaml"
 project = "deployops-local-example"

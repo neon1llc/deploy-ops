@@ -1,12 +1,18 @@
 # resources.yaml - Explicit prerequisites for a disposable local cluster.
 
+
+# Apply this reviewed list only to the disposable local cluster
 apiVersion: v1
 kind: List
 items:
+
+# Isolate the example from other cluster workloads
 - apiVersion: v1
   kind: Namespace
   metadata:
     name: deployops-local
+
+# Keep development and staging workloads independently addressable
 - apiVersion: apps/v1
   kind: Deployment
   metadata:
@@ -22,6 +28,8 @@ items:
         labels:
           app: web-development
       spec:
+
+        # Run the pod as an unprivileged user with a writable scratch group
         securityContext:
           runAsNonRoot: true
           runAsUser: 65534
@@ -30,6 +38,8 @@ items:
         containers:
         - name: web
           image: python@sha256:e6dae589c1c05976188fd3bd019afd091445fc533ed2ea29001beddc7368a9c8
+
+          # Serve disposable content from the bounded memory-backed volume
           command:
           - sh
           - -c
@@ -37,6 +47,8 @@ items:
             && exec python -m http.server 8080 --bind 0.0.0.0 --directory /tmp/site
           ports:
           - containerPort: 8080
+
+          # Bound scheduler requests and maximum workload consumption
           resources:
             requests:
               cpu: 50m
@@ -44,17 +56,23 @@ items:
             limits:
               cpu: 500m
               memory: 128Mi
+
+          # Keep the image read-only and drop additional process privileges
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop:
               - ALL
+
+          # Admit traffic only after the HTTP server responds
           readinessProbe:
             httpGet:
               path: /
               port: 8080
             periodSeconds: 2
+
+          # Mount only the pod-owned scratch volume
           volumeMounts:
           - name: scratch
             mountPath: /tmp
@@ -63,6 +81,8 @@ items:
           emptyDir:
             medium: Memory
             sizeLimit: 16Mi
+
+# Route namespace-local traffic to the matching environment deployment
 - apiVersion: v1
   kind: Service
   metadata:
@@ -74,6 +94,8 @@ items:
     ports:
     - port: 8080
       targetPort: 8080
+
+# Keep development and staging workloads independently addressable
 - apiVersion: apps/v1
   kind: Deployment
   metadata:
@@ -89,6 +111,8 @@ items:
         labels:
           app: web-staging
       spec:
+
+        # Run the pod as an unprivileged user with a writable scratch group
         securityContext:
           runAsNonRoot: true
           runAsUser: 65534
@@ -97,6 +121,8 @@ items:
         containers:
         - name: web
           image: python@sha256:e6dae589c1c05976188fd3bd019afd091445fc533ed2ea29001beddc7368a9c8
+
+          # Serve disposable content from the bounded memory-backed volume
           command:
           - sh
           - -c
@@ -104,6 +130,8 @@ items:
             && exec python -m http.server 8080 --bind 0.0.0.0 --directory /tmp/site
           ports:
           - containerPort: 8080
+
+          # Bound scheduler requests and maximum workload consumption
           resources:
             requests:
               cpu: 50m
@@ -111,17 +139,23 @@ items:
             limits:
               cpu: 500m
               memory: 128Mi
+
+          # Keep the image read-only and drop additional process privileges
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop:
               - ALL
+
+          # Admit traffic only after the HTTP server responds
           readinessProbe:
             httpGet:
               path: /
               port: 8080
             periodSeconds: 2
+
+          # Mount only the pod-owned scratch volume
           volumeMounts:
           - name: scratch
             mountPath: /tmp
@@ -130,6 +164,8 @@ items:
           emptyDir:
             medium: Memory
             sizeLimit: 16Mi
+
+# Route namespace-local traffic to the matching environment deployment
 - apiVersion: v1
   kind: Service
   metadata:

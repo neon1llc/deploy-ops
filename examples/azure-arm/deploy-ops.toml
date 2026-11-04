@@ -1,0 +1,62 @@
+# deploy-ops.toml - Connect a reviewed Azure template to an independent immutable app release.
+
+
+# Replace all placeholder identities and image digests before cloud execution
+name = "azure-arm-example"
+
+
+# Infrastructure and application sources have independent histories
+[repositories.infrastructure]
+path = "infrastructure"
+
+[repositories.application]
+path = "application"
+
+
+# This example targets one explicitly authorized nonproduction environment
+[environments.staging]
+provider = "azure"
+
+[environments.staging.variables]
+subscription_id = "00000000-0000-0000-0000-000000000000"
+tenant_id = "00000000-0000-0000-0000-000000000000"
+resource_group = "replace-with-approved-group"
+location = "eastus"
+environment_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/replace-with-approved-group/providers/Microsoft.App/managedEnvironments/replace-with-existing-environment"
+image = "ghcr.io/example/app@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+
+# The provider owns deployment state while DeployOps binds preview and approval
+[components.foundation]
+repository = "infrastructure"
+kind = "infrastructure"
+adapter = "arm"
+outputs = ["name", "resource_group", "subscription_id"]
+
+[components.foundation.options]
+subscription_id = "${env.subscription_id}"
+tenant_id = "${env.tenant_id}"
+resource_group = "${env.resource_group}"
+template = "main.json"
+deployment_name = "deploy-ops-example"
+
+[components.foundation.options.parameters]
+applicationName = "deploy-ops-example"
+location = "${env.location}"
+environmentId = "${env.environment_id}"
+image = "${env.image}"
+
+
+# App-only releases reuse these public coordinates without another infrastructure apply
+[components.web]
+repository = "application"
+kind = "application"
+adapter = "container-apps"
+needs = ["foundation"]
+
+[components.web.options]
+name = "${outputs.foundation.name}"
+resource_group = "${outputs.foundation.resource_group}"
+subscription_id = "${outputs.foundation.subscription_id}"
+image_repository = "ghcr.io/example/app"
+image = "${env.image}"

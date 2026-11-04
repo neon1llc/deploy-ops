@@ -1,5 +1,6 @@
 # src/deploy_ops/delivery/incidents.py - Track local incident decisions atomically with audit and notification events.
 
+
 import json
 import time
 import uuid
@@ -8,12 +9,14 @@ from ..config import canonical
 from ..errors import Refused
 
 
+# Normalize bounded operator text before writing incident state
 def _text(value, label):
     if not isinstance(value, str) or not value.strip() or len(value) > 500:
         raise Refused(f"{label} must contain 1 to 500 characters", 422)
     return value.strip()
 
 
+# Read the current incident inside the caller's transaction
 def _record(connection, incident_id):
     row = connection.execute("SELECT data FROM incidents WHERE id=?", (incident_id,)).fetchone()
     if row is None:
@@ -21,18 +24,20 @@ def _record(connection, incident_id):
     return json.loads(row[0])
 
 
+# Return durable incident history without sending notifications
 def list_incidents(ledger):
     with ledger.store.connect() as connection:
         return [json.loads(row[0]) for row in connection.execute(
             "SELECT data FROM incidents ORDER BY rowid DESC")]
 
 
+# Commit the decision, audit event and transport envelope together
 def _save(ledger, connection, incident, event, note, now):
     connection.execute(
         "INSERT INTO incidents(id,release_id,status,data) VALUES(?,?,?,?) "
         "ON CONFLICT(id) DO UPDATE SET status=excluded.status,data=excluded.data",
         (incident["id"], incident["release_id"], incident["status"], canonical(incident)))
-    # Notes stay in the local audit. Transport receives only the bounded incident envelope.
+    # Notes stay in the local audit. Transport receives only the bounded incident envelope
     detail = {"incident_id": incident["id"], "version": incident["version"], "status": incident["status"],
               "owner": incident["owner"], "level": incident["level"], "actor": "local-operator", "note": note}
     ledger._event(connection, incident["release_id"], event, detail)
@@ -42,6 +47,7 @@ def _save(ledger, connection, incident, event, note, now):
     return incident
 
 
+# Create one incident per failed release with a fixed escalation policy
 def open_incident(ledger, release_id, owner, note, interval_seconds=900, limit=3):
     owner, note = _text(owner, "Owner"), _text(note, "Incident note")
     if type(interval_seconds) is not int or not 60 <= interval_seconds <= 86400:
@@ -65,6 +71,7 @@ def open_incident(ledger, release_id, owner, note, interval_seconds=900, limit=3
         return _save(ledger, connection, incident, "incident.opened", note, now)
 
 
+# Reject stale decisions before acknowledging or resolving an incident
 def transition(ledger, incident_id, action, version, note):
     if action not in {"acknowledge", "resolve"}:
         raise Refused("Choose acknowledge or resolve", 422)
@@ -85,6 +92,7 @@ def transition(ledger, incident_id, action, version, note):
         return _save(ledger, connection, incident, "incident." + target, note, now)
 
 
+# Advance only the next due escalation under the same transaction
 def tick(ledger):
     """Queue at most one due escalation per incident; a stopped scheduler cannot create a catch-up burst."""
     now = int(time.time())
@@ -102,6 +110,7 @@ def tick(ledger):
     return {"checked_at": now, "escalated": changed, "delivery": "queued; run notify separately"}
 
 
+# Drop queued versions superseded by a later operator decision
 def current_notification(connection, payload):
     """Suppress obsolete queued signals; receivers must still order deliveries already in flight."""
     if "incident_id" not in payload:

@@ -1,5 +1,6 @@
 # delivery/configuration.py - Edit validated workspace drafts without discarding authored TOML.
 
+
 import difflib
 import hashlib
 import tomllib
@@ -9,7 +10,9 @@ from pydantic import ValidationError
 
 from ..errors import Refused
 from .spec import ADAPTERS, Component, Environment, Repository, Workspace
+from .options import MODELS, form
 
+# Guided edits expose only fields owned by the workspace rather than controller authority
 FIELDS = {
     "repositories": (Repository, ("path", "revision", "allow_uncommitted")),
     "environments": (Environment, ("provider", "production", "preview", "promote_from")),
@@ -17,15 +20,18 @@ FIELDS = {
 }
 
 
+# Bind conflict detection to the exact authored TOML bytes
 def source_hash(source: str) -> str:
     return hashlib.sha256(source.encode()).hexdigest()
 
 
+# Show the operator the saved-to-draft change without writing it
 def difference(before: str, after: str) -> str:
     return "".join(difflib.unified_diff(before.splitlines(keepends=True), after.splitlines(keepends=True),
                                         fromfile="saved workspace", tofile="configuration draft"))
 
 
+# Derive forms and effective options from the shared workspace schema
 def inspect(source: str) -> dict:
     try:
         workspace = Workspace.model_validate(tomllib.loads(source))
@@ -39,12 +45,48 @@ def inspect(source: str) -> dict:
     forms["components"]["repository"]["enum"] = list(workspace.repositories)
     forms["components"]["needs"]["items"]["enum"] = list(workspace.components)
     forms["environments"]["promote_from"]["items"]["enum"] = list(workspace.environments)
-    return {"configuration": workspace.model_dump(), "forms": forms, "digest": workspace.digest,
+
+    # Native option forms show inheritance after the selected environment is applied
+    option_forms = {}
+    for name in workspace.components:
+        for environment in workspace.environments:
+            component = workspace.component(name, environment)
+            if component.adapter in MODELS:
+                option_forms[name + "/" + environment] = {
+                    **form(component.adapter, component.options), "component": name,
+                    "environment": environment, "adapter": component.adapter,
+                }
+    return {"configuration": workspace.model_dump(), "forms": forms, "option_forms": option_forms, "digest": workspace.digest,
             "source_hash": source_hash(source), "order": workspace.order()}
 
 
+# Apply validated field edits while preserving authored TOML and inheritance
 def patch(source: str, section: str, name: str, values: dict) -> dict:
     before = inspect(source)
+
+    # Provider fields update only the chosen environment override
+    if section == "options":
+        if name not in before["option_forms"] or not isinstance(values, dict):
+            raise Refused("Choose a component with native infrastructure settings", 422)
+        selected = before["option_forms"][name]
+        component = before["configuration"]["components"][selected["component"]]
+        model = MODELS[selected["adapter"]]
+        if set(values) - model.model_fields.keys():
+            raise Refused("Unknown infrastructure setting", 422)
+        try:
+            model.model_validate({**selected["values"], **values})
+        except ValidationError:
+            raise Refused("Invalid infrastructure settings; check the field types and required values", 422) from None
+        document = tomlkit.parse(source)
+        current = before["option_forms"][name]["values"]
+        for key, value in values.items():
+            if value != current.get(key):
+                targets = document["components"][selected["component"]].setdefault("targets", tomlkit.table())
+                targets.setdefault(selected["environment"], tomlkit.table())[key] = value
+        revised = tomlkit.dumps(document)
+        return {**inspect(revised), "toml": revised, "diff": difference(source, revised)}
+
+    # Ordinary fields retain their existing narrow form contract
     if section not in FIELDS or name not in before["configuration"][section]:
         raise Refused("Choose an existing repository, environment or component", 422)
     if not isinstance(values, dict) or set(values) - set(FIELDS[section][1]):

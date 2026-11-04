@@ -1,5 +1,6 @@
 # tests/test_incidents.py - Exercise durable operator incidents and ordered notification behavior.
 
+
 import concurrent.futures
 import json
 import threading
@@ -17,6 +18,7 @@ from deploy_ops.delivery.scaffold import create
 from deploy_ops.errors import Refused
 
 
+# Create one uncertain local release under a controllable incident clock
 @pytest.fixture
 def incident_system(tmp_path, monkeypatch):
     engine = Engine(create(tmp_path / "workspace"))
@@ -28,11 +30,13 @@ def incident_system(tmp_path, monkeypatch):
     return engine, release, clock
 
 
+# Reuse one fixed incident policy across concurrency checks
 def opened(system):
     engine, release, _ = system
     return open_incident(engine.ledger, release["id"], "operations", "Inspect stopped worker", 60, 2)
 
 
+# Restart preserves incident versions and keeps deployment outcome independent
 def test_incident_durable_lifecycle_and_stale_decisions(incident_system):
     engine, release, clock = incident_system
     incident = opened(incident_system)
@@ -53,13 +57,14 @@ def test_incident_durable_lifecycle_and_stale_decisions(incident_system):
     assert engine.ledger.get(release["id"])["status"] == "uncertain"
     with pytest.raises(Refused, match="resolved"):
         transition(engine.ledger, incident["id"], "acknowledge", resolved["version"], "Reopen")
-    # Normal release writes cannot overwrite the separate incident record.
+    # Normal release writes cannot overwrite the separate incident record
     engine.ledger.save(release)
     assert list_incidents(engine.ledger) == [resolved]
     assert [event["name"] for event in engine.ledger.events(release["id"])][-4:] == [
         "incident.opened", "incident.escalated", "incident.acknowledged", "incident.resolved"]
 
 
+# Concurrent schedulers cannot duplicate incidents or exceed escalation limits
 def test_concurrent_open_and_tick_are_bounded(incident_system):
     engine, _, clock = incident_system
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
@@ -74,6 +79,7 @@ def test_concurrent_open_and_tick_are_bounded(incident_system):
     assert incident["version"] == 3 and incident["next_escalation_at"] is None
 
 
+# Invalid operator settings must leave no incident record
 @pytest.mark.parametrize("owner,interval,limit", [("",60,2),("ops",0,2),("ops",60,6),("ops",True,2)])
 def test_invalid_incident_policy_is_nonmutating(incident_system, owner, interval, limit):
     engine, release, _ = incident_system
@@ -82,6 +88,7 @@ def test_invalid_incident_policy_is_nonmutating(incident_system, owner, interval
     assert list_incidents(engine.ledger) == []
 
 
+# Only failed work can open an incident with a fixed initial policy
 def test_release_eligibility_and_immutable_incident_policy(incident_system):
     engine, release, _ = incident_system
     queued = engine.create("staging")
@@ -93,6 +100,7 @@ def test_release_eligibility_and_immutable_incident_policy(incident_system):
     assert transition(engine.ledger, incident["id"], "resolve", 1, "Already fixed")["status"] == "resolved"
 
 
+# Deliver only the latest incident version and keep private notes local
 def test_notify_only_current_snapshot_without_private_notes(incident_system):
     engine, _, clock = incident_system
     incident = opened(incident_system)
@@ -100,6 +108,9 @@ def test_notify_only_current_snapshot_without_private_notes(incident_system):
     tick(engine.ledger)
     transition(engine.ledger, incident["id"], "resolve", 2, "PRIVATE-NOTE")
     received = []
+
+
+    # Capture the actual transport body for privacy assertions
     def receive(request):
         received.append(json.loads(request.content))
         return httpx.Response(204)
@@ -112,6 +123,7 @@ def test_notify_only_current_snapshot_without_private_notes(incident_system):
     assert list_incidents(engine.ledger)[0]["status"] == "resolved"
 
 
+# A transport success is not a responder decision
 def test_notification_delivery_does_not_acknowledge(incident_system):
     engine, _, _ = incident_system
     opened(incident_system)
@@ -120,12 +132,18 @@ def test_notification_delivery_does_not_acknowledge(incident_system):
     assert list_incidents(engine.ledger)[0]["status"] == "open"
 
 
+# A late failed attempt must not erase an earlier delivery success
 def test_concurrent_notification_failure_cannot_undo_success(incident_system):
     engine, _, _ = incident_system
     opened(incident_system)
     barrier = threading.Barrier(2)
     success_done = threading.Event()
+
+
+    # Race two flushes while controlling response order
     def send(ok):
+
+        # Release the failure only after the successful flush is recorded
         def handle(_):
             barrier.wait(timeout=5)
             if not ok:
@@ -144,13 +162,19 @@ def test_concurrent_notification_failure_cannot_undo_success(incident_system):
     assert sum(result["sent"] for result in results) == 1
 
 
+# Reserve attempts atomically before concurrent network calls
 def test_concurrent_notification_attempt_limit(incident_system):
     engine, _, _ = incident_system
     opened(incident_system)
     with engine.ledger.store.transaction() as connection:
         connection.execute("UPDATE notifications SET attempts=9")
     attempts = []
+
+
+    # Give each worker its own mocked transport
     def send(_):
+
+        # Count actual attempts at the transport boundary
         def handle(request):
             attempts.append(request)
             return httpx.Response(503)
@@ -161,6 +185,7 @@ def test_concurrent_notification_attempt_limit(incident_system):
     assert len(attempts) == 1
 
 
+# CLI and authenticated console decisions must update one ledger
 def test_cli_console_use_same_incident_state(incident_system):
     engine, release, _ = incident_system
     args = parser().parse_args(['--project', str(engine.path), 'incidents', 'open', release['id'],
@@ -178,17 +203,24 @@ def test_cli_console_use_same_incident_state(incident_system):
     assert client.post('/api/incidents/tick', headers=headers, json={}).json()['escalated'] == []
 
 
+# Only one decision can consume a given incident version
 def test_acknowledgement_racing_tick_preserves_newer_decision(incident_system):
     engine, _, clock = incident_system
     incident = opened(incident_system)
     clock[0] += 61
     barrier = threading.Barrier(2)
+
+
+    # Try the displayed version at the same time as escalation
     def acknowledge():
         barrier.wait(timeout=5)
         try:
             return transition(engine.ledger, incident["id"], "acknowledge", 1, "Responding")
         except Refused:
             return None
+
+
+    # Make the next escalation compete for the incident transaction
     def escalate():
         barrier.wait(timeout=5)
         return tick(engine.ledger)
@@ -207,12 +239,16 @@ def test_acknowledgement_racing_tick_preserves_newer_decision(incident_system):
     assert tick(engine.ledger)["escalated"] == []
 
 
+# A delayed older delivery must not regress receiver state
 def test_inflight_old_signal_requires_receiver_version_ordering(incident_system):
     engine, _, _ = incident_system
     incident = opened(incident_system)
     started, finish_old = threading.Event(), threading.Event()
     receiver = {}
     arrival_versions = []
+
+
+    # Apply only a newer version while forcing reversed arrival order
     def receive(request):
         snapshot = json.loads(request.content)
         if snapshot["version"] == 1:
@@ -222,6 +258,9 @@ def test_inflight_old_signal_requires_receiver_version_ordering(incident_system)
         if snapshot["version"] > receiver.get("version", 0):
             receiver.update(snapshot)
         return httpx.Response(204)
+
+
+    # Flush through the receiver that enforces version ordering
     def send():
         with httpx.Client(transport=httpx.MockTransport(receive)) as client:
             return flush(engine.ledger, "https://receiver.example/", client=client)

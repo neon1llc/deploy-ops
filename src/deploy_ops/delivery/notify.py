@@ -1,5 +1,6 @@
 # src/deploy_ops/delivery/notify.py - Deliver durable events without giving repositories notification credentials.
 
+
 import hashlib
 import hmac
 import json
@@ -13,6 +14,7 @@ from .ledger import Ledger
 from .incidents import current_notification
 
 
+# Reserve bounded attempts before sending credentialed notification requests
 def flush(ledger: Ledger, url: str, kind: str = "json", client=None) -> dict:
     """Use at-least-once delivery. Receivers should deduplicate the stable event ID."""
     parsed = urlsplit(url)
@@ -36,8 +38,9 @@ def flush(ledger: Ledger, url: str, kind: str = "json", client=None) -> dict:
                     connection.execute("UPDATE notifications SET sent=2 WHERE id=? AND sent=0", (row["id"],))
                     superseded += 1
                     continue
-                # Reserve each attempt before network I/O so concurrent flushes cannot exceed the cap.
+                # Reserve each attempt before network I/O so concurrent flushes cannot exceed the cap
                 connection.execute("UPDATE notifications SET attempts=attempts+1 WHERE id=?", (row["id"],))
+            # Keep a stable delivery identifier across retries of the same queued event
             event_id = hashlib.sha256((record["release_id"] + ":" + str(row["id"])).encode()).hexdigest()
             record["event_id"] = event_id
             text = f"DeployOps: {record['event']} for release {record['release_id']}"
@@ -46,6 +49,7 @@ def flush(ledger: Ledger, url: str, kind: str = "json", client=None) -> dict:
             payload = {"text": text} if kind == "slack" else record
             body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
             headers = {"Content-Type": "application/json", "Idempotency-Key": event_id}
+            # Read notification credentials only at the trusted transport boundary
             secret = os.environ.get("DEPLOY_OPS_NOTIFY_SECRET", "")
             if kind == "ntfy":
                 body = text.encode()
@@ -62,6 +66,7 @@ def flush(ledger: Ledger, url: str, kind: str = "json", client=None) -> dict:
                 ok = 200 <= response.status_code < 300
             except httpx.HTTPError:
                 ok = False
+            # A late failed attempt must never overwrite an already recorded success
             with ledger.store.transaction() as connection:
                 connection.execute("UPDATE notifications SET sent=MAX(sent,?) WHERE id=?", (int(ok), row["id"]))
             sent += int(ok)
@@ -72,6 +77,7 @@ def flush(ledger: Ledger, url: str, kind: str = "json", client=None) -> dict:
     return {"sent": sent, "failed": failed, "superseded": superseded, "delivery": "at-least-once", "attempt_limit": 10}
 
 
+# Summarize the durable transport queue without changing incident decisions
 def status(ledger: Ledger) -> dict:
     """Report transport state without sending events or interpreting it as acknowledgement."""
     with ledger.store.connect() as connection:

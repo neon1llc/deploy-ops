@@ -1,3 +1,5 @@
 # src/deploy_ops/__init__.py - Package version.
 
-__version__ = "0.10.0"
+
+# Expose the installed package version to delivery evidence
+__version__ = "0.11.0"

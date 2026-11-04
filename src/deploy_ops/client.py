@@ -1,5 +1,6 @@
 # src/deploy_ops/client.py - Keep bearer credentials out of files, logs, and redirects.
 
+
 import hashlib
 import json
 import os
@@ -12,6 +13,7 @@ import httpx
 from .errors import Refused
 
 
+# Keep readers from observing a partially written local record
 def private_json(path: Path, value: object) -> None:
     """Replace a local record atomically with owner-only permissions."""
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -25,6 +27,7 @@ def private_json(path: Path, value: object) -> None:
         Path(name).unlink(missing_ok=True)
 
 
+# Hash bounded chunks so large artifacts need not fit in memory
 def file_digest(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -33,6 +36,7 @@ def file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+# Constrain token requests to GitHub's configured Actions endpoint
 def github_token(audience: str) -> str:
     """Ask the current Actions job for a fresh token with a specific audience."""
     endpoint = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL", "")
@@ -55,9 +59,12 @@ def github_token(audience: str) -> str:
         raise Refused("Could not obtain a GitHub workflow credential", 503) from error
 
 
+# Use one credential-aware transport for controller operations
 class Client:
     """Allow plain HTTP only for a local loopback controller."""
 
+
+    # Reject URLs that embed credentials or redirect request meaning
     def __init__(self, url: str | None = None, audience: str | None = None):
         self.url = (url or os.environ.get("DEPLOY_OPS_URL", "http://127.0.0.1:8787")).rstrip("/")
         self.audience = audience or os.environ.get("DEPLOY_OPS_AUDIENCE", "deploy-ops")
@@ -67,6 +74,8 @@ class Client:
                 or (parsed.scheme == "http" and parsed.hostname not in ("localhost", "127.0.0.1", "::1"))):
             raise Refused("Use an HTTPS controller URL or a local loopback address", 422)
 
+
+    # Select one credential and refuse redirects on authenticated requests
     def call(self, method: str, path: str, body: dict | None = None,
              operator: bool = False, execution_token: str | None = None):
         credential = execution_token

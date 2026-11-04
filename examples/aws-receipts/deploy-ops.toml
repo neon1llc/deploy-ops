@@ -1,27 +1,35 @@
 # examples/aws-receipts/deploy-ops.toml - Deliver an image using a separate infrastructure execution receipt.
 
+
+# Use the same workspace identity as the registered consumer target
 name = "hello"
 
+# Keep the infrastructure source independent from application releases
 [repositories.infrastructure]
 path = "infrastructure"
 
+# Select application source without reapplying the producer workflow
 [repositories.application]
 path = "application"
 
+# Bind receipt consumption to the declared AWS environment
 [environments.development]
 provider = "aws"
 
+# Declare the infrastructure dependency that the supplied receipt satisfies
 [components.foundation]
 repository = "infrastructure"
 kind = "infrastructure"
 adapter = "opentofu"
 
+# Deploy the app only after its infrastructure outputs are verified
 [components.web]
 repository = "application"
 kind = "application"
 adapter = "ecs"
 needs = ["foundation"]
 
+# Take target and registry fields from the verified producer receipt
 [components.web.options]
 region = "${outputs.foundation.region}"
 cluster = "${outputs.foundation.cluster}"

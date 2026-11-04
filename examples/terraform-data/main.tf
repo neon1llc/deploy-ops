@@ -1,5 +1,7 @@
 # examples/terraform-data/main.tf - Exercise a local IaC plan without a cloud provider.
 
+
+# Require a runtime that provides the built-in terraform_data resource
 terraform {
   required_version = ">= 1.6.0"
 }

@@ -1,9 +1,11 @@
 # src/deploy_ops/models.py - Validate requests before they enter the approval ledger.
 
+
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+# Share exact identifier formats across incoming authority messages
 Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 Commit = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
 Slug = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9-]{0,62}$")]
@@ -12,12 +14,14 @@ Cloud = Literal["aws", "azure", "gcp", "local"]
 Action = Literal["create", "update", "delete", "replace", "read", "no-op", "import", "move"]
 
 
+# Apply strict field validation to every authority message
 class Model(BaseModel):
     """Reject unknown fields instead of silently weakening a request."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+# Retain the identity claims required to bind source and execution attempts
 class Source(Model):
     """Keep issuer-verified identity separate from the agent's own labels."""
 
@@ -38,6 +42,7 @@ class Source(Model):
     subject: str
 
 
+# Carry optional caller labels separately from authenticated claims
 class Agent(Model):
     """Describe the caller without treating its self-report as authentication."""
 
@@ -46,23 +51,27 @@ class Agent(Model):
     run: str = Field(default="", max_length=160)
 
 
+# Represent a resource action without retaining its secret values
 class Change(Model):
     address: str = Field(min_length=1, max_length=512)
     resource_type: str = Field(min_length=1, max_length=256)
     action: Action
 
 
+# Keep ambiguous findings and manual-review requirements visible
 class Preview(Model):
     changes: list[Change] = Field(default_factory=list, max_length=2000)
     findings: list[str] = Field(default_factory=list, max_length=100)
     manual_only: bool = False
 
 
+# Bind a dependency receipt by both identifier and content digest
 class ReceiptReference(Model):
     id: str = Field(pattern=r"^[0-9a-f]{32}$")
     digest: Digest
 
 
+# Limit shared infrastructure outputs to the supported ECS contract
 class EcsOutputs(Model):
     cluster: str = Field(pattern=r"^arn:aws:ecs:[a-z0-9-]+:[0-9]{12}:cluster/[A-Za-z0-9_-]+$")
     service: str = Field(pattern=r"^arn:aws:ecs:[a-z0-9-]+:[0-9]{12}:service/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+$")
@@ -70,6 +79,7 @@ class EcsOutputs(Model):
     image_repository: str = Field(pattern=r"^[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/[a-z0-9][a-z0-9._/-]+$")
 
 
+# Bind public outputs to one observed state version
 class InfrastructureEvidence(Model):
     state_lineage: str = Field(pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
     state_serial: int = Field(ge=0)
@@ -77,6 +87,7 @@ class InfrastructureEvidence(Model):
     outputs: EcsOutputs
 
 
+# Bind the reviewed plan to artifact, tool and optional dependency evidence
 class Proposal(Model):
     target: Slug
     engine: Engine
@@ -88,6 +99,8 @@ class Proposal(Model):
     agent: Agent = Field(default_factory=Agent)
     receipts: dict[str, ReceiptReference] = Field(default_factory=dict)
 
+
+    # Require dependency identity for saved-plan engines
     @model_validator(mode="after")
     def require_provider_lock(self):
         if self.engine in ("terraform", "opentofu") and not self.lock_digest:
@@ -95,29 +108,34 @@ class Proposal(Model):
         return self
 
 
+# Require an exact digest for each human approval or rejection
 class Decision(Model):
     digest: Digest
     decision: Literal["approve", "reject"]
     note: str = Field(default="", max_length=500)
 
 
+# Bind execution to both the request and retained artifact
 class Claim(Model):
     digest: Digest
     artifact_digest: Digest
 
 
+# Bound a requested unattended window before policy evaluation
 class DelegationSpec(Model):
     target: Slug
     hours: int = Field(ge=1, le=12)
     uses: int = Field(ge=1, le=100)
 
 
+# Keep the runner's outcome distinct from the controller's final state
 class Completion(Model):
     outcome: Literal["succeeded", "failed", "aborted"]
     exit_code: int | None = Field(default=None, ge=-255, le=255)
     infrastructure: InfrastructureEvidence | None = None
 
 
+# Require an inspection note when resolving uncertain execution
 class Resolution(Model):
     outcome: Literal["succeeded", "failed", "cancelled"]
     note: str = Field(min_length=10, max_length=500)

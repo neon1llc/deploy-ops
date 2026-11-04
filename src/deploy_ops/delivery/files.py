@@ -1,5 +1,6 @@
 # src/deploy_ops/delivery/files.py - Freeze source inputs and keep paths inside an owned workspace.
 
+
 import hashlib
 import io
 import os
@@ -12,9 +13,11 @@ from ..config import fingerprint
 from ..errors import Refused
 from .spec import Repository
 
+# Exclude transient working-tree files only before creating a reviewed snapshot
 IGNORED = {".git", ".deploy-ops", ".terraform", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache"}
 
 
+# Resolve paths before enforcing the registered workspace boundary
 def inside(root: Path, relative: str) -> Path:
     path = (root / relative).resolve()
     if not path.is_relative_to(root.resolve()):
@@ -22,6 +25,7 @@ def inside(root: Path, relative: str) -> Path:
     return path
 
 
+# Bind every retained file while rejecting links and oversized snapshots
 def digest_tree(root: Path, *, source_exclusions: bool = False) -> str:
     entries = []
     size = 0
@@ -40,6 +44,7 @@ def digest_tree(root: Path, *, source_exclusions: bool = False) -> str:
     return fingerprint(entries)
 
 
+# Copy immutable source bytes into a newly owned directory
 def snapshot(repository: Repository, base: Path, destination: Path) -> dict:
     """Use committed Git contents by default, with explicit local-only working-tree support."""
     source = inside(base, repository.path)
@@ -57,6 +62,7 @@ def snapshot(repository: Repository, base: Path, destination: Path) -> dict:
                                  capture_output=True, check=True).stdout
         if len(archive) > 110_000_000:
             raise Refused("Repository archive exceeds the snapshot limit", 422)
+        # Extract only regular committed files within the snapshot boundary
         with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
             total = 0
             for member in tar:
@@ -83,6 +89,7 @@ def snapshot(repository: Repository, base: Path, destination: Path) -> dict:
     return {"revision": revision, "digest": digest_tree(destination)}
 
 
+# Require owner-only access even when the directory already exists
 def private_directory(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(path, 0o700)
