@@ -13,6 +13,7 @@
     <script src="app.js" defer></script>
     <script src="paging.js" defer></script>
     <script src="operator.js" defer></script>
+    <script src="local-settings.js" defer></script>
     <script src="isolated.js" defer></script>
   </head>
   <body>
@@ -486,6 +487,18 @@
               </details>
             </div>
             <div data-view="controls" hidden>
+              <!-- Edit local build and target settings as a draft before reviewing and saving -->
+              <details id="local-settings" data-setting="local build checks command arguments static directory artifact destination inheritance overrides">
+                <summary>Local build and deployment settings</summary>
+                <p>Edit existing directory/static components. Applying fields changes the draft only. Review and save before preparing a release. Output references are checked for availability during preparation.</p>
+                <button id="local-reload" type="button" class="secondary">Discard local field edits and reload from draft</button>
+                <label for="local-component">Component</label><select id="local-component"></select>
+                <label for="local-scope">Settings scope</label><select id="local-scope"><option value="build">Build arguments</option><option value="base">Component defaults</option><option value="environment">Environment override</option></select>
+                <label id="local-environment-label" for="local-environment">Local environment<select id="local-environment"></select></label>
+                <form id="local-edit-form"><fieldset id="local-edit-fields"><legend>Local settings</legend><div id="local-fields"></div><button id="local-apply" type="submit">Apply to draft</button></fieldset></form>
+                <p id="local-status" role="status" aria-live="polite"></p>
+              </details>
+
               <!-- Stop and reconcile authority through the existing local controller -->
               <details id="operator-panel" data-setting="controller authority pause resume requests approvals recovery reconciliation delegations audit">
                 <summary>Controller stop and recovery</summary>

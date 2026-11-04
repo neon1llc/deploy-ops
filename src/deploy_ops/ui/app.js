@@ -820,6 +820,7 @@ element("config-name").onchange = fillConfigFields;
 // Reveal a searched setting using the same draft-preserving selection handlers
  document.addEventListener("deployops:setting", (event) => {
   const {section, name, key} = event.detail;
+  if (section === "local") { localSetting(event.detail); return; }
   element("workspace-settings").open = true;
   element("config-section").value = section; fillConfigNames();
   element("config-name").value = name; fillConfigFields();

@@ -203,3 +203,39 @@ and isolated modes report unavailable here and retain their existing dedicated o
 Controller reconciliation and release recovery are separate records. Inspect the release afterward and
 use its recovery action when an interrupted release also needs reconciliation. Pausing one workspace's
 controller does not pause a different state directory.
+
+## Edit existing local build and deployment settings
+
+In **Controls → Local build and deployment settings**, select an existing directory/static component.
+Build arguments are ordered lists, not shell commands. Remove the whole command or every check to clear
+that setting. Component defaults and environment overrides have separate scopes. Each option shows its
+current effective value and source. An environment's **Pin override** authors that value even when it equals
+its inherited value. **Use inherited value** removes only that field's override. Applying fields updates
+the TOML draft; validation, review and guarded saving remain separate actions.
+
+The CLI offers the same shared draft operations:
+
+```bash
+cp deploy-ops.toml draft.toml
+deploy-ops config edit --file draft.toml --draft-out draft.toml --name web --scope build --values '{"checks":[["python3","check.py"]],"command":["python3","build.py"]}'
+deploy-ops config edit --file draft.toml --draft-out draft.toml --name web --scope base --values '{"directory":"dist"}'
+deploy-ops config edit --file draft.toml --draft-out draft.toml --name foundation --scope environment --environment staging --values '{"name":"staging-root"}'
+deploy-ops config reset --file draft.toml --draft-out draft.toml --name foundation --scope environment --environment staging --field name
+deploy-ops config inspect --file draft.toml
+deploy-ops config validate --file draft.toml
+deploy-ops config diff --file draft.toml
+```
+
+`local_edit_forms` in inspection reports authored component options, explicit overrides, effective values
+and their source. Omitted adapter defaults stay omitted when an unchanged form is applied. In particular,
+an absent static destination keeps its runtime default. Draft validation checks typed fields, paths and
+declared references. It does not check that a future dependency output exists or execute any build code.
+Use whole `${env.name}` and `${outputs.component.key}` references; dependency output availability is checked
+during preparation. No shell expression or string interpolation is evaluated by the editor.
+
+Save with the existing `config save --file draft.toml --source-hash SAVED_SOURCE_HASH` or console action.
+Finalize the whole intended contract before the development release used for promotion. Establish staging
+infrastructure separately, then promote the successful development application artifact under that same
+contract. A configuration change after the origin release requires a fresh release; it does not rewrite
+an approval or relax promotion checks. These guided operations cover local build checks/command and
+DirectoryOptions/StaticOptions, not environment-specific builds or arbitrary provider options.

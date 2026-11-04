@@ -38,6 +38,9 @@ class Input(BaseModel):
     name: str = ""
     values: dict = Field(default_factory=dict)
     source_hash: str = ""
+    scope: str = ""
+    edit_environment: str = ""
+    field: str = ""
 
     # Incident decisions require their current version rather than a transport receipt
     release_id: str = ""
@@ -166,7 +169,7 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     @app.get("/assets/{name}")
     @app.get("/{name}")
     def asset(name: str):
-        if name not in ("app.js", "shell.js", "operator.js", "paging.js", "isolated.js", "style.css", "appearance.mjs", "theme.mjs"):
+        if name not in ("app.js", "shell.js", "operator.js", "local-settings.js", "paging.js", "isolated.js", "style.css", "appearance.mjs", "theme.mjs"):
             raise HTTPException(404)
         return FileResponse(assets / name)
 
@@ -253,7 +256,11 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     def configure(action: str, data: Input):
         nonlocal engine
         from .delivery.engine import Engine
-        from .delivery.configuration import add, inspect, patch, save, source_hash, validate
+        from .delivery.configuration import add, edit, inspect, patch, save, source_hash, validate
+        if action in {"edit", "reset"}:
+            if (action == "reset" and not data.field) or (action == "edit" and data.field):
+                raise Refused("Choose a field only for override reset", 422)
+            return edit(data.configuration, data.name, data.scope, data.values, data.edit_environment, data.field)
         if action == "inspect":
             return inspect(data.configuration)
         if action == "patch":

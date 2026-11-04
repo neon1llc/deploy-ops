@@ -37,6 +37,8 @@ def test_form_patch_preserves_comments_advanced_settings_and_default_omissions(w
     unchanged = patch(source, 'components', 'web', {key: before[key] for key in inspect(source)['forms']['components']})
     assert unchanged['toml'] == source
     assert unchanged['diff'] == ''
+    assert unchanged['local_edit_forms']['web']['environments']['development']['destination']['runtime_default']
+    assert unchanged['local_edit_forms']['web']['environments']['development']['destination']['effective'] is None
 
 
 # Reject malformed edits before modifying the saved workspace
@@ -417,3 +419,56 @@ def test_add_flags_and_output_boundary(workspace, tmp_path):
         with pytest.raises(Refused, match='different file'):
             dispatch(parser().parse_args(arguments + ['--draft-out', str(path)]))
     assert workspace.read_text() == source
+
+
+# Preserve authored pins, comments and omitted defaults while editing supported local scopes
+def test_existing_local_build_and_override_edits(workspace):
+    from deploy_ops.delivery.configuration import edit
+    source = workspace.read_text()
+    built = edit(source, 'web', 'build', {'checks': [], 'command': ['python3', 'build.py']})
+    assert workspace.read_text() == source
+    assert built['configuration']['components']['web']['build']['checks'] == []
+    base = edit(built['toml'], 'foundation', 'base', {'name': 'shared'})
+    pinned = edit(base['toml'], 'foundation', 'environment', {'name': 'shared'}, 'staging')
+    field = pinned['local_edit_forms']['foundation']['environments']['staging']['name']
+    assert field['override_authored'] and field['source'] == 'override'
+    reset = edit(pinned['toml'], 'foundation', 'environment', {}, 'staging', 'name')
+    assert reset['local_edit_forms']['foundation']['environments']['staging']['name']['source'] == 'component'
+    assert '# Keep application' in reset['toml']
+    for scope, values, environment in [('build', {'command': 'shell string'}, ''),
+            ('base', {'directory': '../escape'}, ''), ('base', {'destination': '${outputs.unknown.path}'}, ''),
+            ('base', {'unknown': 'value'}, ''), ('build', {'checks': [[]]}, ''), ('environment', {'directory': 'x'}, 'missing')]:
+        with pytest.raises(Refused):
+            edit(reset['toml'], 'web', scope, values, environment)
+    assert workspace.read_text() == source
+
+
+# Keep an absent static destination absent when an unchanged form applies default values
+def test_local_edit_omission_and_explicit_clear(workspace):
+    import tomlkit
+    from deploy_ops.delivery.configuration import edit
+    document = tomlkit.parse(workspace.read_text())
+    del document['components']['web']['options']['destination']
+    source = tomlkit.dumps(document)
+    unchanged = edit(source, 'web', 'base', {'destination': ''})
+    assert unchanged['diff'] == ''
+    assert unchanged['local_edit_forms']['web']['environments']['development']['destination']['runtime_default']
+    assert unchanged['local_edit_forms']['web']['environments']['development']['destination']['effective'] is None
+    cleared = edit(source, 'web', 'build', {'command': [], 'checks': []})
+    assert cleared['configuration']['components']['web']['build']['command'] == []
+    assert 'destination' not in cleared['local_edit_forms']['web']['base']
+
+
+# Environment resets preserve sibling overrides, comments and explicit adapter selection
+def test_local_edit_preserves_target_siblings_and_authored_sources(workspace):
+    import tomlkit
+    from deploy_ops.delivery.configuration import edit
+    doc = tomlkit.parse(workspace.read_text())
+    doc['components']['web']['targets'] = {'staging': {'adapter': 'static', 'directory': 'custom', 'destination': '${outputs.foundation.path}'}}
+    source = tomlkit.dumps(doc)
+    result = edit(source, 'web', 'environment', {}, 'staging', 'directory')
+    target = result['configuration']['components']['web']['targets']['staging']
+    assert target == {'adapter': 'static', 'destination': '${outputs.foundation.path}'}
+    assert result['local_edit_forms']['web']['environments']['development']['directory']['effective'] == 'dist'
+    assert edit(result['toml'], 'web', 'environment', {}, 'staging', 'directory')['diff'] == ''
+    assert result['local_edit_forms']['web']['build_sources']['command'] == 'component'

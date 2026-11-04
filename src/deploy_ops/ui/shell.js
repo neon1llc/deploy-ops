@@ -98,6 +98,20 @@ function indexSettings(event) {
         search: (label + " " + key + " " + (field.description || "")).toLocaleLowerCase()});
     }
   }
+  for (const [name, form] of Object.entries(contract.local_edit_forms || {})) {
+    for (const [scope, fields] of [["build", form.build_fields], ["base", form.fields]]) {
+      for (const [key, field] of Object.entries(fields)) {
+        const label = `Local / ${name} / ${scope} / ${field.title}`;
+        settingsIndex.push({section: "local", name, scope, key, label, search: label.toLocaleLowerCase()});
+      }
+    }
+    for (const environment of Object.keys(form.environments)) {
+      for (const [key, field] of Object.entries(form.fields)) {
+        const label = `Local / ${name} / ${environment} override / ${field.title}`;
+        settingsIndex.push({section: "local", name, scope: "environment", environment, key, label, search: label.toLocaleLowerCase()});
+      }
+    }
+  }
   searchSettings();
 }
 

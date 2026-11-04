@@ -35,13 +35,16 @@ def parser():
     provider.add_argument("release")
     provider.add_argument("component")
     config = commands.add_parser("config", help="Inspect, edit, validate, compare or explicitly save a workspace draft")
-    config.add_argument("action", choices=["inspect", "add", "patch", "validate", "diff", "save"])
+    config.add_argument("action", choices=["inspect", "add", "patch", "edit", "reset", "validate", "diff", "save"])
     config.add_argument("--file", type=Path, help="Draft TOML input; required for validate, diff and save")
     config.add_argument("--source-hash", help="Exact saved workspace hash from inspect; required for save")
     config.add_argument("--section", choices=["repositories", "environments", "components", "options"])
     config.add_argument("--name")
+    config.add_argument("--scope", choices=["build", "base", "environment"], help="Existing local component edit scope")
+    config.add_argument("--environment", help="Local environment for an override or reset")
+    config.add_argument("--field", help="One environment override to remove with config reset")
     config.add_argument("--values", type=json.loads, default={})
-    config.add_argument("--draft-out", type=Path, help="Write successful add/patch TOML to a draft file, never the saved workspace")
+    config.add_argument("--draft-out", type=Path, help="Write successful add/patch/edit/reset TOML to a separate draft file")
     # Common creation inputs remain readable while structured values cover advanced contracts
     config.add_argument("--path", help="Repository location or component-relative source path")
     config.add_argument("--provider", choices=["local", "aws", "azure", "gcp"])
@@ -219,19 +222,28 @@ def dispatch(args):
         from importlib.resources import files
         return json.loads(files("deploy_ops").joinpath("catalog.json").read_text())
     if args.command == "config":
-        from .delivery.configuration import add, inspect, patch, save, source_hash, validate
+        from .delivery.configuration import add, edit, inspect, patch, save, source_hash, validate
         if args.action in {"validate", "diff", "save"} and not args.file:
             raise Refused("Choose the proposed TOML draft with --file", 422)
         if args.action == "save" and not args.source_hash:
             raise Refused("Provide the saved workspace --source-hash from config inspect", 422)
         source = (args.file or args.project).read_text()
-        if args.draft_out and (args.action not in {"add", "patch"} or args.draft_out.resolve() == args.project.resolve()
+        if args.draft_out and (args.action not in {"add", "patch", "edit", "reset"} or args.draft_out.resolve() == args.project.resolve()
                                or (args.draft_out.exists() and args.draft_out.samefile(args.project))):
-            raise Refused("--draft-out requires add/patch and a different file from the saved workspace", 422)
+            raise Refused("--draft-out requires add/patch/edit/reset and a different file from the saved workspace", 422)
         creation_fields = ("path", "provider", "repository", "kind", "adapter", "need", "resource_name",
                            "artifact_directory", "destination", "build_command", "check")
         if args.action != "add" and any(getattr(args, key) is not None for key in creation_fields):
             raise Refused("Creation fields require config add", 422)
+        if args.action in {"edit", "reset"}:
+            if not args.scope or (args.action == "reset" and not args.field) or (args.action == "edit" and args.field):
+                raise Refused("Choose --scope and use --field only for config reset", 422)
+            result = edit(source, args.name, args.scope, args.values, args.environment or "", args.field or "")
+            if args.draft_out:
+                args.draft_out.write_text(result["toml"])
+            return result
+        if args.scope or args.environment or args.field:
+            raise Refused("Edit scope fields require config edit or reset", 422)
         if args.action == "inspect":
             return inspect(source)
         if args.action in {"add", "patch"}:

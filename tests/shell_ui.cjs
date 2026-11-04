@@ -382,5 +382,37 @@ console.log("Shell navigation, complete settings discovery, retained drafts, fac
   assert.equal(decision.body.values.note, "");
   assert.equal(decision.body.values.digest, request.digest);
   assert.ok(!operatorCalls.some(call => /releases/.test(call.path)));
+  // Retain ordered build drafts and distinguish explicit override pins from inheritance
+  const localInfo = {web: {build: {checks: [["python3", "check.py"]], command: ["python3", "build.py"]},
+    build_fields: {checks: {title: "Checks"}, command: {title: "Command"}},
+    fields: {directory: {title: "Artifact directory", default: "."}, destination: {title: "Destination", default: ""}},
+    base: {directory: "dist"}, environments: {development: {
+      directory: {effective: "dist", component: "dist", component_authored: true, override_authored: false, source: "component"},
+      destination: {effective: "", component_authored: false, override_authored: false, source: "adapter default"}}}}};
+  app.context.localInfo = localInfo;
+  vm.runInContext('formContract.local_edit_forms=localInfo;', app.context);
+  vm.runInContext(fs.readFileSync("src/deploy_ops/ui/local-settings.js", "utf8"), app.context);
+  vm.runInContext("localChoices()", app.context);
+  const arguments_ = app.node("local-fields").querySelectorAll("input");
+  arguments_[0].value = "python-custom"; arguments_[0].oninput();
+  app.node("local-scope").value = "environment"; vm.runInContext("localChoices()", app.context);
+  const localCalls = [];
+  app.context.capture = async (path, method, body) => {
+    localCalls.push({path, body});
+    return {...contract, local_edit_forms: localInfo, toml: "local updated", diff: "+pin"};
+  };
+  vm.runInContext('element("config").value=formSource;', app.context);
+  await vm.runInContext("localApply()", app.context);
+  assert.equal(localCalls.length, 0);
+  assert.match(app.node("local-status").textContent, /Pin/);
+  await vm.runInContext('localApply("", "directory")', app.context);
+  assert.equal(localCalls.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(localCalls[0].body.values)), {directory: "dist"});
+  assert.equal(localCalls[0].body.edit_environment, "development");
+  app.node("local-scope").value = "build"; vm.runInContext("localChoices()", app.context);
+  assert.equal(app.node("local-fields").querySelectorAll("input")[0].value, "python-custom");
+  vm.runInContext('localSetting({name:"web",scope:"build",key:"checks"})', app.context);
+  assert.equal(app.document.activeElement, app.node("local-field-checks"));
+  console.log("Local settings DOM: ordered drafts, explicit pinning and omitted defaults passed");
   console.log("Creation and operator DOM: typed requests, authority state and independent drafts passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

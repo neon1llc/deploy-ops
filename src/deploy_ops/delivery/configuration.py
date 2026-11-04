@@ -4,6 +4,7 @@
 import difflib
 import hashlib
 import os
+import re
 import time
 from collections import defaultdict
 from contextlib import contextmanager
@@ -61,8 +62,111 @@ def inspect(source: str) -> dict:
                     "environment": environment, "adapter": component.adapter,
                 }
     return {"configuration": workspace.model_dump(), "forms": forms, "option_forms": option_forms,
-            "creation_forms": creation_forms(forms), "digest": workspace.digest,
+            "creation_forms": creation_forms(forms), "local_edit_forms": local_forms(source, workspace), "digest": workspace.digest,
             "source_hash": source_hash(source), "order": workspace.order()}
+
+
+# Describe authored and inherited local settings without writing adapter defaults
+def local_forms(source: str, workspace: Workspace) -> dict:
+    authored = tomllib.loads(source)
+    result = {}
+    for name, component in workspace.components.items():
+        if component.adapter not in LOCAL_MODELS:
+            continue
+        model = LOCAL_MODELS[component.adapter]
+        base = authored["components"][name].get("options", {})
+        fields = model.model_json_schema()["properties"]
+        environments = {}
+        for environment in workspace.environments:
+            effective = workspace.component(name, environment)
+            if effective.adapter != component.adapter or workspace.environments[environment].provider != "local":
+                continue
+            override = component.targets.get(environment, {})
+            environments[environment] = {key: {"component": base.get(key), "component_authored": key in base,
+                "override": override.get(key), "override_authored": key in override,
+                "effective": effective.options.get(key, None if component.adapter == "static" and key == "destination" else definition.get("default")),
+                "runtime_default": component.adapter == "static" and key == "destination" and key not in effective.options,
+                "source": "override" if key in override else "component" if key in base else "adapter default"}
+                for key, definition in fields.items()}
+        result[name] = {"fields": fields, "base": base, "environments": environments,
+            "build": component.build.model_dump(),
+            "build_authored": authored["components"][name].get("build", {}),
+            "build_sources": {key: "component" if key in authored["components"][name].get("build", {}) else "adapter default"
+                for key in ("checks", "command")}, "build_fields": {key: Build.model_json_schema()["properties"][key]
+                for key in ("checks", "command")}}
+    return result
+
+
+# Validate edited local contracts and declared references without inventing output values
+def local_valid(workspace: Workspace, name: str):
+    for environment_name, environment in workspace.environments.items():
+        component = workspace.component(name, environment_name)
+        if component.adapter not in LOCAL_MODELS or environment.provider != "local":
+            continue
+        values = dict(component.options)
+        for key, value in values.items():
+            if not isinstance(value, str) or not value.startswith("${"):
+                continue
+            reference = re.fullmatch(r"\$\{(env\.[^{}]+|outputs\.[^{}.]+\.[^{}.]+)\}", value)
+            if not reference:
+                raise ValueError("Use a complete environment or declared dependency output reference")
+            parts = reference[1].split(".")
+            if parts[0] == "env":
+                variable = reference[1][4:]
+                if variable not in environment.variables:
+                    raise ValueError("Unknown environment variable reference")
+                values[key] = environment.variables[variable]
+            elif parts[1] not in component.needs:
+                raise ValueError("Output references must name a declared dependency")
+        LOCAL_MODELS[component.adapter].model_validate(values, strict=True)
+
+
+# Edit a specific supported scope while preserving authored pins and unrelated target metadata
+def edit(source: str, name: str, scope: str, values: dict, environment: str = "", field: str = "") -> dict:
+    before = inspect(source)
+    contract = before["local_edit_forms"].get(name)
+    if contract is None or scope not in {"build", "base", "environment"}:
+        raise Refused("Choose an existing directory/static component and explicit edit scope", 422)
+    if (scope == "environment" and environment not in contract["environments"]) or (scope != "environment" and environment):
+        raise Refused("Choose an applicable local environment only for environment scope", 422)
+    allowed = {"checks", "command"} if scope == "build" else set(contract["fields"])
+    if not isinstance(values, dict) or set(values) - allowed or (field and (field not in allowed or values or scope != "environment")):
+        raise Refused("Choose supported fields; reset requires one environment field and no values", 422)
+    if not values and not field:
+        raise Refused("Provide edited fields or one override to remove", 422)
+    document = tomlkit.parse(source)
+    component = document["components"][name]
+    try:
+        if scope == "build":
+            build = Build.model_validate({**contract["build"], **values}, strict=True)
+            if (build.command and not build.command[0]) or any(not command or not command[0] for command in build.checks):
+                raise ValueError("Each command needs a nonempty executable; clear the whole list to disable it")
+            target = component.setdefault("build", tomlkit.table())
+        elif scope == "base":
+            target = component.setdefault("options", tomlkit.table())
+        else:
+            targets = component.get("targets", {})
+            if field:
+                target = targets.get(environment, {})
+                if field in target:
+                    del target[field]
+            else:
+                target = component.setdefault("targets", tomlkit.table()).setdefault(environment, tomlkit.table())
+        for key, value in values.items():
+            # Preserve omitted defaults on unchanged base/build forms; environment values are explicit pins
+            current = contract["build"].get(key) if scope == "build" else contract["base"].get(key, contract["fields"][key].get("default"))
+            if scope == "environment" or value != current:
+                target[key] = value
+        group = "build" if scope == "build" else "options"
+        if scope in {"build", "base"} and not target and group not in tomllib.loads(source)["components"][name]:
+            del component[group]
+        revised = tomlkit.dumps(document)
+        workspace = Workspace.model_validate(tomllib.loads(revised))
+        local_valid(workspace, name)
+    except (ValueError, TypeError, ValidationError) as error:
+        raise Refused(str(error), 422) from error
+    return {**inspect(revised), "toml": revised, "diff": difference(source, revised)}
+
 
 
 # Derive compact creation fields from the same typed contracts used to validate additions
