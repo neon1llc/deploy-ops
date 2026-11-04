@@ -55,8 +55,8 @@ class Environment(Record):
 
 # Represent trusted build inputs as argument lists and explicit artifact settings
 class Build(Record):
-    checks: list[list[str]] = Field(default_factory=list)
-    command: list[str] = Field(default_factory=list)
+    checks: list[list[str]] = Field(default_factory=list, description='Check argument lists as JSON, e.g. [["python3", "check.py"]]. Run only during explicit release preparation')
+    command: list[str] = Field(default_factory=list, description='Build arguments as JSON, e.g. ["python3", "build.py"]. Configuration editing never runs them')
     context: str = "."
     dockerfile: str = "Dockerfile"
     image: str = ""

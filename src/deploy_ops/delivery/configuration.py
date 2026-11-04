@@ -5,6 +5,7 @@ import difflib
 import hashlib
 import os
 import time
+from collections import defaultdict
 from contextlib import contextmanager
 import tomllib
 
@@ -12,8 +13,8 @@ import tomlkit
 from pydantic import ValidationError
 
 from ..errors import Refused
-from .spec import ADAPTERS, Component, Environment, Repository, Workspace
-from .options import MODELS, form
+from .spec import ADAPTERS, NAME, Build, Component, Environment, Repository, Workspace, options
+from .options import LOCAL_MODELS, MODELS, form
 
 # Guided edits expose only fields owned by the workspace rather than controller authority
 FIELDS = {
@@ -59,8 +60,72 @@ def inspect(source: str) -> dict:
                     **form(component.adapter, component.options), "component": name,
                     "environment": environment, "adapter": component.adapter,
                 }
-    return {"configuration": workspace.model_dump(), "forms": forms, "option_forms": option_forms, "digest": workspace.digest,
+    return {"configuration": workspace.model_dump(), "forms": forms, "option_forms": option_forms,
+            "creation_forms": creation_forms(forms), "digest": workspace.digest,
             "source_hash": source_hash(source), "order": workspace.order()}
+
+
+# Derive compact creation fields from the same typed contracts used to validate additions
+def creation_forms(forms: dict) -> dict:
+    result = {}
+    for section in ("repositories", "environments"):
+        result[section] = {"section": section, "fields": forms[section], "values": {},
+                           "required": ["path"] if section == "repositories" else ["provider"]}
+    result["environments"]["values"] = {"provider": "local", "production": False, "preview": False}
+    for adapter, model in LOCAL_MODELS.items():
+        schema = model.model_json_schema()
+        fields = {key: value for key, value in forms["components"].items() if key not in {"kind", "adapter"}}
+        build = Build.model_json_schema()["properties"]
+        fields.update({"build." + key: build[key] for key in ("command", "checks")})
+        fields.update({"options." + key: value for key, value in schema["properties"].items()})
+        result[adapter] = {"section": "components", "fields": fields,
+                           "values": {"adapter": adapter, "kind": "infrastructure" if adapter == "directory" else "application"},
+                           "required": ["repository", *("options." + key for key in schema.get("required", []))]}
+    return result
+
+
+# Validate guided local settings without changing native cloud forms or executing code
+def local_addition(workspace: Workspace, name: str):
+    authored = workspace.components[name]
+    if authored.adapter in LOCAL_MODELS:
+        LOCAL_MODELS[authored.adapter].model_validate(authored.options, strict=True)
+    for environment_name, environment in workspace.environments.items():
+        component = workspace.component(name, environment_name)
+        if component.adapter not in LOCAL_MODELS:
+            continue
+        expected = "infrastructure" if component.adapter == "directory" else "application"
+        if environment.provider != "local" or component.kind != expected:
+            raise ValueError("Guided directory/static components need a local environment and matching kind")
+        LOCAL_MODELS[component.adapter].model_validate(component.options, strict=True)
+        # Check known environment values and reference edges without claiming future output values
+        outputs = {dependency: defaultdict(lambda: "public-output") for dependency in component.needs}
+        resolved = options(component, environment, environment_name, outputs)
+        LOCAL_MODELS[component.adapter].model_validate(resolved, strict=True)
+
+
+# Add one named entry to a proposed document, leaving persistence and execution separate
+def add(source: str, section: str, name: str, values: dict) -> dict:
+    before = inspect(source)
+    if section not in FIELDS or not isinstance(name, str) or not NAME.fullmatch(name):
+        raise Refused("Choose repositories, environments or components and a lowercase entry name", 422)
+    if name in before["configuration"][section]:
+        raise Refused("That name already exists in this section", 422)
+    if not isinstance(values, dict):
+        raise Refused("Provide entry fields as an object", 422)
+    values = dict(values)
+    if section == "environments":
+        values.setdefault("provider", "local")
+    try:
+        FIELDS[section][0].model_validate(values, strict=True)
+        document = tomlkit.parse(source)
+        document.setdefault(section, tomlkit.table())[name] = values
+        revised = tomlkit.dumps(document)
+        workspace = Workspace.model_validate(tomllib.loads(revised))
+        if section == "components":
+            local_addition(workspace, name)
+    except (ValueError, TypeError, ValidationError) as error:
+        raise Refused(str(error), 422) from error
+    return {**inspect(revised), "toml": revised, "diff": difference(source, revised)}
 
 
 # Apply validated field edits while preserving authored TOML and inheritance

@@ -1,9 +1,11 @@
-# delivery/options.py - Describe native infrastructure settings once for files, CLI and forms.
+# delivery/options.py - Describe reviewed adapter settings once for files, CLI and forms.
 
 
 from typing import Literal
+from pathlib import Path
+import re
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # Preserve only public deployment inputs in workspace documents
@@ -67,6 +69,33 @@ class ArmOptions(PublicOptions):
 
 # Adapters share a form only when their native inputs have the same meaning
 MODELS = {"cloudformation": CloudFormationOptions, "cdk": CdkOptions, "arm": ArmOptions, "bicep": ArmOptions}
+
+
+# Describe guided local inputs separately from native cloud provider assumptions
+class DirectoryOptions(PublicOptions):
+    name: str = Field(pattern=r"^(?:[a-z][a-z0-9-]{0,47}|\$\{(?:env\.[^{}]+|outputs\.[^{}.]+\.[^{}.]+)\})$", title="Resource name")
+
+
+# Keep artifact and target paths reviewable without resolving deployment outputs
+class StaticOptions(PublicOptions):
+    directory: str = Field(default=".", title="Artifact directory", description="Path inside the component source")
+    destination: str = Field(default="", title="Destination", description="Deployment-relative path or whole dependency output reference; omit for the component default")
+
+
+    # References remain complete values and are checked against the workspace by the caller
+    @model_validator(mode="after")
+    def paths(self):
+        for key, value in (("directory", self.directory), ("destination", self.destination)):
+            if re.fullmatch(r"\$\{(?:env\.[^{}]+|outputs\.[^{}.]+\.[^{}.]+)\}", value):
+                continue
+            path = Path(value)
+            if path.is_absolute() or ".." in path.parts or "\\" in value or "\x00" in value or "${" in value:
+                raise ValueError("Local paths must stay inside their source or deployment root")
+        return self
+
+
+# These forms do not join MODELS, whose consumers enforce native cloud constraints
+LOCAL_MODELS = {"directory": DirectoryOptions, "static": StaticOptions}
 
 
 # Supply defaults to forms while keeping omitted values out of saved TOML

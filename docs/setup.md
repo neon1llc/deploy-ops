@@ -85,6 +85,47 @@ validation. `config patch --file draft.toml` returns revised TOML without writin
 saved file or an outstanding release. Console and CLI operations must use the same operator state directory
 for coordination. After a successful save, reload any running console to use the new configuration.
 
+## Add a local application to an existing workspace
+
+Register sources and environments before their components. These operations change a draft only.
+Repository capture defaults to committed Git source. New environments default to local and nonproduction.
+Use a separate directory resource for the new application so its active destination stays independent.
+
+```bash
+deploy-ops config add --section repositories --name docs-app --path docs-app --draft-out draft.toml
+deploy-ops config add --file draft.toml --section environments --name local-test --draft-out draft.toml
+deploy-ops config add --file draft.toml --section components --name docs-base \
+  --repository infrastructure --kind infrastructure --adapter directory \
+  --resource-name docs-site --draft-out draft.toml
+deploy-ops config add --file draft.toml --section components --name docs-site \
+  --repository docs-app --kind application --adapter static --need docs-base \
+  --check '["python3","check.py"]' --build-command '["python3","build.py"]' \
+  --artifact-directory dist --destination '${outputs.docs-base.path}' --draft-out draft.toml
+deploy-ops config validate --file draft.toml
+deploy-ops config diff --file draft.toml
+deploy-ops config save --file draft.toml --source-hash SAVED_SOURCE_HASH
+```
+
+Use the captured `source_hash` from the saved workspace's `config inspect`, or `saved_source_hash` from
+draft validation. `--draft-out` writes successful add/patch results to a separate file. An invalid addition
+leaves that file intact. It cannot name the saved workspace. Without this flag the result includes proposed
+`toml`, `diff`, draft `source_hash` and effective configuration as JSON. Duplicate names are refused.
+`--values` accepts a structured entry for advanced fields such as environment variables, build context
+and environment `targets`. Don't specify the same field through both flags and `--values`.
+
+The authenticated `POST /api/config/add` takes `configuration` (draft TOML), `section`, `name` and `values`
+and calls the same configuration owner. Controls offers compact creation forms for repositories,
+environments, directory infrastructure and static applications. Build/check argument lists are JSON data.
+Other component adapters use advanced TOML or structured CLI/API input with their existing contracts.
+Artifact paths stay inside component source, while local destinations use deployment-relative paths or
+whole environment/dependency references. Credentials stay outside this document.
+
+Authoring, inspection, validation and save never execute build/check arguments. After saving, separately
+prepare `deploy-ops run local-test --component docs-site`, review the exact requests, approve them, then
+use `deploy-ops resume RELEASE_ID` to execute. Each dependency may require its own approval. Approval alone
+does not execute. Inspect with `deploy-ops status RELEASE_ID`; `deploy-ops preview RELEASE_ID --component
+docs-site` serves the successful static artifact on loopback until stopped.
+
 ## Cloud setup
 
 Cloud access is opt-in and is not provisioned by installation. Read [security](../SECURITY.md) first.

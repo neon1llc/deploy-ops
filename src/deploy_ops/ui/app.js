@@ -26,6 +26,7 @@ let reviewedConfiguration = null;
 let formSource = "";
 let formContract = null;
 const formDrafts = new Map();
+const creationDrafts = new Map();
 
 
 // Resolve stable control IDs from the static console document
@@ -495,6 +496,7 @@ element("login").onsubmit = (event) => { event.preventDefault(); safe(async () =
   savedToml = data.toml;
   formSource = data.toml; formContract = data; formDrafts.clear(); fillConfigNames();
   document.dispatchEvent(new CustomEvent("deployops:configuration", {detail: formContract}));
+  fillCreationFields();
   element("environment").replaceChildren();
   for (const name of Object.keys(data.configuration.environments)) {
     const option = document.createElement("option"); option.value = name; option.textContent = name; element("environment").append(option);
@@ -563,6 +565,98 @@ element("save-config").onclick = () => safe(async () => {
 
 // Keep drafts separate for every settings group and entry
 function formKey() { return element("config-section").value + "/" + element("config-name").value; }
+
+
+// Render creation from server metadata while retaining each entry type's unfinished inputs
+function fillCreationFields() {
+  const type = element("config-add-type").value;
+  const contract = formContract?.creation_forms?.[type];
+  if (!contract) return;
+  const draft = creationDrafts.get(type) || {name: "", fields: {}};
+  creationDrafts.set(type, draft);
+  const name = element("config-add-name"); name.value = draft.name;
+  name.oninput = () => { draft.name = name.value; };
+  const root = element("config-add-fields"); root.replaceChildren();
+  for (const [key, field] of Object.entries(contract.fields)) {
+    const id = "create-" + key.replaceAll(".", "-");
+    const required = contract.required.includes(key);
+    const initial = draft.fields[key] ?? contract.values[key] ?? field.default ?? (field.type === "boolean" ? false : field.type === "array" ? [] : "");
+    if (field.type === "array" && field.items?.enum) {
+      const group = document.createElement("fieldset"); text(group, "legend", field.title); root.append(group);
+      for (const choice of field.items.enum) {
+        const label = document.createElement("label"); label.className = "check";
+        const input = document.createElement("input"); input.type = "checkbox"; input.name = key; input.value = choice;
+        input.checked = initial.includes(choice);
+        input.onchange = () => { draft.fields[key] = [...group.querySelectorAll("input:checked")].map(item => item.value); };
+        label.append(input, document.createTextNode(choice)); group.append(label);
+      }
+      continue;
+    }
+    const label = document.createElement("label"); label.htmlFor = id;
+    label.textContent = field.title + (required ? " (required)" : ""); root.append(label);
+    const input = document.createElement(field.enum ? "select" : field.type === "array" ? "textarea" : "input");
+    input.id = id; input.name = key; input.required = required;
+    if (field.enum) input.append(...field.enum.map(value => new Option(value, value)));
+    if (field.type === "boolean") { input.type = "checkbox"; input.checked = initial; }
+    else {
+      input.value = field.type === "array" ? (draft.fields[key] ?? JSON.stringify(initial)) : initial;
+      if (field.type === "integer") { input.type = "number"; input.min = field.minimum; input.max = field.maximum; }
+    }
+    input.spellcheck = false; input.autocapitalize = "off"; input.setAttribute("autocorrect", "off");
+    input.oninput = () => { draft.fields[key] = field.type === "boolean" ? input.checked : input.value; };
+    root.append(input);
+    if (field.description) {
+      const hint = text(root, "p", field.description); hint.id = id + "-help"; input.setAttribute("aria-describedby", hint.id);
+    }
+  }
+}
+
+
+// Collect typed values as data; validation and creation stay in the shared configuration owner
+function creationValues(contract, draft) {
+  const values = structuredClone(contract.values);
+  for (const [key, field] of Object.entries(contract.fields)) {
+    const raw = draft.fields[key];
+    if (raw === undefined || raw === "") continue;
+    const value = field.type === "array" && !field.items?.enum ? JSON.parse(raw)
+      : field.type === "integer" ? Number(raw) : raw;
+    const parts = key.split(".");
+    if (parts.length === 2) (values[parts[0]] ||= {})[parts[1]] = value;
+    else values[key] = value;
+  }
+  return values;
+}
+
+
+// Add only to the current draft and keep the original saved-source identity for explicit save
+element("config-add-type").onchange = fillCreationFields;
+element("config-add-form").onsubmit = (event) => {
+  event.preventDefault();
+  safe(async () => {
+    const source = element("config").value;
+    const type = element("config-add-type").value;
+    const contract = formContract?.creation_forms?.[type];
+    const draft = creationDrafts.get(type);
+    try {
+      if (source !== formSource || !contract) throw new Error("Load forms from the current draft before adding an entry.");
+      const values = creationValues(contract, draft);
+      element("config-add-controls").disabled = true;
+      const result = await api("/config/add", "POST", {configuration: source, section: contract.section, name: draft.name, values});
+      if (element("config").value !== source) throw new Error("Draft changed while adding. Your text was preserved; reload forms to retry.");
+      element("config").value = result.toml; formSource = result.toml; formContract = result;
+      reviewedConfiguration = null;
+      document.dispatchEvent(new CustomEvent("deployops:configuration", {detail: formContract}));
+      element("config-diff").textContent = result.diff || "No changes.";
+      creationDrafts.delete(type); fillCreationFields();
+      const section = element("config-section").value, name = element("config-name").value;
+      fillConfigNames(); element("config-section").value = section; element("config-name").value = name; fillConfigFields();
+      element("config-status").textContent = "Entry added to the draft. Validate and review before explicitly saving.";
+      element("config-add-name").focus();
+    } catch (error) {
+      element("config-status").textContent = error.message; element("config-status").focus(); throw error;
+    } finally { element("config-add-controls").disabled = false; }
+  });
+};
 
 
 // Render typed provider inputs without making cloud authority editable in the browser
@@ -674,9 +768,12 @@ function fillConfigNames() {
 function fillConfigFields() {
   const section = element("config-section").value, name = element("config-name").value;
   if (section === "options") { fillOptionFields(name); return; }
+  const root = element("config-fields"); root.replaceChildren();
+  if (!name || !formContract.configuration[section][name]) {
+    text(root, "p", "No entries in this group. Add an entry to the draft first."); return;
+  }
   const current = formDrafts.get(formKey()) || structuredClone(formContract.configuration[section][name]);
   formDrafts.set(formKey(), current);
-  const root = element("config-fields"); root.replaceChildren();
   for (const [key, field] of Object.entries(formContract.forms[section])) {
     const id = "setting-" + key;
     if (field.type === "array") {
@@ -742,6 +839,7 @@ element("load-forms").onclick = () => safe(async () => {
   const result = await api("/config/inspect", "POST", {configuration: source});
   if (element("config").value !== source) throw new Error("Draft changed while loading. Load forms again.");
   formContract = result; formSource = source; formDrafts.clear(); fillConfigNames();
+  fillCreationFields();
   document.dispatchEvent(new CustomEvent("deployops:configuration", {detail: formContract}));
   element("config-status").textContent = "Forms loaded from the current draft. Applying fields does not save the file.";
 });

@@ -224,11 +224,14 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     def configure(action: str, data: Input):
         nonlocal engine
         from .delivery.engine import Engine
-        from .delivery.configuration import inspect, patch, save, validate
+        from .delivery.configuration import add, inspect, patch, save, source_hash, validate
         if action == "inspect":
             return inspect(data.configuration)
         if action == "patch":
             return patch(data.configuration, data.section, data.name, data.values)
+        if action == "add":
+            return {**add(data.configuration, data.section, data.name, data.values),
+                    "saved_source_hash": source_hash(engine.path.read_text())}
         if action in {"validate", "diff"}:
             return validate(data.configuration, engine.path.read_text())
         if action != "save":

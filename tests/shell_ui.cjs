@@ -293,3 +293,49 @@ for (const link of file.document.querySelectorAll("[data-view-link]")) {
 assert.equal(file.node("appearance-view").hidden, true);
 assert.equal(file.node("session-label").textContent, "Server not connected");
 console.log("Shell navigation, complete settings discovery, retained drafts, facts and file preview passed");
+
+
+// Check creation request types, retained drafts and failure recovery through the shipped handlers
+(async () => {
+  contract.creation_forms = {
+    repositories: {section: "repositories", values: {}, required: ["path"], fields: {path: {type: "string", title: "Path"}}},
+    static: {section: "components", values: {adapter: "static", kind: "application"}, required: ["repository"], fields: {
+      repository: {type: "string", title: "Repository", enum: ["app"]},
+      "build.command": {type: "array", title: "Build arguments", items: {type: "string"}},
+      "build.checks": {type: "array", title: "Checks", items: {type: "array"}},
+      "options.directory": {type: "string", title: "Artifact directory", description: "Inside the component source"},
+    }},
+  };
+  const calls = [];
+  app.context.capture = async (path, method, body) => { calls.push({path, method, body}); throw new Error("duplicate name"); };
+  vm.runInContext('const creationDrafts=new Map(); let formSource="unsaved TOML"; let reviewedConfiguration=null; const savedSourceHash="original-saved"; let task; const safe=action=>{task=action().catch(error=>error);}; const api=(...args)=>capture(...args);', app.context);
+  app.node("config-add-type").value = "repositories"; app.node("config-add-type").dispatchEvent({type: "change"});
+  app.node("config-add-name").value = "unfinished-repo"; app.node("config-add-name").dispatchEvent({type: "input"});
+  app.node("create-path").value = "new-source"; app.node("create-path").dispatchEvent({type: "input"});
+  app.node("config-add-type").value = "static"; app.node("config-add-type").dispatchEvent({type: "change"});
+  app.node("config-add-name").value = "new-site"; app.node("config-add-name").dispatchEvent({type: "input"});
+  for (const [id, value] of [["create-repository", "app"], ["create-build-command", '["python3","build.py"]'],
+    ["create-build-checks", '[["python3","check.py"]]'], ["create-options-directory", "dist"]]) {
+    app.node(id).value = value; app.node(id).dispatchEvent({type: "input"});
+  }
+  assert.equal(app.node("create-build-command").tagName, "TEXTAREA");
+  assert.equal(app.node("create-options-directory").attributes["aria-describedby"], "create-options-directory-help");
+  app.node("config-add-form").dispatchEvent({type: "submit"}); await vm.runInContext("task", app.context);
+  assert.equal(calls.length, 1); assert.equal(calls[0].path, "/config/add");
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[0].body.values)), {adapter: "static", kind: "application", repository: "app",
+    build: {command: ["python3", "build.py"], checks: [["python3", "check.py"]]}, options: {directory: "dist"}});
+  assert.equal(draft.value, "unsaved TOML"); assert.equal(app.node("config-add-name").value, "new-site");
+  assert.equal(app.node("config-add-controls").disabled, false); assert.equal(app.document.activeElement, app.node("config-status"));
+  assert.match(app.node("config-status").textContent, /duplicate name/);
+
+  // A successful retry changes only the TOML draft, preserving other creation and edit drafts
+  app.context.capture = async () => ({...contract, toml: "expanded draft", diff: "+new-site"});
+  app.node("config-add-form").dispatchEvent({type: "submit"}); await vm.runInContext("task", app.context);
+  assert.equal(draft.value, "expanded draft"); assert.equal(vm.runInContext("savedSourceHash", app.context), "original-saved");
+  assert.equal(app.node("config-add-name").value, "");
+  assert.equal(vm.runInContext('formDrafts.get("repositories/app").path', app.context), "edited source");
+  app.node("config-add-type").value = "repositories"; app.node("config-add-type").dispatchEvent({type: "change"});
+  assert.equal(app.node("config-add-name").value, "unfinished-repo"); assert.equal(app.node("create-path").value, "new-source");
+  assert.equal(app.node("config-diff").textContent, "+new-site");
+  console.log("Creation DOM: typed requests, failure recovery and independent draft retention passed");
+})().catch(error => { console.error(error); process.exitCode = 1; });

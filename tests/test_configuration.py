@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from deploy_ops.cli import dispatch, parser
 from deploy_ops.console import create_app
-from deploy_ops.delivery.configuration import inspect, patch, source_hash
+from deploy_ops.delivery.configuration import add, inspect, patch, source_hash
 from deploy_ops.delivery.engine import Engine
 from deploy_ops.delivery.scaffold import create
 from deploy_ops.errors import Refused
@@ -320,4 +320,100 @@ def test_remote_cli_cannot_save_local_workspace(workspace, tmp_path):
                  'config', 'save', '--file', str(draft), '--source-hash', source_hash(source)]
     with pytest.raises(Refused, match='Only local operators'):
         dispatch(parser().parse_args(arguments))
+    assert workspace.read_text() == source
+
+
+# Every interface adds the same authored entry without saving or creating release work
+@pytest.mark.parametrize('section,name,values', [
+    ('repositories', 'new-app', {'path': 'new-app'}),
+    ('environments', 'local-test', {}),
+    ('components', 'new-foundation', {'repository': 'infrastructure', 'kind': 'infrastructure',
+        'adapter': 'directory', 'options': {'name': 'separate-site'}}),
+    ('components', 'new-site', {'repository': 'application', 'kind': 'application', 'adapter': 'static',
+        'needs': ['foundation'], 'build': {'checks': [['python3', 'check.py']], 'command': ['python3', 'build.py']},
+        'options': {'directory': 'dist', 'destination': '${outputs.foundation.path}'},
+        'targets': {'staging': {'directory': 'other-dist'}}}),
+])
+def test_add_shared_draft_semantics(workspace, tmp_path, section, name, values):
+    source = '# Preserve this authored header\n' + workspace.read_text()
+    workspace.write_text(source)
+    draft = tmp_path / 'draft.toml'
+    arguments = ['--project', str(workspace), 'config', 'add', '--section', section, '--name', name,
+                 '--values', json.dumps(values), '--draft-out', str(draft)]
+    cli = dispatch(parser().parse_args(arguments))
+    assert not (workspace.parent / '.deploy-ops').exists()
+    client = TestClient(create_app(Engine(workspace), 't' * 40), base_url='http://127.0.0.1:8765')
+    body = {'configuration': source, 'section': section, 'name': name, 'values': values}
+    assert client.post('/api/config/add', json=body).status_code == 401
+    api = client.post('/api/config/add', json=body, headers={'Authorization': 'Bearer ' + 't' * 40})
+    assert api.status_code == 200
+    assert api.json() == cli
+    assert cli['source_hash'] != cli['saved_source_hash'] == source_hash(source)
+    assert draft.read_text() == cli['toml']
+    assert cli['toml'].startswith('# Preserve this authored header\n')
+    for line in source.splitlines():
+        assert line in cli['toml']
+    original = inspect(source)['configuration']
+    revised = cli['configuration']
+    for group in ('repositories', 'environments', 'components'):
+        assert all(revised[group][key] == value for key, value in original[group].items())
+    assert workspace.read_text() == source
+    assert Engine(workspace).ledger.list() == []
+    assert 'allow_uncommitted = false' not in cli['toml']
+    assert 'production = false' not in cli['toml']
+
+
+# Invalid additions preserve both the saved source and an already usable output draft
+@pytest.mark.parametrize('section,name,values', [
+    ('repositories', 'application', {'path': 'elsewhere'}),
+    ('repositories', 'BadName', {'path': 'app'}),
+    ('repositories', 'new-app', {'path': 'app', 'allow_uncommitted': 'true'}),
+    ('repositories', 'new-app', {'path': 'app', 'unknown': True}),
+    ('environments', 'new-local', {'provider': 'local', 'production': 'false'}),
+    ('components', 'new-site', {'repository': 'missing', 'kind': 'application', 'adapter': 'static'}),
+    ('components', 'new-site', {'repository': 'application', 'kind': 'application', 'adapter': 'static', 'needs': ['new-site']}),
+    ('components', 'new-site', {'repository': 'application', 'kind': 'application', 'adapter': 'static', 'path': '../escape'}),
+    ('components', 'new-site', {'repository': 'application', 'kind': 'application', 'adapter': 'static', 'options': {'directory': '../escape'}}),
+    ('components', 'new-site', {'repository': 'application', 'kind': 'application', 'adapter': 'static', 'options': {'unknown': 'value'}}),
+    ('components', 'new-site', {'repository': 'application', 'kind': 'application', 'adapter': 'static', 'options': {'destination': '${outputs.foundation.path}'}}),
+    ('components', 'new-site', {'repository': 'application', 'kind': 'application', 'adapter': 'static', 'options': {'destination': '${env.missing}'}}),
+    ('components', 'new-site', {'repository': 'application', 'kind': 'application', 'adapter': 'static', 'options': {'destination': 'prefix/${outputs.foundation.path}'}}),
+    ('components', 'new-site', {'repository': 'application', 'kind': 'application', 'adapter': 'static', 'build': {'command': 'python3 build.py'}}),
+    ('components', 'new-site', {'repository': 'application', 'kind': 'application', 'adapter': 'static', 'build': {'command': [1]}}),
+    ('components', 'new-site', {'repository': 'application', 'kind': 'application', 'adapter': 'static', 'build': {'unknown': True}}),
+    ('components', 'new-site', {'repository': 'application', 'kind': 'application', 'adapter': 'static', 'targets': {'missing': {'directory': 'dist'}}}),
+    ('components', 'new-site', {'repository': 'application', 'kind': 'application', 'adapter': 'static', 'targets': {'staging': {'directory': '/escape'}}}),
+])
+def test_add_refusals_preserve_drafts(workspace, tmp_path, section, name, values):
+    source = workspace.read_text()
+    draft = tmp_path / 'draft.toml'
+    draft.write_text(source)
+    arguments = ['--project', str(workspace), 'config', 'add', '--section', section, '--name', name,
+                 '--values', json.dumps(values), '--draft-out', str(draft)]
+    with pytest.raises(Refused):
+        dispatch(parser().parse_args(arguments))
+    client = TestClient(create_app(Engine(workspace), 't' * 40), base_url='http://127.0.0.1:8765')
+    response = client.post('/api/config/add', json={'configuration': source, 'section': section, 'name': name, 'values': values},
+                           headers={'Authorization': 'Bearer ' + 't' * 40})
+    assert response.status_code == 422
+    assert workspace.read_text() == draft.read_text() == source
+
+
+# Human creation flags preserve typed arguments and cannot act as an implicit workspace save
+def test_add_flags_and_output_boundary(workspace, tmp_path):
+    source = workspace.read_text()
+    arguments = ['--project', str(workspace), 'config', 'add', '--section', 'components', '--name', 'another-site',
+        '--repository', 'application', '--kind', 'application', '--adapter', 'static', '--need', 'foundation',
+        '--artifact-directory', 'dist', '--destination', '${outputs.foundation.path}',
+        '--build-command', '["python3","build.py"]', '--check', '["python3","check.py"]']
+    result = dispatch(parser().parse_args(arguments))
+    component = result['configuration']['components']['another-site']
+    assert component['build']['command'] == ['python3', 'build.py']
+    assert component['build']['checks'] == [['python3', 'check.py']]
+    assert component['options'] == {'directory': 'dist', 'destination': '${outputs.foundation.path}'}
+    alias = tmp_path / 'saved-alias.toml'
+    alias.hardlink_to(workspace)
+    for path in (workspace, alias):
+        with pytest.raises(Refused, match='different file'):
+            dispatch(parser().parse_args(arguments + ['--draft-out', str(path)]))
     assert workspace.read_text() == source

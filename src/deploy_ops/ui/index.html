@@ -500,13 +500,37 @@
               >
                 <summary>Workspace configuration</summary>
                 <p>
-                  Edit existing repositories, environments and components below. Advanced options
+                  Add or edit repositories, environments and components below. Advanced options
                   stay in the TOML draft. Keep secrets out of this file. Finish or cancel
                   outstanding releases before saving.
                 </p>
                 <button id="load-forms" type="button" class="secondary">
                   Load forms from current draft
                 </button>
+                <details data-setting="add create register repository environment directory static build artifact">
+                  <summary>Add to the workspace draft</summary>
+                  <p>
+                    Register a repository, then an environment and its components. Guided component
+                    creation supports local directory infrastructure and static applications.
+                    Other adapters use the advanced TOML path. Adding never saves or executes.
+                  </p>
+                  <form id="config-add-form" action="/api/config/add" method="post">
+                    <fieldset id="config-add-controls">
+                      <legend>New entry</legend>
+                      <label for="config-add-type">Entry type</label>
+                      <select id="config-add-type" name="type">
+                        <option value="repositories">Repository</option>
+                        <option value="environments">Environment</option>
+                        <option value="directory">Directory infrastructure</option>
+                        <option value="static">Static application</option>
+                      </select>
+                      <label for="config-add-name">New name (required)</label>
+                      <input id="config-add-name" name="name" required />
+                      <div id="config-add-fields"></div>
+                      <button type="submit">Add to draft</button>
+                    </fieldset>
+                  </form>
+                </details>
                 <form id="config-form" action="/api/config/patch" method="post">
                   <fieldset id="config-controls">
                     <legend>Guided settings</legend>

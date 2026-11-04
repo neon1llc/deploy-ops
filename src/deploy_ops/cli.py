@@ -35,12 +35,29 @@ def parser():
     provider.add_argument("release")
     provider.add_argument("component")
     config = commands.add_parser("config", help="Inspect, edit, validate, compare or explicitly save a workspace draft")
-    config.add_argument("action", choices=["inspect", "patch", "validate", "diff", "save"])
+    config.add_argument("action", choices=["inspect", "add", "patch", "validate", "diff", "save"])
     config.add_argument("--file", type=Path, help="Draft TOML input; required for validate, diff and save")
     config.add_argument("--source-hash", help="Exact saved workspace hash from inspect; required for save")
     config.add_argument("--section", choices=["repositories", "environments", "components", "options"])
     config.add_argument("--name")
     config.add_argument("--values", type=json.loads, default={})
+    config.add_argument("--draft-out", type=Path, help="Write successful add/patch TOML to a draft file, never the saved workspace")
+    # Common creation inputs remain readable while structured values cover advanced contracts
+    config.add_argument("--path", help="Repository location or component-relative source path")
+    config.add_argument("--provider", choices=["local", "aws", "azure", "gcp"])
+    config.add_argument("--repository")
+    config.add_argument("--kind", choices=["infrastructure", "application", "workflow"])
+    config.add_argument("--adapter")
+    config.add_argument("--need", action="append", help="Declared dependency name; repeat for multiple dependencies")
+    config.add_argument("--resource-name", help="Directory resource slug")
+    config.add_argument("--artifact-directory", help="Static artifact path inside the component source")
+    config.add_argument("--destination", help="Deployment-relative path or whole dependency output reference")
+    config.add_argument("--build-command", type=json.loads, help='Argument list, e.g. \'["python3","build.py"]\'')
+    config.add_argument("--check", action="append", type=json.loads, help='Check argument list; repeat for multiple checks')
+    config.epilog = ('Example: config add --section components --name site --repository app --kind application '
+                     '--adapter static --need foundation --artifact-directory dist '
+                     '--build-command \'["python3","build.py"]\' --draft-out draft.toml. '
+                     'Use --file draft.toml for the next addition; save is separate.')
 
     # Planning describes the graph while running freezes and prepares release evidence
     for name in ("plan", "run"):
@@ -196,16 +213,45 @@ def dispatch(args):
         from importlib.resources import files
         return json.loads(files("deploy_ops").joinpath("catalog.json").read_text())
     if args.command == "config":
-        from .delivery.configuration import inspect, patch, save, validate
+        from .delivery.configuration import add, inspect, patch, save, source_hash, validate
         if args.action in {"validate", "diff", "save"} and not args.file:
             raise Refused("Choose the proposed TOML draft with --file", 422)
         if args.action == "save" and not args.source_hash:
             raise Refused("Provide the saved workspace --source-hash from config inspect", 422)
         source = (args.file or args.project).read_text()
+        if args.draft_out and (args.action not in {"add", "patch"} or args.draft_out.resolve() == args.project.resolve()
+                               or (args.draft_out.exists() and args.draft_out.samefile(args.project))):
+            raise Refused("--draft-out requires add/patch and a different file from the saved workspace", 422)
+        creation_fields = ("path", "provider", "repository", "kind", "adapter", "need", "resource_name",
+                           "artifact_directory", "destination", "build_command", "check")
+        if args.action != "add" and any(getattr(args, key) is not None for key in creation_fields):
+            raise Refused("Creation fields require config add", 422)
         if args.action == "inspect":
             return inspect(source)
-        if args.action == "patch":
-            return patch(source, args.section, args.name, args.values)
+        if args.action in {"add", "patch"}:
+            values = args.values
+            if args.action == "add":
+                if not isinstance(values, dict):
+                    raise Refused("--values must be an object", 422)
+                values = dict(values)
+                fields = {key: getattr(args, key) for key in ("path", "provider", "repository", "kind", "adapter")}
+                fields["needs"] = args.need
+                fields["options"] = {key: value for key, value in (("name", args.resource_name),
+                    ("directory", args.artifact_directory), ("destination", args.destination)) if value is not None}
+                fields["build"] = {key: value for key, value in (("command", args.build_command),
+                    ("checks", args.check)) if value is not None}
+                for key, value in fields.items():
+                    if value is None or (key in {"build", "options"} and not value):
+                        continue
+                    if key in values:
+                        raise Refused(f"Choose either --values or creation flags for {key}", 422)
+                    values[key] = value
+            result = (add if args.action == "add" else patch)(source, args.section, args.name, values)
+            if args.action == "add":
+                result["saved_source_hash"] = source_hash(args.project.read_text())
+            if args.draft_out:
+                args.draft_out.write_text(result["toml"])
+            return result
         if args.action in {"validate", "diff"}:
             return validate(source, args.project.read_text())
         from .delivery.engine import Engine
