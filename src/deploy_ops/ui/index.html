@@ -1,114 +1,640 @@
 <!doctype html>
-<!-- ui/index.html - Review and operate a trusted local workspace without a frontend build tool. -->
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<title>DeployOps by neon1</title><link rel="stylesheet" href="/assets/style.css"><script type="module" src="/assets/appearance.mjs"></script><script src="/assets/app.js" defer></script><script src="/assets/paging.js" defer></script><script src="/assets/isolated.js" defer></script></head>
-<body><header><div><span class="brand">neon1</span><h1>DeployOps</h1><p>Infrastructure and applications. One release history.</p></div><span id="mode" class="badge">Locked</span></header>
-<main><section id="unlock"><h2>Open your workspace</h2><p>Paste the token from the local operator token file. It stays in this tab's memory.</p>
-<form id="login"><label for="token">Operator token</label><input id="token" type="password" autocomplete="off" required><button>Unlock</button></form></section>
-<div id="workspace" hidden><section><div class="row"><h2 id="title">Workspace</h2><button id="lock" class="secondary">Lock</button></div>
-<form id="release-form"><div class="controls"><label>Environment<select id="environment"></select></label><label>Component<select id="component"><option value="">All components</option></select></label></div>
-<label>Immutable image, optional<input id="image" placeholder="registry.example/team/app@sha256:..."></label>
-<label>Infrastructure receipts, optional<input id="receipts" placeholder='{"foundation":"receipt ID"}' spellcheck="false"></label>
-<p class="muted">For registered infrastructure receipts, supply the target environment's public receipt IDs. The controller checks them again before execution.</p>
-<label class="check"><input id="only" type="checkbox"> Reuse recorded dependency outputs</label>
-<fieldset id="preview-options" hidden><legend>Isolated static preview</legend>
-<label for="preview-owner">Preview owner</label><input id="preview-owner" maxlength="200">
-<label for="preview-hours">Expires after hours (1–72)</label><input id="preview-hours" type="number" min="1" max="72" value="1">
-<label class="check"><input id="preview-retain" type="checkbox"> Retain deployed files when retiring</label>
-<p>Each preview gets a new namespace and deploys its own dependencies. Expiry marks cleanup due; it never deletes files. Cleanup requires a separate exact approval.</p></fieldset>
-<div class="controls"><button type="button" id="plan" class="secondary">Preview workflow</button><button type="submit">Prepare release</button></div></form>
-<p class="muted">Preparation runs trusted repository checks and build code. Deployment waits for exact approval unless a bounded grant applies.</p><pre id="plan-output" hidden></pre></section>
-<section><h2>Bounded local autonomy</h2><p>For non-production local static and directory changes only. Each component receives its own allowance.</p>
-<form id="delegation"><div class="controls"><label>Hours<input id="hours" type="number" min="1" max="12" value="1"></label><label>Uses per component<input id="uses" type="number" min="1" max="100" value="1"></label><button>Grant window</button></div></form></section>
-<div class="grid"><section><div class="row"><h2>Releases</h2><button id="refresh" class="secondary">Refresh</button></div><div id="releases"></div></section>
-<section><h2 id="detail-heading" tabindex="-1">Release detail</h2><div id="detail"><p>Select a release to inspect changes and events.</p></div></section></div>
-<details id="incident-panel"><summary>Local incidents</summary>
-<p>Track a failed or uncertain release without changing its deployment outcome. Owners are local labels. Escalations queue signals; they do not contact another responder or start a background scheduler.</p>
-<form id="incident-open-form">
-<label for="incident-release">Failed or uncertain release ID</label><input id="incident-release" name="release" required pattern="[0-9a-f]{32}" maxlength="32" autocapitalize="off" spellcheck="false">
-<label for="incident-owner">Responsible team or person</label><input id="incident-owner" name="owner" required maxlength="500">
-<div class="controls"><label for="incident-interval">Escalation interval (seconds)<input id="incident-interval" name="interval" type="number" min="60" max="86400" value="900" required></label>
-<label for="incident-limit">Maximum escalation level<input id="incident-limit" name="limit" type="number" min="1" max="5" value="3" required></label></div>
-<label for="incident-open-note">What needs investigation?</label><textarea id="incident-open-note" name="note" rows="3" required maxlength="500"></textarea>
-<button type="submit">Open local incident</button></form>
-<h3>Incident history</h3><div id="incidents"></div>
-<h3 id="incident-heading" tabindex="-1">Selected incident</h3><p id="incident-detail">Select an incident to inspect its current state.</p>
-<form id="incident-decision-form"><label for="incident-note">Decision and evidence</label><textarea id="incident-note" name="note" rows="3" required maxlength="500"></textarea>
-<div class="controls"><button id="incident-acknowledge" name="action" value="acknowledge" type="submit">Acknowledge</button><button id="incident-resolve" name="action" value="resolve" type="submit">Resolve</button></div></form>
-<p>Acknowledgement stops escalation. Resolution records your decision; it does not repair or reconcile the deployment. Notes stay in the local audit. Keep secrets out of them.</p>
-<button id="incident-tick" type="button" class="secondary">Check due escalations</button>
-<h3>Workspace notification outbox</h3><p id="notification-status"></p>
-<p>Delivery is separate from acknowledgement. Use <code>deploy-ops notify --status</code> to inspect or <code>deploy-ops notify</code> to send through your configured endpoint. This legacy outbox has one destination. Named destinations use the separate paging delivery records below.</p>
-<p id="incident-status" role="status" aria-live="polite" tabindex="-1"></p></details>
-<!-- Configure named paging destinations without exposing worker credentials -->
-<details id="paging-panel"><summary>Paging destinations and routing</summary>
-<p>Keep responder schedules in your paging provider. Local incident acknowledgement and remote destination acknowledgement are separate decisions. Accepted requests do not prove a person received a page.</p>
-<button id="paging-load" type="button" class="secondary">Load saved paging settings</button>
-<p id="paging-revision">Open this panel to load settings.</p>
-<form id="paging-destination-form" action="/api/paging/save" method="post">
-<fieldset><legend>Named destination</legend>
-<label for="paging-destination-select">Edit destination</label><select id="paging-destination-select" name="selected"><option value="">New destination</option></select>
-<label for="paging-destination-name">Destination name (required)</label><input id="paging-destination-name" name="name" required pattern="[a-z][a-z0-9\-]{0,47}" maxlength="48" autocapitalize="off" spellcheck="false">
-<label for="paging-provider">Provider (required)</label><select id="paging-provider" name="provider" required></select>
-<div id="paging-destination-fields"></div><p id="paging-provider-help"></p>
-<button type="submit">Apply destination to draft</button></fieldset></form>
-<form id="paging-route-form" action="/api/paging/save" method="post">
-<fieldset><legend>Ordered route</legend>
-<label for="paging-route-select">Edit route</label><select id="paging-route-select" name="selected"><option value="">New route</option></select>
-<label for="paging-route-name">Route name (required)</label><input id="paging-route-name" name="name" required pattern="[a-z][a-z0-9\-]{0,47}" maxlength="48" autocapitalize="off" spellcheck="false">
-<div id="paging-route-fields"></div><button type="submit">Apply route to draft</button></fieldset></form>
-<h3>Route order</h3><p>The first matching route wins. Each route can fan out to multiple destinations. Repeated names select a destination once. No matching route uses the default destinations.</p>
-<div id="paging-routes"></div><fieldset id="paging-defaults"><legend>Default destinations</legend></fieldset>
-<div class="controls"><button id="paging-save" type="button">Save paging draft</button><button id="paging-activate" type="button">Activate saved revision</button></div>
-<p>Saving does not activate routing or send a test. Activation affects new events. Existing remote incidents retain their original destinations and credential references.</p>
-<!-- Route preview never contacts a provider or evaluates credential values -->
-<form id="paging-preview-form" action="/api/paging/preview" method="post"><fieldset><legend>Preview draft route</legend>
-<div id="paging-preview-fields"></div><button type="submit">Preview route without sending</button></fieldset></form>
-<div id="paging-preview-result"></div>
-<!-- Explicit sending stays separate from configuration and local incident decisions -->
-<form id="paging-test-form" action="/api/paging/test" method="post"><fieldset><legend>Synthetic test page</legend>
-<label for="paging-test-destination">Active destination</label><select id="paging-test-destination" name="name" required></select>
-<label class="check" for="paging-test-confirm"><input id="paging-test-confirm" name="confirm" type="checkbox" required> I intend to contact this destination. A running worker may send immediately and provider channels may incur charges.</label>
-<button type="submit">Queue test page</button></fieldset></form>
-<div class="controls"><button id="paging-drain" type="button">Send queued deliveries</button><button id="paging-refresh" type="button" class="secondary">Refresh delivery evidence</button></div>
-<p>For unattended work, run <code>deploy-ops paging worker</code> in a separately managed foreground process or container. A sleeping host cannot deliver new events. No service is installed automatically.</p>
-<p id="paging-health"></p><div id="paging-bindings"></div><div id="paging-deliveries"></div>
-<p id="paging-status" role="status" aria-live="polite" tabindex="-1"></p>
-<p>Native paging supports PagerDuty, GoAlert, incident.io, Better Stack, Grafana Cloud IRM and ilert. Optional Apprise notification transport remains planned.</p></details>
-<!-- Review isolated infrastructure separately from application releases and credential setup -->
-<details id="isolated-panel"><summary>Isolated GCP infrastructure</summary>
-<p>Review the registered Cloud Run recipe, approve planning, then review and approve its saved infrastructure plan. Account access and the isolated runtime are configured outside this workspace.</p>
-<button id="isolated-refresh" type="button" class="secondary">Load infrastructure status</button>
-<p id="isolated-availability">Open this panel to check registration.</p>
-<div id="isolated-recipe"></div>
-<form id="isolated-prepare-form" action="/api/isolated/prepare" method="post"><button id="isolated-prepare" type="submit" disabled>Prepare planning review</button></form>
-<p>Planning uses authenticated provider reads and backend locking. Applying a saved plan changes cloud resources. Stopping a worker does not undo accepted cloud operations. This route does not support infrastructure destruction.</p>
-<div id="isolated-requests"></div></details>
-<details><summary>Workspace configuration</summary><p>Edit existing repositories, environments and components below. Advanced options stay in the TOML draft. Keep secrets out of this file. Finish or cancel outstanding releases before saving.</p>
-<button id="load-forms" type="button" class="secondary">Load forms from current draft</button>
-<form id="config-form" action="/api/config/patch" method="post">
-<fieldset id="config-controls"><legend>Guided settings</legend>
-<label for="config-section">Settings group</label><select id="config-section" name="section"><option value="repositories">Repositories</option><option value="environments">Environments</option><option value="components">Components</option><option value="options">Native infrastructure settings</option></select>
-<label for="config-name">Entry</label><select id="config-name" name="name"></select>
-<div id="config-fields"></div><button type="submit">Apply fields to draft</button></fieldset>
-</form><p id="config-status" role="status" aria-live="polite" tabindex="-1"></p>
-<p class="muted">Provider and tool choices do not translate advanced options or grant cloud credentials. Review environment overrides in TOML before deployment.</p>
-<label for="config">Deployment workspace</label><textarea id="config" rows="22" spellcheck="false"></textarea>
-<div class="controls"><button id="validate-config" class="secondary">Validate configuration</button><button id="save-config">Save local configuration</button></div>
-<h3>Changes to review</h3><pre id="config-diff">No changes reviewed yet.</pre></details></div>
-<p id="message" role="status" aria-live="polite"></p>
-<details class="appearance-settings"><summary>Appearance</summary>
-<p id="appearance-summary" class="muted">Follow your system or choose a preset. Appearance stays separate from deployment settings.</p>
-<form id="appearance-form">
-<div class="controls"><label>Theme<select id="appearance-theme"><option value="system">System</option></select></label>
-<label>Density<select id="appearance-density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
-<label>Corner radius (0–20 px)<input id="appearance-radius" type="number" min="0" max="20" step="1" value="10" required></label></div>
-<button type="submit">Apply appearance</button><button id="appearance-reset" type="button" class="secondary">Reset appearance</button>
-</form>
-<details class="appearance-settings__advanced"><summary>Import, export and custom colors</summary>
-<p>Export the current settings here, or import appearance JSON. Color overrides must preserve readable contrast. Deployment settings and credentials are never included.</p>
-<label for="appearance-json">Appearance JSON</label><textarea id="appearance-json" rows="8" maxlength="8192" spellcheck="false"></textarea>
-<div class="controls"><button id="appearance-export" type="button" class="secondary">Export current appearance</button><button id="appearance-import" type="button">Import appearance</button></div>
-</details><p id="appearance-status" role="status" aria-live="polite"></p></details>
-</main><footer>DeployOps by neon1 LLC · Local operator console · Cloud actions require approved account access</footer></body></html>
+<!-- ui/index.html - Operate deployments through focused views of one shared workspace. -->
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>DeployOps by neon1</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="shell.js" defer></script>
+    <script type="module" src="appearance.mjs"></script>
+    <script src="app.js" defer></script>
+    <script src="paging.js" defer></script>
+    <script src="isolated.js" defer></script>
+  </head>
+  <body>
+    <!-- Keep workspace navigation available without replacing unsaved forms -->
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Workspace navigation">
+        <a class="brand" href="#home"
+          ><span class="brand-icon" aria-hidden="true">&gt;_</span
+          ><span>DeployOps<small>neon1</small></span></a
+        >
+        <p class="nav-label">WORKSPACE</p>
+        <nav aria-label="Main">
+          <a href="#home" data-view-link="home"><span aria-hidden="true">⌂</span>Home</a>
+          <a href="#releases" data-view-link="releases"
+            ><span aria-hidden="true">↗</span>Releases</a
+          >
+          <a href="#infrastructure" data-view-link="infrastructure"
+            ><span aria-hidden="true">▤</span>Infrastructure</a
+          >
+          <a href="#incidents" data-view-link="incidents"
+            ><span aria-hidden="true">◎</span>Incidents</a
+          >
+          <a href="#controls" data-view-link="controls"
+            ><span aria-hidden="true">⚙</span>Controls</a
+          >
+        </nav>
+        <div class="sidebar-foot">
+          <span class="status-dot" aria-hidden="true"></span
+          ><span>Local console<small id="session-label">Connect to your workspace</small></span>
+        </div>
+      </aside>
+      <div class="main-shell">
+        <header class="topbar">
+          <div class="breadcrumb">
+            <span id="title">DeployOps</span><span aria-hidden="true">/</span
+            ><strong id="view-label">Home</strong>
+          </div>
+          <div class="controls">
+            <span id="mode" class="badge">Locked</span
+            ><button id="lock" class="secondary" hidden>Lock workspace</button>
+          </div>
+        </header>
+        <main id="main-content" tabindex="-1">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow" id="view-eyebrow">YOUR WORKSPACE</p>
+              <h1 id="view-title" tabindex="-1">Home</h1>
+              <p id="view-description">
+                Infrastructure and applications, from one release history.
+              </p>
+            </div>
+          </div>
+          <!-- Explain the real launch path when this file is opened outside the server -->
+          <section id="file-help" hidden>
+            <h2>Start your local console</h2>
+            <p>
+              This file is part of the application. Start DeployOps from your workspace directory to
+              connect its controls.
+            </p>
+            <pre>deploy-ops ui --token-file "$HOME/.config/deploy-ops/operator.token"</pre>
+            <a class="button-link" href="http://127.0.0.1:8765">Open local console</a>
+          </section>
+          <section id="unlock" class="connect-card">
+            <span class="connection-mark" aria-hidden="true">&gt;_</span>
+            <h2>Connect your workspace</h2>
+            <p>
+              Review changes, deploy applications and infrastructure, and follow every release from
+              preparation to recovery.
+            </p>
+            <form id="login" action="/api/workspace" method="post">
+              <label for="token">Operator token</label
+              ><input
+                id="token"
+                type="password"
+                autocomplete="off"
+                required
+                aria-describedby="token-help"
+              />
+              <p id="token-help" class="muted">
+                Use the token file selected when starting this console. Your token stays in this
+                tab’s memory.
+              </p>
+              <button>Connect workspace</button>
+            </form>
+          </section>
+          <noscript
+            ><p>
+              JavaScript is required for the local console. The same operations are available
+              through the deploy-ops CLI.
+            </p></noscript
+          >
+          <div id="workspace" hidden>
+            <!-- Show actual workspace facts and direct paths to the next operation -->
+            <div data-view="home">
+              <div class="overview-grid">
+                <section>
+                  <p class="eyebrow">ENVIRONMENTS</p>
+                  <strong class="metric" id="environment-count">—</strong>
+                  <p id="environment-summary">Connect to load environments.</p>
+                </section>
+                <section>
+                  <p class="eyebrow">COMPONENTS</p>
+                  <strong class="metric" id="component-count">—</strong>
+                  <p id="component-summary">Connect to load components.</p>
+                </section>
+                <section>
+                  <p class="eyebrow">RELEASES</p>
+                  <strong class="metric" id="release-count">—</strong>
+                  <p id="release-summary">Waiting for release history.</p>
+                </section>
+              </div>
+              <section>
+                <div class="row">
+                  <div>
+                    <h2>Make your next change</h2>
+                    <p class="muted">
+                      Choose an environment, review its workflow, then prepare a release.
+                    </p>
+                  </div>
+                  <button type="button" data-compose>New release</button>
+                </div>
+                <div class="quick-links">
+                  <a href="#infrastructure"
+                    ><strong>Infrastructure</strong
+                    ><span>Review native changes and isolated plans</span></a
+                  ><a href="#incidents"
+                    ><strong>Incidents</strong
+                    ><span>Investigate outcomes and route notifications</span></a
+                  ><a href="#controls"
+                    ><strong>Workspace controls</strong
+                    ><span>Configure repositories, environments and delivery</span></a
+                  >
+                </div>
+              </section>
+            </div>
+            <!-- Keep preparation separate from approval and release execution -->
+            <div data-view="releases" hidden>
+              <div class="view-actions">
+                <button type="button" data-compose>New release</button>
+              </div>
+              <details id="release-composer">
+                <summary>Prepare a release</summary>
+                <form id="release-form">
+                  <div class="controls">
+                    <label>Environment<select id="environment"></select></label
+                    ><label
+                      >Component<select id="component">
+                        <option value="">All components</option>
+                      </select></label
+                    >
+                  </div>
+                  <label
+                    >Immutable image, optional<input
+                      id="image"
+                      placeholder="registry.example/team/app@sha256:..."
+                  /></label>
+                  <details>
+                    <summary>Dependencies and infrastructure receipts</summary>
+                    <!-- Select receipt consumers without requiring a JSON mapping -->
+                    <input id="receipts" type="hidden" value="{}" />
+                    <div id="receipt-rows"></div>
+                    <button id="receipt-add" type="button" disabled class="secondary">
+                      Add infrastructure receipt
+                    </button>
+                    <p id="receipt-status" role="status" aria-live="polite"></p>
+                    <p class="muted">
+                      For registered infrastructure receipts, supply the target environment's public
+                      receipt IDs. The controller checks them again before execution.
+                    </p>
+                    <label class="check"
+                      ><input id="only" type="checkbox" /> Reuse recorded dependency outputs</label
+                    >
+                  </details>
+                  <fieldset id="preview-options" hidden>
+                    <legend>Isolated static preview</legend>
+                    <label for="preview-owner">Preview owner</label
+                    ><input id="preview-owner" maxlength="200" />
+                    <label for="preview-hours">Expires after hours (1–72)</label
+                    ><input id="preview-hours" type="number" min="1" max="72" value="1" />
+                    <label class="check"
+                      ><input id="preview-retain" type="checkbox" /> Retain deployed files when
+                      retiring</label
+                    >
+                    <p>
+                      Each preview gets a new namespace and deploys its own dependencies. Expiry
+                      marks cleanup due; it never deletes files. Cleanup requires a separate exact
+                      approval.
+                    </p>
+                  </fieldset>
+                  <div class="controls">
+                    <button type="button" id="plan" class="secondary">Preview workflow</button
+                    ><button type="submit">Prepare release</button>
+                  </div>
+                </form>
+                <p class="muted">
+                  Preparation runs trusted repository checks and build code. Deployment waits for
+                  exact approval unless a bounded grant applies.
+                </p>
+                <div id="plan-output" hidden></div>
+              </details>
+              <div class="grid">
+                <section>
+                  <div class="row">
+                    <h2>Releases</h2>
+                    <button id="refresh" class="secondary">Refresh</button>
+                  </div>
+                  <div id="releases"></div>
+                </section>
+                <section>
+                  <h2 id="detail-heading" tabindex="-1">Release detail</h2>
+                  <div id="detail">
+                    <p>Select a release to inspect changes and events.</p>
+                  </div>
+                </section>
+              </div>
+            </div>
+            <!-- Preserve provider-specific meaning instead of implying interchangeable engines -->
+            <div data-view="infrastructure" hidden>
+              <section>
+                <h2>Native infrastructure releases</h2>
+                <p>
+                  Use the release workflow for CloudFormation, AWS CDK, ARM and Bicep components
+                  configured in this workspace.
+                </p>
+                <button type="button" data-compose>Prepare infrastructure release</button>
+              </section>
+              <!-- Review isolated infrastructure separately from application releases and credential setup -->
+              <details id="isolated-panel">
+                <summary>Isolated GCP infrastructure</summary>
+                <p>
+                  Review the registered Cloud Run recipe, approve planning, then review and approve
+                  its saved infrastructure plan. Account access and the isolated runtime are
+                  configured outside this workspace.
+                </p>
+                <button id="isolated-refresh" type="button" class="secondary">
+                  Load infrastructure status
+                </button>
+                <p id="isolated-availability">Open this panel to check registration.</p>
+                <div id="isolated-recipe"></div>
+                <form id="isolated-prepare-form" action="/api/isolated/prepare" method="post">
+                  <button id="isolated-prepare" type="submit" disabled>
+                    Prepare planning review
+                  </button>
+                </form>
+                <p>
+                  Planning uses authenticated provider reads and backend locking. Applying a saved
+                  plan changes cloud resources. Stopping a worker does not undo accepted cloud
+                  operations. This route does not support infrastructure destruction.
+                </p>
+                <div id="isolated-requests"></div>
+              </details>
+            </div>
+            <div data-view="incidents" hidden>
+              <details id="incident-panel">
+                <summary>Local incidents</summary>
+                <p>
+                  Track a failed or uncertain release without changing its deployment outcome.
+                  Owners are local labels. Escalations queue signals; they do not contact another
+                  responder or start a background scheduler.
+                </p>
+                <form id="incident-open-form">
+                  <label for="incident-release">Failed or uncertain release ID</label
+                  ><input
+                    id="incident-release"
+                    name="release"
+                    required
+                    pattern="[0-9a-f]{32}"
+                    maxlength="32"
+                    autocapitalize="off"
+                    spellcheck="false"
+                  />
+                  <label for="incident-owner">Responsible team or person</label
+                  ><input id="incident-owner" name="owner" required maxlength="500" />
+                  <div class="controls">
+                    <label for="incident-interval"
+                      >Escalation interval (seconds)<input
+                        id="incident-interval"
+                        name="interval"
+                        type="number"
+                        min="60"
+                        max="86400"
+                        value="900"
+                        required
+                    /></label>
+                    <label for="incident-limit"
+                      >Maximum escalation level<input
+                        id="incident-limit"
+                        name="limit"
+                        type="number"
+                        min="1"
+                        max="5"
+                        value="3"
+                        required
+                    /></label>
+                  </div>
+                  <label for="incident-open-note">What needs investigation?</label
+                  ><textarea
+                    id="incident-open-note"
+                    name="note"
+                    rows="3"
+                    required
+                    maxlength="500"
+                  ></textarea>
+                  <button type="submit">Open local incident</button>
+                </form>
+                <h3>Incident history</h3>
+                <div id="incidents"></div>
+                <h3 id="incident-heading" tabindex="-1">Selected incident</h3>
+                <p id="incident-detail">Select an incident to inspect its current state.</p>
+                <form id="incident-decision-form">
+                  <label for="incident-note">Decision and evidence</label
+                  ><textarea
+                    id="incident-note"
+                    name="note"
+                    rows="3"
+                    required
+                    maxlength="500"
+                  ></textarea>
+                  <div class="controls">
+                    <button
+                      id="incident-acknowledge"
+                      name="action"
+                      value="acknowledge"
+                      type="submit"
+                    >
+                      Acknowledge</button
+                    ><button id="incident-resolve" name="action" value="resolve" type="submit">
+                      Resolve
+                    </button>
+                  </div>
+                </form>
+                <p>
+                  Acknowledgement stops escalation. Resolution records your decision; it does not
+                  repair or reconcile the deployment. Notes stay in the local audit. Keep secrets
+                  out of them.
+                </p>
+                <button id="incident-tick" type="button" class="secondary">
+                  Check due escalations
+                </button>
+                <h3>Workspace notification outbox</h3>
+                <p id="notification-status"></p>
+                <p>
+                  Delivery is separate from acknowledgement. Use
+                  <code>deploy-ops notify --status</code> to inspect or
+                  <code>deploy-ops notify</code> to send through your configured endpoint. This
+                  legacy outbox has one destination. Named destinations use the separate paging
+                  delivery records below.
+                </p>
+                <p id="incident-status" role="status" aria-live="polite" tabindex="-1"></p>
+              </details>
+              <!-- Configure named paging destinations without exposing worker credentials -->
+              <details id="paging-panel">
+                <summary>Paging destinations and routing</summary>
+                <p>
+                  Keep responder schedules in your paging provider. Local incident acknowledgement
+                  and remote destination acknowledgement are separate decisions. Accepted requests
+                  do not prove a person received a page.
+                </p>
+                <button id="paging-load" type="button" class="secondary">
+                  Load saved paging settings
+                </button>
+                <p id="paging-revision">Open this panel to load settings.</p>
+                <form id="paging-destination-form" action="/api/paging/save" method="post">
+                  <fieldset>
+                    <legend>Named destination</legend>
+                    <label for="paging-destination-select">Edit destination</label
+                    ><select id="paging-destination-select" name="selected">
+                      <option value="">New destination</option>
+                    </select>
+                    <label for="paging-destination-name">Destination name (required)</label
+                    ><input
+                      id="paging-destination-name"
+                      name="name"
+                      required
+                      pattern="[a-z][a-z0-9\-]{0,47}"
+                      maxlength="48"
+                      autocapitalize="off"
+                      spellcheck="false"
+                    />
+                    <label for="paging-provider">Provider (required)</label
+                    ><select id="paging-provider" name="provider" required></select>
+                    <div id="paging-destination-fields"></div>
+                    <p id="paging-provider-help"></p>
+                    <button type="submit">Apply destination to draft</button>
+                  </fieldset>
+                </form>
+                <form id="paging-route-form" action="/api/paging/save" method="post">
+                  <fieldset>
+                    <legend>Ordered route</legend>
+                    <label for="paging-route-select">Edit route</label
+                    ><select id="paging-route-select" name="selected">
+                      <option value="">New route</option>
+                    </select>
+                    <label for="paging-route-name">Route name (required)</label
+                    ><input
+                      id="paging-route-name"
+                      name="name"
+                      required
+                      pattern="[a-z][a-z0-9\-]{0,47}"
+                      maxlength="48"
+                      autocapitalize="off"
+                      spellcheck="false"
+                    />
+                    <div id="paging-route-fields"></div>
+                    <button type="submit">Apply route to draft</button>
+                  </fieldset>
+                </form>
+                <h3>Route order</h3>
+                <p>
+                  The first matching route wins. Each route can fan out to multiple destinations.
+                  Repeated names select a destination once. No matching route uses the default
+                  destinations.
+                </p>
+                <div id="paging-routes"></div>
+                <fieldset id="paging-defaults">
+                  <legend>Default destinations</legend>
+                </fieldset>
+                <div class="controls">
+                  <button id="paging-save" type="button">Save paging draft</button
+                  ><button id="paging-activate" type="button">Activate saved revision</button>
+                </div>
+                <p>
+                  Saving does not activate routing or send a test. Activation affects new events.
+                  Existing remote incidents retain their original destinations and credential
+                  references.
+                </p>
+                <!-- Route preview never contacts a provider or evaluates credential values -->
+                <form id="paging-preview-form" action="/api/paging/preview" method="post">
+                  <fieldset>
+                    <legend>Preview draft route</legend>
+                    <div id="paging-preview-fields"></div>
+                    <button type="submit">Preview route without sending</button>
+                  </fieldset>
+                </form>
+                <div id="paging-preview-result"></div>
+                <!-- Explicit sending stays separate from configuration and local incident decisions -->
+                <form id="paging-test-form" action="/api/paging/test" method="post">
+                  <fieldset>
+                    <legend>Synthetic test page</legend>
+                    <label for="paging-test-destination">Active destination</label
+                    ><select id="paging-test-destination" name="name" required></select>
+                    <label class="check" for="paging-test-confirm"
+                      ><input id="paging-test-confirm" name="confirm" type="checkbox" required /> I
+                      intend to contact this destination. A running worker may send immediately and
+                      provider channels may incur charges.</label
+                    >
+                    <button type="submit">Queue test page</button>
+                  </fieldset>
+                </form>
+                <div class="controls">
+                  <button id="paging-drain" type="button">Send queued deliveries</button
+                  ><button id="paging-refresh" type="button" class="secondary">
+                    Refresh delivery evidence
+                  </button>
+                </div>
+                <p>
+                  For unattended work, run
+                  <code>deploy-ops paging worker</code> in a separately managed foreground process
+                  or container. A sleeping host cannot deliver new events. No service is installed
+                  automatically.
+                </p>
+                <p id="paging-health"></p>
+                <div id="paging-bindings"></div>
+                <div id="paging-deliveries"></div>
+                <p id="paging-status" role="status" aria-live="polite" tabindex="-1"></p>
+                <p>
+                  Native paging supports PagerDuty, GoAlert, incident.io, Better Stack, Grafana
+                  Cloud IRM and ilert. Optional Apprise notification transport remains planned.
+                </p>
+              </details>
+            </div>
+            <div data-view="controls" hidden>
+              <label class="settings-search" for="settings-search"
+                >Search settings<input
+                  id="settings-search"
+                  type="search"
+                  placeholder="Find a setting, such as theme or environment"
+                  autocomplete="off"
+              /></label>
+              <p id="settings-results" class="muted" role="status"></p>
+              <div id="settings-matches" class="settings-matches"></div>
+              <details
+                id="workspace-settings"
+                data-setting="repositories environments components providers workspace configuration"
+              >
+                <summary>Workspace configuration</summary>
+                <p>
+                  Edit existing repositories, environments and components below. Advanced options
+                  stay in the TOML draft. Keep secrets out of this file. Finish or cancel
+                  outstanding releases before saving.
+                </p>
+                <button id="load-forms" type="button" class="secondary">
+                  Load forms from current draft
+                </button>
+                <form id="config-form" action="/api/config/patch" method="post">
+                  <fieldset id="config-controls">
+                    <legend>Guided settings</legend>
+                    <label for="config-section">Settings group</label
+                    ><select id="config-section" name="section">
+                      <option value="repositories">Repositories</option>
+                      <option value="environments">Environments</option>
+                      <option value="components">Components</option>
+                      <option value="options">Native infrastructure settings</option>
+                    </select>
+                    <label for="config-name">Entry</label
+                    ><select id="config-name" name="name"></select>
+                    <div id="config-fields"></div>
+                    <button type="submit">Apply fields to draft</button>
+                  </fieldset>
+                </form>
+                <p id="config-status" role="status" aria-live="polite" tabindex="-1"></p>
+                <p class="muted">
+                  Provider and tool choices do not translate advanced options or grant cloud
+                  credentials. Review environment overrides in TOML before deployment.
+                </p>
+                <details>
+                  <summary>Advanced TOML editor</summary>
+                  <p>
+                    Use the same validated workspace file as the CLI. Changes here stay in the draft
+                    until reviewed and saved.
+                  </p>
+                  <label for="config">Deployment workspace</label
+                  ><textarea id="config" rows="22" spellcheck="false"></textarea>
+                </details>
+                <div class="controls">
+                  <button id="validate-config" class="secondary">Validate configuration</button
+                  ><button id="save-config">Save local configuration</button>
+                </div>
+                <h3>Changes to review</h3>
+                <pre id="config-diff">No changes reviewed yet.</pre>
+              </details>
+              <details data-setting="local autonomy delegation permission hours uses">
+                <summary>Local autonomy</summary>
+                <p>
+                  For non-production local static and directory changes only. Each component
+                  receives its own allowance.
+                </p>
+                <form id="delegation">
+                  <div class="controls">
+                    <label>Hours<input id="hours" type="number" min="1" max="12" value="1" /></label
+                    ><label
+                      >Uses per component<input
+                        id="uses"
+                        type="number"
+                        min="1"
+                        max="100"
+                        value="1" /></label
+                    ><button>Grant window</button>
+                  </div>
+                </form>
+              </details>
+            </div>
+          </div>
+          <!-- Appearance is local to this browser and remains available before connecting -->
+          <div id="appearance-view" hidden>
+            <details
+              class="appearance-settings"
+              data-setting="appearance theme colors density radius import export"
+              open
+            >
+              <summary>Appearance</summary>
+              <p id="appearance-summary" class="muted">
+                Follow your system or choose a preset. Appearance stays separate from deployment
+                settings.
+              </p>
+              <form id="appearance-form">
+                <div class="controls">
+                  <label
+                    >Theme<select id="appearance-theme">
+                      <option value="system">System</option>
+                    </select></label
+                  >
+                  <label
+                    >Density<select id="appearance-density">
+                      <option value="comfortable">Comfortable</option>
+                      <option value="compact">Compact</option>
+                    </select></label
+                  >
+                  <label
+                    >Corner radius (0–20 px)<input
+                      id="appearance-radius"
+                      type="range"
+                      min="0"
+                      max="20"
+                      step="1"
+                      value="10"
+                      required
+                    /><span id="appearance-radius-value" aria-hidden="true">10 px</span></label
+                  >
+                </div>
+                <p class="muted">Changes save automatically in this browser.</p>
+                <button id="appearance-reset" type="button" class="secondary">
+                  Reset appearance
+                </button>
+              </form>
+              <details class="appearance-settings__advanced">
+                <summary>Import, export and custom colors</summary>
+                <p>
+                  Export the current settings here, or import appearance JSON. Color overrides must
+                  preserve readable contrast. Deployment settings and credentials are never
+                  included.
+                </p>
+                <label for="appearance-json">Appearance JSON</label
+                ><textarea
+                  id="appearance-json"
+                  rows="8"
+                  maxlength="8192"
+                  spellcheck="false"
+                ></textarea>
+                <div class="controls">
+                  <button id="appearance-export" type="button" class="secondary">
+                    Export current appearance</button
+                  ><button id="appearance-import" type="button">Import appearance</button>
+                </div>
+              </details>
+              <p id="appearance-status" role="status" aria-live="polite"></p>
+            </details>
+          </div>
+          <p id="message" role="status" aria-live="polite"></p>
+        </main>
+        <footer>DeployOps <span>by neon1 LLC</span></footer>
+      </div>
+    </div>
+  </body>
+</html>

@@ -16,8 +16,16 @@ let jsonDirty = false;
 
 // Announce appearance failures without discarding the selected theme
 function notice(message, error = false) {
-  element("appearance-status").textContent = message;
+  if (element("appearance-status").textContent !== message) element("appearance-status").textContent = message;
   element("appearance-status").classList.toggle("error", error);
+}
+
+
+// Keep the visible unit and native slider announcement synchronized
+function radiusValue() {
+  const radius = element("appearance-radius");
+  element("appearance-radius-value").textContent = `${radius.value} px`;
+  radius.setAttribute("aria-valuetext", `${radius.value} pixels`);
 }
 
 
@@ -37,22 +45,23 @@ function render() {
     element("appearance-density").value = theme.tokens.density;
     element("appearance-radius").value = theme.tokens.radius;
   }
+  radiusValue();
   if (!jsonDirty) element("appearance-json").value = JSON.stringify(preference, null, 2);
 }
 
 
 // Validate preferences before applying and persisting their effects
-function save(value, message, reset = false) {
+function save(value, message, reset = false, keepDraft = false) {
   // Validate before changing the view or persisted preference
   const next = parsePreference(value);
   preference = next;
   formDirty = false;
-  jsonDirty = false;
+  if (!keepDraft) jsonDirty = false;
   render();
   try {
     if (reset) localStorage.removeItem(storageKey);
     else localStorage.setItem(storageKey, JSON.stringify(next));
-    notice(message);
+    notice(message + (jsonDirty ? " Your JSON draft was kept." : ""));
   } catch {
     notice("Appearance applied for this session. Browser storage is unavailable.");
   }
@@ -69,10 +78,10 @@ try {
 }
 render();
 
-element("appearance-form").addEventListener("input", () => { formDirty = true; });
-element("appearance-json").addEventListener("input", () => { jsonDirty = true; });
-element("appearance-form").addEventListener("submit", (event) => {
-  event.preventDefault();
+// Apply discrete settings immediately without overwriting a custom JSON draft
+function saveControls() {
+  formDirty = true;
+  radiusValue();
   const selection = element("appearance-theme").value;
   const mode = selection === "system" ? "system" : "preset";
   const preset = mode === "system" ? preference.preset : selection;
@@ -82,9 +91,24 @@ element("appearance-form").addEventListener("submit", (event) => {
       ...(changedPalette ? {} : preference.overrides),
       density: element("appearance-density").value,
       radius: Number(element("appearance-radius").value),
-    } }, changedPalette ? "Appearance saved. Custom colors were reset for the selected theme." : "Appearance saved.");
+    } }, changedPalette ? "Appearance saved. Custom colors were reset for the selected theme." : "Appearance saved.", false, true);
   } catch (error) { notice(error.message, true); }
+}
+
+
+// Native controls retain their keyboard behavior while each valid selection saves
+element("appearance-form").addEventListener("input", (event) => {
+  formDirty = true;
+  if (event.target === element("appearance-radius")) saveControls();
 });
+for (const id of ["appearance-theme", "appearance-density"]) element(id).addEventListener("change", saveControls);
+element("appearance-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  saveControls();
+});
+element("appearance-json").addEventListener("input", () => { jsonDirty = true; });
+
+// Import, export and reset remain explicit actions on the custom preference draft
 element("appearance-reset").addEventListener("click", () => save(defaultPreference, "Following system appearance. Custom settings cleared.", true));
 element("appearance-export").addEventListener("click", () => {
   jsonDirty = false;

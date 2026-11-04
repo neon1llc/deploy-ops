@@ -27,9 +27,10 @@ class Record(BaseModel):
 
 # Select a source revision and make working-tree use explicit
 class Repository(Record):
-    path: str
-    revision: str = "HEAD"
-    allow_uncommitted: bool = False
+    path: str = Field(description="Local repository path, relative to the workspace file or absolute")
+    revision: str = Field(default="HEAD", description="Git revision to capture when preparing a release")
+    allow_uncommitted: bool = Field(default=False, title="Allow uncommitted source",
+        description="Include working-tree changes during preparation instead of requiring a clean Git revision")
 
 
     # Prevent a Git revision from becoming a command option
@@ -43,10 +44,13 @@ class Repository(Record):
 # Keep provider, production and promotion choices separate from component settings
 class Environment(Record):
     provider: Literal["local", "aws", "azure", "gcp"]
-    production: bool = False
-    preview: bool = False
+    production: bool = Field(default=False, title="Production environment",
+        description="Require production authorization; local autonomy windows do not apply")
+    preview: bool = Field(default=False, title="Temporary preview environment",
+        description="Create an isolated static preview with an owner, expiry and separately approved cleanup")
     variables: dict[str, str] = Field(default_factory=dict)
-    promote_from: list[str] = Field(default_factory=list)
+    promote_from: list[str] = Field(default_factory=list, title="Accept promotions from",
+        description="Environments whose successful application artifacts may be promoted here")
 
 
 # Represent trusted build inputs as argument lists and explicit artifact settings
@@ -73,7 +77,8 @@ class Component(Record):
     # Build inputs, public outputs and bounds stay part of the approved contract
     build: Build = Field(default_factory=Build)
     outputs: list[str] = Field(default_factory=list)
-    timeout_seconds: int = Field(default=600, ge=10, le=3600)
+    timeout_seconds: int = Field(default=600, ge=10, le=3600, title="Command timeout (seconds)",
+        description="Maximum duration for each supervised component command; accepted remote operations may continue after timeout")
     estimated_monthly_delta_cents: int | None = Field(default=None, ge=0)
 
 

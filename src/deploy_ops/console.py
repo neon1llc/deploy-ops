@@ -135,8 +135,9 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
 
     # Serve only known UI assets rather than arbitrary package files
     @app.get("/assets/{name}")
+    @app.get("/{name}")
     def asset(name: str):
-        if name not in ("app.js", "paging.js", "isolated.js", "style.css", "appearance.mjs", "theme.mjs"):
+        if name not in ("app.js", "shell.js", "paging.js", "isolated.js", "style.css", "appearance.mjs", "theme.mjs"):
             raise HTTPException(404)
         return FileResponse(assets / name)
 
@@ -325,7 +326,19 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     def detail(release_id: str):
         release = engine.ledger.get(release_id)
         cleanup = release.get("cleanup", {})
+
+        # Read current approval without exposing controller identities or execution credentials
+        request_statuses = {}
+        for name, node in release["nodes"].items():
+            if node.get("status") != "waiting" or not node.get("request_id"):
+                continue
+            try:
+                request = engine.gate.status(node["request_id"])
+                request_statuses[name] = {"status": request["status"], "digest": request["digest"]}
+            except Exception:
+                request_statuses[name] = {"status": "unavailable", "digest": None}
         return {"release": release, "events": engine.ledger.events(release_id),
+                "request_statuses": request_statuses,
                 "cleanup_request": engine.gate.status(cleanup["request_id"]) if cleanup.get("request_id") else None,
                 "artifact_actions": engine.artifact_actions(release)}
 

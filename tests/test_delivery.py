@@ -3,6 +3,8 @@
 
 import json
 import os
+import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -188,9 +190,11 @@ def test_console_auth_origin_and_same_core(engine):
     token = "t" * 40
     client = TestClient(create_app(engine, token), base_url="http://127.0.0.1:8765")
     assert client.get("/").status_code == 200
-    for asset in ("app.js", "style.css", "appearance.mjs", "theme.mjs"):
+    for asset in ("app.js", "shell.js", "paging.js", "isolated.js", "style.css", "appearance.mjs", "theme.mjs"):
         assert client.get("/assets/" + asset).status_code == 200
+        assert client.get("/" + asset).status_code == 200
     assert client.get("/assets/operator.token").status_code == 404
+    assert client.get("/operator.token").status_code == 404
     assert client.get("/api/workspace").status_code == 401
     headers = {"Authorization": "Bearer " + token}
     assert client.get("/api/workspace", headers=headers).status_code == 200
@@ -382,3 +386,47 @@ def test_image_promotion_requires_a_destination_that_consumes_the_artifact(engin
     with pytest.raises(Refused, match="own reviewed promotion"):
         engine._check_promotion(origin, "staging", "web", False)
     assert not any(action["environment"] == "staging" for action in engine.artifact_actions(origin))
+
+
+# Keep approval observations current without starting execution or returning controller secrets
+def test_console_separates_current_approval_from_execution(engine, monkeypatch):
+    release = engine.advance(engine.create("development")["id"])
+    name = next(name for name, node in release["nodes"].items() if node["status"] == "waiting")
+    node = release["nodes"][name]
+    token = "t" * 40
+    client = TestClient(create_app(engine, token), base_url="http://127.0.0.1:8765",
+                        headers={"Authorization": "Bearer " + token})
+    route = "/api/releases/" + release["id"]
+    assert client.get(route).json()["request_statuses"][name] == {
+        "status": "pending", "digest": node["request_digest"]}
+    response = client.post(route + "/approve", json={"component": name, "digest": node["request_digest"]})
+    assert response.status_code == 200
+    observed = client.get(route).json()
+    assert observed["request_statuses"][name] == {"status": "approved", "digest": node["request_digest"]}
+    assert observed["release"]["status"] == "waiting"
+    assert observed["release"]["nodes"][name]["status"] == "waiting"
+    assert not any(event["name"] == "component.succeeded" for event in observed["events"])
+
+    # Provider-independent expiry stays authoritative even when the release has not advanced
+    request = engine.gate.status(node["request_id"])
+    monkeypatch.setattr(engine.gate.controller, "now", lambda: request["expires_at"] + 10000)
+    assert client.get(route).json()["request_statuses"][name]["status"] == "expired"
+
+    # Read failures preserve the release view without echoing native errors or guessing authority
+    def unavailable(request_id):
+        raise RuntimeError("private-credential-sentinel")
+    monkeypatch.setattr(engine.gate, "status", unavailable)
+    failed = client.get(route)
+    assert failed.status_code == 200
+    assert failed.json()["request_statuses"][name] == {"status": "unavailable", "digest": None}
+    assert "private-credential-sentinel" not in failed.text
+
+
+# Check exact approval and native readback buttons through the actual console render functions
+def test_console_release_action_contract():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node is required for the dependency-free console DOM contract")
+    root = Path(__file__).resolve().parents[1]
+    subprocess.run([node, str(root / "tests" / "release_ui.cjs")], cwd=root,
+                   check=True, capture_output=True, text=True, timeout=20)

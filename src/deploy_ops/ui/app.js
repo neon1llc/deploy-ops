@@ -75,10 +75,159 @@ async function safe(action) {
 }
 
 
+// Keep receipt drafts in the current page while preserving the shared JSON input contract
+let receiptRows = [];
+let receiptSerial = 0;
+let receiptSnapshot = null;
+let receiptImportError = "";
+
+
+// Offer configured infrastructure components without claiming a controller receipt inventory
+function receiptComponents() {
+  return Object.entries(workspaceConfiguration?.components || {})
+    .filter(([, component]) => component.kind === "infrastructure").map(([name]) => name);
+}
+
+
+// Validate row completeness and uniqueness before constructing the same component-to-ID mapping
+function receiptValue(showErrors = false, focusError = false) {
+  const known = new Set(receiptComponents());
+  const seen = new Map();
+  const errors = new Map();
+  for (const row of receiptRows) {
+    const name = row.component.value;
+    if (!known.has(name)) errors.set(row.component, "Choose a configured infrastructure component.");
+    if (!row.receipt.value.trim()) errors.set(row.receipt, "Enter the public infrastructure receipt ID.");
+    if (seen.has(name) && name) {
+      errors.set(seen.get(name), "Use each infrastructure component only once.");
+      errors.set(row.component, "Use each infrastructure component only once.");
+    }
+    seen.set(name, row.component);
+  }
+  for (const row of receiptRows) {
+    for (const field of [row.component, row.receipt]) {
+      field.setCustomValidity(showErrors ? errors.get(field) || "" : "");
+      field.setAttribute("aria-invalid", String(showErrors && errors.has(field)));
+    }
+  }
+  const status = element("receipt-status");
+  status.textContent = errors.size ? (showErrors ? [...errors.values()][0] : "")
+    : receiptRows.length ? `${receiptRows.length} infrastructure receipt(s) selected. The controller validates them before execution.`
+      : "No infrastructure receipts selected.";
+  status.className = errors.size && showErrors ? "error" : "muted";
+  if (errors.size) {
+    if (focusError) {
+      const field = errors.keys().next().value;
+      const details = field.closest("details");
+      if (details) details.open = true;
+      field.focus(); field.reportValidity();
+    }
+    return null;
+  }
+  const values = Object.fromEntries(receiptRows.map(row => [row.component.value, row.receipt.value.trim()]));
+  receiptSnapshot = JSON.stringify(values);
+  element("receipts").value = receiptSnapshot;
+  receiptImportError = "";
+  return values;
+}
+
+
+// Add independently labelled fields without rebuilding another row's unfinished input
+function addReceiptRow(name = "", value = "", focus = false) {
+  const key = "receipt-" + ++receiptSerial;
+  const row = document.createElement("fieldset");
+  text(row, "legend", "Infrastructure receipt " + receiptSerial);
+  const componentLabel = text(row, "label", "Infrastructure component (required)");
+  componentLabel.htmlFor = key + "-component";
+  const component = document.createElement("select");
+  component.id = key + "-component"; component.name = key + "-component"; component.required = true;
+  const placeholder = text(component, "option", "Choose infrastructure component"); placeholder.value = "";
+  const names = receiptComponents();
+  for (const choice of names) text(component, "option", choice).value = choice;
+  if (name && !names.includes(name)) text(component, "option", "Unavailable component: " + name).value = name;
+  component.value = name;
+  const receiptLabel = text(row, "label", "Public receipt ID (required)");
+  receiptLabel.htmlFor = key + "-id";
+  const receipt = document.createElement("input");
+  receipt.id = key + "-id"; receipt.name = key + "-id"; receipt.type = "text";
+  receipt.required = true; receipt.value = value; receipt.spellcheck = false;
+  receipt.setAttribute("autocorrect", "off"); receipt.setAttribute("autocapitalize", "off");
+  const remove = document.createElement("button");
+  remove.type = "button"; remove.className = "secondary";
+  remove.textContent = "Remove receipt " + receiptSerial;
+  const entry = {row, component, receipt};
+  remove.addEventListener("click", () => {
+    const index = receiptRows.indexOf(entry);
+    receiptRows.splice(index, 1); row.remove(); receiptValue();
+    (receiptRows[index]?.component || receiptRows[index - 1]?.component || element("receipt-add")).focus();
+  });
+
+  // Clear feedback during typing and validate after leaving a field or explicitly submitting
+  for (const field of [component, receipt]) {
+    field.setAttribute("aria-describedby", "receipt-status");
+    field.addEventListener("input", () => receiptValue());
+    field.addEventListener("change", () => receiptValue(true));
+    field.addEventListener("blur", () => receiptValue(true));
+    field.addEventListener("invalid", () => {
+      const details = field.closest("details");
+      if (details) details.open = true;
+      receiptValue(true);
+    });
+  }
+  componentLabel.after(component);
+  row.append(receipt, remove); element("receipt-rows").append(row);
+  receiptRows.push(entry);
+  if (focus) component.focus();
+}
+
+
+// Import changed receipt references from isolated prefill without discarding ordinary navigation drafts
+function loadReceiptRows(force = false) {
+  const raw = element("receipts").value || "{}";
+  if (!force && raw === receiptSnapshot) return;
+  let values;
+  try {
+    values = JSON.parse(raw);
+    if (!values || Array.isArray(values) || typeof values !== "object"
+      || Object.values(values).some(value => typeof value !== "string")) throw new Error();
+  } catch {
+    receiptImportError = "Receipt references could not be read. Remove or replace the receipt rows.";
+    element("receipt-status").textContent = receiptImportError;
+    element("receipt-status").className = "error";
+    return;
+  }
+  receiptSnapshot = raw;
+  receiptRows = []; element("receipt-rows").replaceChildren();
+  for (const [name, value] of Object.entries(values)) addReceiptRow(name, value);
+  receiptValue(true);
+}
+
+
+// Block both workflow preview and release reuse on incomplete receipt drafts
+function readReceipts() {
+  loadReceiptRows();
+  if (receiptImportError) throw new Error(receiptImportError);
+  const values = receiptValue(true, true);
+  if (values === null) throw new Error("Complete or remove invalid infrastructure receipt rows.");
+  return values;
+}
+
+
+// Synchronize only explicit workspace or prefill changes rather than background polling
+if (element("receipt-add")) {
+  element("receipt-add").addEventListener("click", () => { addReceiptRow("", "", true); receiptValue(); });
+  document.addEventListener("deployops:workspace", () => {
+    element("receipt-add").disabled = !receiptComponents().length;
+    loadReceiptRows(true);
+  });
+  document.addEventListener("deployops:navigate", () => loadReceiptRows());
+}
+
+
 // Translate selected environment and dependencies into one release request
 function selection() {
   return { environment: element("environment").value, component: element("component").value || null, only: element("only").checked, image: element("image").value || null,
-    receipts: JSON.parse(element("receipts").value || "{}"),
+    receipts: readReceipts(),
     ...(workspaceConfiguration?.environments[element("environment").value]?.preview ? {
       preview_owner: element("preview-owner").value, preview_hours: Number(element("preview-hours").value),
       retain_preview_data: element("preview-retain").checked} : {}) };
@@ -92,6 +241,7 @@ async function refresh() {
   const key = JSON.stringify(releases);
   if (key !== releaseKey) {
     releaseKey = key;
+    document.dispatchEvent(new CustomEvent("deployops:releases", {detail: releases}));
     const root = element("releases");
     const focused = root.contains(document.activeElement) ? document.activeElement.dataset.key : null;
     root.replaceChildren();
@@ -108,6 +258,97 @@ async function refresh() {
 }
 
 
+// Present recorded facts without inferring provider behavior from names or adapter labels
+function reviewFacts(parent, entries) {
+  const list = document.createElement("dl");
+  list.className = "isolated-facts";
+  for (const [label, value] of entries) {
+    if (value === undefined || value === null || value === "") continue;
+    text(list, "dt", label);
+    text(list, "dd", String(value));
+  }
+  parent.append(list);
+}
+
+
+// Retain complete evidence behind a native disclosure without changing its approval binding
+function reviewEvidence(parent, key, label, value, expanded = new Set()) {
+  const details = document.createElement("details");
+  details.dataset.review = key;
+  details.open = expanded.has(key);
+  text(details, "summary", label).dataset.key = key + ":summary";
+  const pre = document.createElement("pre");
+  pre.tabIndex = 0; pre.dataset.key = key + ":code"; pre.dataset.reviewScroll = key;
+  text(pre, "code", JSON.stringify(value, null, 2));
+  details.append(pre); parent.append(details);
+}
+
+
+// Show the adapter's normalized change contract rather than interpreting its native resource format
+function reviewChanges(parent, name, preview, expanded) {
+  text(parent, "h4", "Proposed changes");
+  if (preview.manual_only) text(parent, "p", "Manual-only review required.").className = "isolated-warning";
+  if (preview.findings?.length) {
+    text(parent, "h4", "Review findings");
+    const list = document.createElement("ul");
+    list.className = "isolated-warning";
+    for (const finding of preview.findings) text(list, "li", finding);
+    parent.append(list);
+  }
+  const changes = preview.changes || [];
+  if (!changes.length) text(parent, "p", "No resource actions are recorded. Review the remaining evidence and outputs.");
+  else {
+    const counts = new Map();
+    for (const change of changes) counts.set(change.action, (counts.get(change.action) || 0) + 1);
+    text(parent, "p", [...counts].map(([action, count]) => `${count} ${action}`).join(" · "));
+
+    // Keep the resource address associated with its exact type and action on narrow screens
+    const region = document.createElement("div");
+    region.className = "isolated-table"; region.tabIndex = 0;
+    region.dataset.key = name + ":changes"; region.dataset.reviewScroll = name + ":changes";
+    region.setAttribute("role", "region"); region.setAttribute("aria-label", name + " proposed changes");
+    const table = document.createElement("table");
+    text(table, "caption", name + " · adapter-reported actions");
+    const head = document.createElement("thead");
+    const headings = document.createElement("tr");
+    for (const label of ["Resource address", "Resource type", "Action"]) text(headings, "th", label).scope = "col";
+    head.append(headings); table.append(head);
+    const body = document.createElement("tbody");
+    for (const change of changes) {
+      const row = document.createElement("tr");
+      text(row, "th", change.address).scope = "row";
+      text(row, "td", change.resource_type);
+      const action = text(row, "td", change.action);
+      if (["delete", "replace"].includes(change.action)) action.className = "isolated-warning";
+      body.append(row);
+    }
+    table.append(body); region.append(table); parent.append(region);
+  }
+  reviewEvidence(parent, name + ":preview", "Complete normalized preview", preview, expanded);
+}
+
+
+// Explain the shared graph in its returned order without preparing source or provider changes
+function reviewWorkflow(root, workflow) {
+  root.replaceChildren();
+  text(root, "h3", "Workflow preview");
+  reviewFacts(root, [["Project", workflow.project], ["Environment", workflow.environment], ["Provider", workflow.provider]]);
+  text(root, "p", "Review the component order and dependencies below. No repository or provider commands were run.");
+  const order = document.createElement("ol");
+  for (const component of workflow.components || []) {
+    const item = document.createElement("li");
+    text(item, "strong", component.name);
+    reviewFacts(item, [["Adapter", component.adapter], ["Repository", component.repository],
+      ["Needs", component.needs?.length ? component.needs.join(", ") : "No dependencies"], ["Target", component.target]]);
+    order.append(item);
+  }
+  root.append(order);
+  if (!order.children.length) text(root, "p", "No components are included in this workflow.");
+  reviewEvidence(root, "workflow", "Workflow contract and complete evidence", workflow);
+  root.hidden = false;
+}
+
+
 // Explain reviewed evidence and expose actions valid for the current release
 async function show(id) {
   selected = id;
@@ -119,9 +360,13 @@ async function show(id) {
   const release = data.release;
   const root = element("detail");
   const focused = root.contains(document.activeElement) ? document.activeElement.dataset.key : null;
+  const expanded = new Set([...root.querySelectorAll("details[open]")].map(node => node.dataset.review));
+  const scrolls = new Map([...root.querySelectorAll("[data-review-scroll]")]
+    .map(node => [node.dataset.reviewScroll, [node.scrollTop, node.scrollLeft]]));
   root.replaceChildren();
   text(root, "p", release.environment + " · " + release.status);
-  text(root, "pre", release.id + "\nContract: " + release.config_digest);
+  reviewEvidence(root, "release-binding", "Release identity and source binding",
+    {release: release.id, contract_digest: release.config_digest, source_digest: release.source_digest}, expanded);
   if (release.reason) text(root, "p", release.reason);
   if (release.preview) renderPreview(root, data);
   for (const [name, node] of Object.entries(release.nodes)) {
@@ -130,14 +375,15 @@ async function show(id) {
     if (node.infrastructure_receipts) {
       text(area, "h4", "Infrastructure evidence");
       text(area, "p", "Observed public outputs, not a live drift or health check. Expiry and revocation are checked by the controller.");
-      text(area, "pre", JSON.stringify(node.infrastructure_receipts, null, 2));
+      reviewEvidence(area, name + ":receipts", "Infrastructure receipt details", node.infrastructure_receipts, expanded);
     }
-    if (node.preview) text(area, "pre", JSON.stringify(node.preview, null, 2));
+    reviewFacts(area, [["Adapter", node.adapter], ["Source revision", node.source?.revision]]);
+    if (node.preview) reviewChanges(area, name, node.preview, expanded);
     for (const warning of node.warnings || []) text(area, "p", "Review: " + warning);
-    if (["cloudformation", "cdk", "arm", "bicep"].includes(node.adapter) && (node.request_digest || node.status === "uncertain")) {
+    if (["cloudformation", "cdk", "arm", "bicep", "ecs", "container-apps"].includes(node.adapter) && (node.request_digest || node.status === "uncertain")) {
       area.append(button("Read provider status", async () => {
         const observed = await api("/releases/" + id + "/provider/inspect", "POST", {component: name});
-        message("Provider readback: " + (observed.status || observed.stack_status || "recorded") + ". No deployment was replayed.");
+        message("Provider readback: " + (observed.status || observed.stack_status || observed.operation || "recorded") + ". No deployment was replayed.");
         await refresh();
       }, "provider-" + name));
       if (["cloudformation", "cdk"].includes(node.adapter) && release.status === "waiting") {
@@ -148,13 +394,22 @@ async function show(id) {
         }, "discard-" + name));
       }
     }
-    if (node.request_digest) text(area, "pre", "Approval digest: " + node.request_digest);
-    if (node.status === "waiting") area.append(button("Approve this exact change", async () => {
+    if (node.request_digest) reviewEvidence(area, name + ":approval", "Exact approval and artifact identity",
+      {approval_digest: node.request_digest, artifact_digest: node.artifact_digest, source: node.source}, expanded);
+
+    // Use the current controller observation rather than a remembered successful approval click
+    const request = data.request_statuses?.[name];
+    const matchingRequest = request?.digest === node.request_digest && Boolean(node.request_digest);
+    if (node.status === "waiting") {
+      text(area, "p", matchingRequest ? "Approval: " + request.status + (request.status === "approved"
+        ? ". Ready for separate execution." : ".") : "Approval status unavailable or changed. Refresh before acting.");
+    }
+    if (node.status === "waiting" && matchingRequest && request.status === "pending") area.append(button("Approve this exact change", async () => {
       if (!window.confirm("Approve the displayed change for " + name + "?")) return;
       await api("/releases/" + id + "/approve", "POST", { component: name, digest: node.request_digest });
-      await api("/releases/" + id + "/resume", "POST", {}); message("Approved. Execution started."); await refresh();
+      message("Exact change approved. Execution is a separate action."); await refresh();
     }, "approve-" + name));
-    if (node.status === "succeeded") text(area, "pre", JSON.stringify(node.outputs, null, 2));
+    if (node.status === "succeeded") reviewEvidence(area, name + ":outputs", "Recorded deployment outputs", node.outputs, expanded);
     const actions = data.artifact_actions.filter((action) => action.component === name);
     if (actions.length) {
       text(area, "p", "Reuse this exact artifact in a new reviewed release. Rollback restores the application artifact, not database changes.");
@@ -165,15 +420,23 @@ async function show(id) {
         controls.append(button(label, async () => {
           if (!window.confirm(label + " using the displayed " + name + " artifact? A new release will check authority and target state.")) return;
           const next = await api("/releases", "POST", { origin: id, component: name, environment: action.environment, rollback: action.rollback, only: true,
-            receipts: JSON.parse(element("receipts").value || "{}") });
+            receipts: readReceipts() });
           selected = next.id; message("Artifact reuse requested. Inspect the new release and any required approval."); await refresh();
         }, label + "-" + name));
       }
     }
   }
-  if (["waiting", "queued"].includes(release.status)) root.append(button("Resume", async () => {
-    await api("/releases/" + id + "/resume", "POST", {}); message("Worker started.");
-  }));
+
+  // Offer execution only for current exact approvals while leaving final enforcement to the core
+  const waiting = Object.entries(release.nodes).filter(([, node]) => node.status === "waiting");
+  const approved = waiting.length > 0 && waiting.every(([name, node]) => {
+    const request = data.request_statuses?.[name];
+    return request?.status === "approved" && request.digest === node.request_digest && Boolean(node.request_digest);
+  });
+  if (release.status === "queued" || (release.status === "waiting" && approved)) root.append(button(
+    release.status === "waiting" ? "Execute approved release" : "Run release", async () => {
+    await api("/releases/" + id + "/resume", "POST", {}); message("Worker started. The controller rechecks approval before applying each component."); await refresh();
+  }, "execute-release"));
   if (["waiting", "queued", "running"].includes(release.status)) root.append(button("Cancel", async () => {
     await api("/releases/" + id + "/cancel", "POST", {}); await refresh();
   }));
@@ -184,6 +447,7 @@ async function show(id) {
   }));
   if (["failed", "uncertain"].includes(release.status)) root.append(button("Track a local incident", async () => {
     element("incident-release").value = id;
+    document.dispatchEvent(new CustomEvent("deployops:navigate", {detail: {view: "incidents"}}));
     element("incident-panel").open = true;
     element("incident-owner").focus();
   }, "track-incident"));
@@ -204,14 +468,16 @@ async function show(id) {
     for (const [name, result] of Object.entries(observation.components)) {
       text(list, "li", name + ": " + result.status + (result.reason ? ". " + result.reason : ". " + result.scope));
     }
-    const evidence = document.createElement("details"); text(evidence, "summary", "Observation evidence");
-    text(evidence, "pre", JSON.stringify(observation, null, 2)); root.append(evidence);
+    reviewEvidence(root, "observation", "Observation evidence", observation, expanded);
   }
-  text(root, "h3", "Event history");
-  text(root, "pre", data.events.map((event) => new Date(event.time * 1000).toISOString() + " " + event.name + " " + JSON.stringify(event.detail)).join("\n"));
-  // Polling preserves the operator's place when a status update replaces controls
+  reviewEvidence(root, "events", `Event history (${data.events.length})`, data.events, expanded);
+  // Polling preserves expanded evidence, scroll and keyboard position without changing drafts
+  for (const node of root.querySelectorAll("[data-review-scroll]")) {
+    const position = scrolls.get(node.dataset.reviewScroll);
+    if (position) [node.scrollTop, node.scrollLeft] = position;
+  }
   if (focused) {
-    const replacement = [...root.querySelectorAll("button")].find((node) => node.dataset.key === focused);
+    const replacement = [...root.querySelectorAll("[data-key]")].find((node) => node.dataset.key === focused);
     (replacement || element("detail-heading")).focus({preventScroll: true});
   }
 }
@@ -221,12 +487,14 @@ element("login").onsubmit = (event) => { event.preventDefault(); safe(async () =
   const data = await api("/workspace");
   element("unlock").hidden = true; element("workspace").hidden = false;
   workspaceConfiguration = data.configuration;
+  document.dispatchEvent(new CustomEvent("deployops:workspace", {detail: data.configuration}));
   element("title").textContent = data.configuration.name;
   element("mode").textContent = data.mode;
   element("config").value = data.toml;
   savedSourceHash = data.source_hash;
   savedToml = data.toml;
   formSource = data.toml; formContract = data; formDrafts.clear(); fillConfigNames();
+  document.dispatchEvent(new CustomEvent("deployops:configuration", {detail: formContract}));
   element("environment").replaceChildren();
   for (const name of Object.keys(data.configuration.environments)) {
     const option = document.createElement("option"); option.value = name; option.textContent = name; element("environment").append(option);
@@ -243,7 +511,16 @@ element("lock").onclick = () => { token = ""; selected = null; location.reload()
 
 
 // Describe dependencies without starting a provider operation
-element("plan").onclick = () => safe(async () => { element("plan-output").textContent = JSON.stringify(await api("/plan", "POST", selection()), null, 2); element("plan-output").hidden = false; });
+element("plan").onclick = () => safe(async () => {
+  const selectedWorkflow = selection();
+  element("plan-output").hidden = true;
+  const workflow = await api("/plan", "POST", selectedWorkflow);
+  if (JSON.stringify(selectedWorkflow) !== JSON.stringify(selection())) {
+    message("Selections changed. Preview the workflow again.");
+    return;
+  }
+  reviewWorkflow(element("plan-output"), workflow);
+});
 
 
 // Start preparation only through an explicit release submission
@@ -301,28 +578,53 @@ function fillOptionFields(name) {
     const required = contract.required.includes(key);
     const parent = required ? root : advanced;
     if (field.type === "object") {
-      const group = document.createElement("fieldset"); text(group, "legend", field.title); parent.append(group);
+      const group = document.createElement("fieldset"); group.id = "option-" + key; group.tabIndex = -1;
+      text(group, "legend", field.title); parent.append(group);
       const rows = document.createElement("div"); group.append(rows);
       // Public scalar maps use named rows rather than an opaque JSON editor
       const collect = () => {
-        const values = {}; let duplicate = false;
+        const values = Object.create(null); let duplicate = false;
         for (const row of rows.children) {
-          const [nameInput, valueInput] = row.querySelectorAll("input");
+          const nameInput = row.querySelector("[data-map-name]");
+          const valueInput = row.querySelector("[data-map-value]");
           if (!nameInput.value) continue;
           if (Object.hasOwn(values, nameInput.value)) duplicate = true;
-          values[nameInput.value] = valueInput.value;
+          const kind = valueInput.dataset.valueType;
+          values[nameInput.value] = kind === "boolean" ? valueInput.value === "true"
+            : kind === "integer" ? Number(valueInput.value) : valueInput.value;
         }
         rows.querySelector("input")?.setCustomValidity(duplicate ? "Use each parameter name once." : "");
         current[key] = values;
       };
       const add = (name = "", value = "") => {
-        const row = document.createElement("div"); rows.append(row);
-        for (const [part, initial] of [["name", name], ["value", value]]) {
-          const label = document.createElement("label"); label.textContent = part === "name" ? "Name" : "Public value";
-          const input = document.createElement("input"); input.name = key + "-" + part;
-          input.value = initial; input.spellcheck = false; input.autocapitalize = "off";
-          input.oninput = collect; label.append(input); row.append(label);
-        }
+        const row = document.createElement("div"); row.className = "parameter-row"; rows.append(row);
+        const label = document.createElement("label"); label.textContent = "Name";
+        const nameInput = document.createElement("input"); nameInput.name = key + "-name";
+        nameInput.dataset.mapName = ""; nameInput.value = name; nameInput.spellcheck = false;
+        nameInput.oninput = collect; label.append(nameInput); row.append(label);
+
+        // Preserve schema-supported scalar types when editing a different map entry
+        const choices = field.additionalProperties?.anyOf?.map((item) => item.type) || ["string"];
+        const typeLabel = document.createElement("label"); typeLabel.textContent = "Value type";
+        const typeInput = document.createElement("select"); typeInput.name = key + "-type";
+        typeInput.append(...choices.map((kind) => new Option({string: "Text", integer: "Whole number", boolean: "On / off"}[kind], kind)));
+        typeInput.value = typeof value === "boolean" ? "boolean" : typeof value === "number" ? "integer" : "string";
+        typeLabel.append(typeInput); if (choices.length > 1) row.append(typeLabel);
+        const valueLabel = document.createElement("label"); valueLabel.textContent = "Public value"; row.append(valueLabel);
+
+        // Use a choice control for booleans and a constrained number input for integers
+        const renderValue = (initial) => {
+          valueLabel.replaceChildren(document.createTextNode("Public value"));
+          const kind = typeInput.value;
+          const input = document.createElement(kind === "boolean" ? "select" : "input");
+          input.name = key + "-value"; input.dataset.mapValue = ""; input.dataset.valueType = kind;
+          if (kind === "boolean") input.append(new Option("On", "true"), new Option("Off", "false"));
+          else if (kind === "integer") { input.type = "number"; input.step = "1"; input.required = true; }
+          input.value = String(initial); input.spellcheck = false; input.oninput = collect;
+          valueLabel.append(input);
+        };
+        renderValue(value);
+        typeInput.onchange = () => { renderValue(typeInput.value === "boolean" ? false : typeInput.value === "integer" ? 0 : ""); collect(); };
         const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "Remove row";
         remove.onclick = () => { row.remove(); collect(); }; row.append(remove);
       };
@@ -332,7 +634,8 @@ function fillOptionFields(name) {
       continue;
     }
     if (field.type === "array") {
-      const group = document.createElement("fieldset"); text(group, "legend", field.title); parent.append(group);
+      const group = document.createElement("fieldset"); group.id = "option-" + key; group.tabIndex = -1;
+      text(group, "legend", field.title); parent.append(group);
       for (const value of field.items.enum || []) {
         const label = document.createElement("label"); label.className = "check";
         const input = document.createElement("input"); input.type = "checkbox"; input.name = key; input.value = value;
@@ -377,7 +680,8 @@ function fillConfigFields() {
   for (const [key, field] of Object.entries(formContract.forms[section])) {
     const id = "setting-" + key;
     if (field.type === "array") {
-      const group = document.createElement("fieldset"); text(group, "legend", field.title); root.append(group);
+      const group = document.createElement("fieldset"); group.id = id; group.tabIndex = -1;
+      text(group, "legend", field.title); root.append(group);
       for (const choice of field.items.enum.filter(value => value !== name)) {
         const label = document.createElement("label"); label.className = "check";
         const input = document.createElement("input"); input.type = "checkbox"; input.name = key; input.value = choice;
@@ -392,7 +696,10 @@ function fillConfigFields() {
     const input = document.createElement(field.enum ? "select" : "input"); input.id = id; input.name = key;
     if (field.enum) input.append(...field.enum.map(value => new Option(value, value)));
     else input.type = field.type === "boolean" ? "checkbox" : field.type === "integer" ? "number" : "text";
-    if (field.type === "boolean") { input.checked = current[key]; label.className = "check"; label.append(input); }
+    if (field.type === "boolean") {
+      input.checked = current[key]; input.setAttribute("role", "switch");
+      label.className = "setting-switch"; label.append(input);
+    }
     else {
       input.value = current[key]; input.required = true;
       if (field.minimum !== undefined) input.min = field.minimum;
@@ -400,6 +707,10 @@ function fillConfigFields() {
       input.spellcheck = false; input.autocapitalize = "off"; input.setAttribute("autocorrect", "off"); root.append(input);
     }
     input.oninput = () => { current[key] = field.type === "boolean" ? input.checked : field.type === "integer" ? Number(input.value) : input.value; };
+    if (field.description) {
+      const hint = text(root, "p", field.description); hint.className = "setting-help";
+      hint.id = id + "-help"; input.setAttribute("aria-describedby", hint.id);
+    }
   }
 }
 
@@ -409,12 +720,29 @@ element("config-section").onchange = fillConfigNames;
 element("config-name").onchange = fillConfigFields;
 
 
+// Reveal a searched setting using the same draft-preserving selection handlers
+ document.addEventListener("deployops:setting", (event) => {
+  const {section, name, key} = event.detail;
+  element("workspace-settings").open = true;
+  element("config-section").value = section; fillConfigNames();
+  element("config-name").value = name; fillConfigFields();
+  const target = element((section === "options" ? "option-" : "setting-") + key)
+    || element("config-fields").querySelector(`[name="${CSS.escape(key)}"]`);
+  if (!target) return;
+  for (let parent = target.parentElement; parent && parent !== element("workspace-settings"); parent = parent.parentElement) {
+    if (parent.tagName === "DETAILS") parent.open = true;
+  }
+  target.focus();
+});
+
+
 // Reload forms only from the exact currently displayed TOML draft
 element("load-forms").onclick = () => safe(async () => {
   const source = element("config").value;
   const result = await api("/config/inspect", "POST", {configuration: source});
   if (element("config").value !== source) throw new Error("Draft changed while loading. Load forms again.");
   formContract = result; formSource = source; formDrafts.clear(); fillConfigNames();
+  document.dispatchEvent(new CustomEvent("deployops:configuration", {detail: formContract}));
   element("config-status").textContent = "Forms loaded from the current draft. Applying fields does not save the file.";
 });
 
@@ -435,6 +763,7 @@ element("config-form").onsubmit = (event) => {
       const result = await api("/config/patch", "POST", {configuration: source, section, name, values});
       if (element("config").value !== source) throw new Error("Draft changed while applying. Your text was preserved; reload forms to retry.");
       element("config").value = result.toml; formSource = result.toml; formContract = result;
+      document.dispatchEvent(new CustomEvent("deployops:configuration", {detail: formContract}));
       element("config-diff").textContent = result.diff || "No changes.";
       element("config-status").textContent = "Fields applied to the draft. Review the diff, then save the local configuration.";
     } catch (error) {

@@ -36,10 +36,18 @@ deploy-ops run development --component web --only
 deploy-ops ui --token-file "$HOME/.config/deploy-ops/operator.token"
 ```
 
-Open the loopback address printed by the command. Paste the token from that file into the unlock form.
+Open the loopback address printed by the command, rather than the packaged HTML file. Paste the token
+from that file into **Connect workspace**.
 The server creates it with mode `0600` when absent. The browser holds it in memory only.
-The console can edit and validate TOML, save local configuration, inspect plans, prepare releases,
-approve exact changes, grant bounded local windows, cancel work, and inspect events.
+The console has separate Home, Releases, Infrastructure, Incidents and Controls views. Prepare a release
+from **Releases**, inspect its proposed actions, approve the exact change, then choose **Execute approved
+release**. Approval alone does not start execution. Complete evidence remains available in expandable
+sections. Moving between views preserves unsaved form fields.
+
+**Controls** includes searchable repository, environment, component and native infrastructure settings.
+A search result opens its field in the relevant entry. Boolean fields use switches, known choices use
+selection controls, and deployment edits remain in a draft until reviewed and saved. Advanced TOML is
+available for options without guided controls. These forms do not yet cover every workspace setting.
 
 Saving configuration requires all releases to be finished, cancelled, or reconciled. The previous file
 is retained in `.deploy-ops/previous-workspace.toml`. Remote policy cannot be edited through this console.
@@ -47,7 +55,8 @@ Successful application components offer promotion and rollback in the release de
 environment paths and explains missing dependency receipts. Each action reuses the artifact in a new release
 with fresh authority and target checks. There is no native Windows or macOS installer.
 
-Appearance follows the system by default. Open **Appearance** to choose a preset, density and corner radius.
+Appearance follows the system by default. Open **Controls → Appearance** to choose a preset, density and
+corner radius. These preferences save immediately in the browser.
 Advanced controls import and export validated appearance JSON, including optional custom colors. Invalid
 or low-contrast settings leave the current appearance and your draft intact. Changing a preset clears
 custom colors while retaining the selected density and radius. Reset restores the system default.
@@ -57,6 +66,24 @@ memory. If storage is unavailable, appearance changes still work for the current
 The UI and API bind to `127.0.0.1`. Do not reverse-proxy this local operator interface to the Internet.
 Use the separate authority service for authenticated remote workers. Do not serve deployed app files
 from the operator console's origin.
+
+## Review and save configuration from the CLI
+
+Use a separate draft file to retain your saved workspace until review. The CLI and console share validation,
+conflict detection, backups and audit records.
+
+```bash
+cp deploy-ops.toml draft.toml
+deploy-ops config inspect
+deploy-ops config validate --file draft.toml
+deploy-ops config diff --file draft.toml
+deploy-ops config save --file draft.toml --source-hash SAVED_SOURCE_HASH
+```
+
+Use the `source_hash` returned by inspecting the saved workspace, or `saved_source_hash` from draft
+validation. `config patch --file draft.toml` returns revised TOML without writing it. A save refuses a changed
+saved file or an outstanding release. Console and CLI operations must use the same operator state directory
+for coordination. After a successful save, reload any running console to use the new configuration.
 
 ## Cloud setup
 

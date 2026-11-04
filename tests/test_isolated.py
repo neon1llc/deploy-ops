@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import time
@@ -582,3 +583,13 @@ def test_guest_native_failure_protocol(monkeypatch, capsys):
     assert TOKEN not in output
     assert json.loads(output.splitlines()[-1]) == {
         'error': 'Isolated native command failed', 'stage': 'init', 'exit_code': 7}
+
+
+# Exercise readable review and retained operator state through the shipped JavaScript
+def test_console_review_preserves_evidence_and_exact_actions():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node is required for the dependency-free console DOM contract")
+    root = Path(__file__).resolve().parents[1]
+    subprocess.run([node, str(root / "tests" / "isolated_ui.cjs")], cwd=root,
+                   check=True, capture_output=True, text=True, timeout=20)

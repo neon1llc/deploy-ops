@@ -12,6 +12,123 @@ let isolatedFetch = 0;
 const isolatedNotes = new Map();
 
 
+// Present immutable values as readable labels without interpreting approval policy
+function isolatedFacts(parent, entries) {
+  const list = document.createElement("dl");
+  list.className = "isolated-facts";
+  for (const [label, value] of entries) {
+    if (value === undefined || value === null || value === "") continue;
+    text(list, "dt", label);
+    text(list, "dd", String(value));
+  }
+  parent.append(list);
+}
+
+
+// Keep native disclosures independently open and keyboard reachable across refreshes
+function isolatedEvidence(parent, key, label, expanded, value) {
+  const details = document.createElement("details");
+  details.dataset.isolatedEvidence = key;
+  details.open = expanded.has(key);
+  const summary = text(details, "summary", label);
+  summary.dataset.isolatedKey = key + ":evidence";
+  if (value !== undefined) {
+    const pre = document.createElement("pre");
+    pre.tabIndex = 0;
+    pre.dataset.isolatedKey = key + ":code";
+    pre.dataset.isolatedScroll = key;
+    text(pre, "code", JSON.stringify(value, null, 2));
+    details.append(pre);
+  }
+  parent.append(details);
+  return details;
+}
+
+
+// Display controller-normalized actions without reconstructing native plan semantics
+function isolatedChanges(parent, key, changes, planning) {
+  if (!changes.length) {
+    text(parent, "p", planning ? "No resource declarations are recorded in this packet."
+      : "No resource actions are recorded. Outputs or unknown values may still need review.");
+    return;
+  }
+  const counts = new Map();
+  for (const change of changes) counts.set(change.action, (counts.get(change.action) || 0) + 1);
+  text(parent, "p", planning ? `${changes.length} declared resource(s) · actions determined by native planning`
+    : [...counts].map(([action, count]) => `${count} ${action}`).join(" · "));
+
+  // Preserve native header associations and allow keyboard scrolling on narrow layouts
+  const region = document.createElement("div");
+  region.className = "isolated-table";
+  region.tabIndex = 0;
+  region.setAttribute("role", "region");
+  region.setAttribute("aria-label", planning ? "Declared infrastructure resources" : "Saved plan resource changes");
+  region.dataset.isolatedKey = key + ":table";
+  region.dataset.isolatedScroll = key + ":table";
+  const table = document.createElement("table");
+  text(table, "caption", planning ? "Generated module resource inventory" : "Controller-normalized saved plan changes");
+  const head = document.createElement("thead");
+  const headings = document.createElement("tr");
+  for (const label of ["Resource address", "Resource type", "Action"]) {
+    text(headings, "th", label).scope = "col";
+  }
+  head.append(headings); table.append(head);
+  const body = document.createElement("tbody");
+  for (const change of changes) {
+    const row = document.createElement("tr");
+    text(row, "th", change.address).scope = "row";
+    text(row, "td", change.resource_type);
+    const action = text(row, "td", change.action);
+    if (["delete", "replace"].includes(change.action)) action.className = "isolated-warning";
+    body.append(row);
+  }
+  table.append(body); region.append(table); parent.append(region);
+}
+
+
+// Separate generated intent from observed native actions and keep review limits visible
+function isolatedReview(card, request, expanded) {
+  const manifest = request.manifest;
+  const planning = manifest.engine === "manifest";
+  const preview = manifest.preview || {};
+  text(card, "p", planning
+    ? "Planning only. This approval permits native planning; applying its saved plan needs a separate exact approval."
+    : "Manual approval required. Approval does not apply this plan; execution is a separate action.");
+  if (preview.manual_only) {
+    text(card, "p", planning ? "Manual-only review: inspect the generated module before running planning."
+      : "Manual-only review: the controller requires human inspection of this plan.").className = "isolated-warning";
+  }
+  if (preview.findings?.length) {
+    text(card, "h4", "Review findings");
+    const findings = document.createElement("ul");
+    findings.className = "isolated-warning";
+    for (const finding of preview.findings) text(findings, "li", finding);
+    card.append(findings);
+  }
+
+  // Inventory declarations only for planning; saved-plan actions come directly from the shared core
+  const packet = manifest.isolated_packet;
+  const changes = planning ? Object.entries(packet?.module?.resource || {}).flatMap(([kind, resources]) =>
+    Object.keys(resources).map(name => ({address: `${kind}.${name}`, resource_type: kind, action: "Not planned yet"})))
+    : preview.changes || [];
+  isolatedChanges(card, request.id, changes, planning);
+  const binding = isolatedEvidence(card, request.id, "Exact approval and immutable evidence", expanded);
+  isolatedFacts(binding, [
+    ["Approval digest", request.digest], ["Request", request.id], ["Target", manifest.target],
+    ["Cloud", manifest.cloud], ["Engine", manifest.engine], ["Tool version", manifest.tool_version],
+    ["Source revision", manifest.source?.sha],
+    [planning ? "Source packet digest" : "Saved plan digest", manifest.artifact_digest],
+    ["Preview digest", manifest.preview_digest], ["Policy digest", manifest.policy_digest],
+    ["Provider lock digest", packet?.lock_digest || manifest.lock_digest],
+    ["Native tool digest", packet?.tool_digest], ["Provider binary digest", packet?.provider_digest],
+    ["Planning request", manifest.planning_request],
+    ["Request expires", request.expires_at ? new Date(request.expires_at * 1000).toLocaleString() : undefined],
+  ]);
+  isolatedEvidence(card, request.id + ":raw", planning ? "Generated module JSON" : "Normalized preview JSON",
+    expanded, planning ? packet?.module : preview);
+}
+
+
 // Preserve keyboard position when an observed request changes its available actions
 function isolatedRender(force = false) {
   if (!isolatedState) return;
@@ -23,8 +140,8 @@ function isolatedRender(force = false) {
   const focusKey = focused?.dataset.isolatedKey;
   const selection = focused?.tagName === "TEXTAREA"
     ? [focused.selectionStart, focused.selectionEnd, focused.selectionDirection, focused.scrollTop] : null;
-  const scrollPositions = new Map([...element("isolated-panel").querySelectorAll("details[data-isolated-evidence] pre")]
-    .map(node => [node.parentElement.dataset.isolatedEvidence, [node.scrollTop, node.scrollLeft]]));
+  const scrollPositions = new Map([...element("isolated-panel").querySelectorAll("[data-isolated-scroll]")]
+    .map(node => [node.dataset.isolatedScroll, [node.scrollTop, node.scrollLeft]]));
   const expanded = new Set([...element("isolated-panel").querySelectorAll("details[open]")]
     .map(node => node.dataset.isolatedEvidence));
   const available = data.available && !isolatedBusy && !(data.active || []).length;
@@ -37,13 +154,11 @@ function isolatedRender(force = false) {
   const recipe = element("isolated-recipe");
   recipe.replaceChildren();
   if (data.recipe) {
-    const details = document.createElement("details");
-    details.dataset.isolatedEvidence = "recipe"; details.open = expanded.has("recipe");
-    const summary = text(details, "summary", "Registered recipe and pinned tools");
-    summary.dataset.isolatedKey = "recipe:evidence";
-    text(details, "pre", JSON.stringify({recipe: data.recipe, identities: data.identities,
-      tools: data.tools, packet_digest: data.packet_digest}, null, 2));
-    recipe.append(details);
+    isolatedFacts(recipe, [["Project", data.recipe.project], ["Region", data.recipe.region],
+      ["Service", data.recipe.name], ["Runtime identity", data.recipe.runtime_service_account],
+      ["Initial image", data.recipe.image_repository + "@" + data.recipe.image_digest]]);
+    isolatedEvidence(recipe, "recipe", "Registered recipe, identities and pinned tools", expanded,
+      {recipe: data.recipe, identities: data.identities, tools: data.tools, packet_digest: data.packet_digest});
   }
 
   // Each request retains its own evidence and exact digest instead of a global approve button
@@ -57,14 +172,7 @@ function isolatedRender(force = false) {
     if (request.worker_error && request.worker_error !== request.reason) {
       text(card, "p", "Last worker error: " + request.worker_error);
     }
-    text(card, "p", "Approval digest: " + request.digest);
-    const evidence = document.createElement("details");
-    evidence.dataset.isolatedEvidence = request.id; evidence.open = expanded.has(request.id);
-    const summary = text(evidence, "summary", (planning ? "Review generated infrastructure and tool pins " : "Review saved plan changes ")
-      + request.id.slice(0, 8));
-    summary.dataset.isolatedKey = request.id + ":evidence";
-    text(evidence, "pre", JSON.stringify(planning ? request.manifest.isolated_packet : request.manifest.preview, null, 2));
-    card.append(evidence);
+    isolatedReview(card, request, expanded);
 
     // Native submission forms keep approval and cloud execution as distinct decisions
     if (request.status === "pending" || request.status === "approved") {
@@ -141,6 +249,7 @@ function isolatedRender(force = false) {
           element("component").value = data.application.component;
           element("receipts").value = JSON.stringify({[data.application.dependency]: receipt.id});
           element("only").checked = true;
+          document.dispatchEvent(new CustomEvent("deployops:navigate", {detail: {view: "releases", compose: true}}));
           element("image").focus();
           message("Receipt selected. Choose an immutable image and prepare the application release when ready.");
         };
@@ -150,8 +259,8 @@ function isolatedRender(force = false) {
     requests.append(card);
   }
   // Keep long evidence and in-progress inspection text at the operator's current position
-  for (const node of element("isolated-panel").querySelectorAll("details[data-isolated-evidence] pre")) {
-    const position = scrollPositions.get(node.parentElement.dataset.isolatedEvidence);
+  for (const node of element("isolated-panel").querySelectorAll("[data-isolated-scroll]")) {
+    const position = scrollPositions.get(node.dataset.isolatedScroll);
     if (position) [node.scrollTop, node.scrollLeft] = position;
   }
   if (focusKey && document.activeElement === document.body) {

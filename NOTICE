@@ -4,8 +4,9 @@ Copyright 2026 neon1 LLC
 This product includes code from the earlier DeployGuard project by neon1 LLC.
 The earlier MIT notice is retained in licenses/DeployGuard-MIT.txt.
 
-This product includes the shared appearance library, copyright 2026 Pradeep
-Tathineni, distributed under the MIT license in licenses/theme-MIT.txt.
+This product includes the shared appearance library and adapted workspace
+interface styles, copyright 2026 Pradeep Tathineni, distributed under the MIT
+license in licenses/theme-MIT.txt.
 
 DeployOps is licensed under the Apache License, Version 2.0. This notice does
 not add advertising, endorsement, trademark, or user-interface obligations.
