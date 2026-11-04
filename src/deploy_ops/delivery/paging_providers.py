@@ -9,12 +9,14 @@ import io
 import json
 import os
 import queue
+import re
 import socket
 import ssl
 import threading
 import time
 import uuid
 from email.utils import parsedate_to_datetime
+from datetime import datetime
 from urllib.parse import urlsplit
 
 from ..errors import Refused
@@ -114,7 +116,9 @@ def credential(reference):
 
 
 # Reject metadata, redirects and DNS rebinding before opening an authenticated connection
-def request(url, body, headers, networks):
+def request(url, body, headers, networks, method='POST'):
+    if method not in ('POST', 'GET'):
+        raise Refused('Unsupported paging HTTP method', 422)
     try:
         parsed = urlsplit(url)
         port = parsed.port if parsed.port is not None else 443
@@ -159,7 +163,7 @@ def request(url, body, headers, networks):
         path = parsed.path or '/'
         if parsed.query:
             path += '?' + parsed.query
-        connection.request('POST', path, body=body, headers=headers)
+        connection.request(method, path, body=body, headers=headers)
         response = connection.getresponse()
         data = response.read(65537)
         return response.status, dict(response.getheaders()), data[:65536]
@@ -192,6 +196,33 @@ def send(settings, payload, action, dedup, identity='', transport=None):
         if action == 'trigger':
             data['payload'] = {'summary': summary, 'source': payload.get('project') or 'DeployOps',
                                'severity': payload.get('severity', 'error')}
+    elif provider == 'incident.io':
+        if action not in ('trigger', 'resolve'):
+            raise Refused('incident.io HTTP sources support firing and resolved alerts only', 422)
+        url = 'https://api.incident.io/v2/alert_events/http/' + destination.alert_source_id
+        headers['Authorization'] = 'Bearer ' + key
+        data = {'title': summary, 'deduplication_key': dedup,
+                'status': 'resolved' if action == 'resolve' else 'firing',
+                'metadata': {field: payload.get(field, '') for field in
+                             ('project', 'environment', 'component', 'severity', 'release_id')}}
+    elif provider == 'better-stack':
+        url = 'https://incidents.betterstack.com/api/v3/incidents'
+        headers['Authorization'] = 'Bearer ' + key
+        remote_id = payload.get('remote_id', '')
+        if action == 'trigger':
+            if remote_id:
+                raise Refused('Better Stack incident already has a remote ID; inspect it instead of creating again', 422)
+            data = {'summary': summary, 'requester_email': destination.requester_email,
+                    'policy_id': destination.policy_id, 'team_wait': None,
+                    'description': 'DeployOps binding ' + dedup}
+            if destination.team_name:
+                data['team_name'] = destination.team_name
+        elif action in ('acknowledge', 'resolve') and valid_remote_id(remote_id):
+            url += '/' + remote_id + '/' + action
+            data = {('acknowledged_by' if action == 'acknowledge' else 'resolved_by'):
+                    'DeployOps API (local operator request)'}
+        else:
+            raise Refused('Better Stack lifecycle actions need the saved remote incident ID', 422)
     elif provider == 'goalert':
         url = destination.endpoint
         headers.update(Authorization='Bearer ' + key, Accept='application/json')
@@ -224,17 +255,32 @@ def send(settings, payload, action, dedup, identity='', transport=None):
         result.update(reason='Connection failed before sending', retryable=True)
     elif code == 429:
         result.update(reason='Provider throttled the request', retryable=True)
-    elif 500 <= code < 600:
+    elif provider == 'better-stack' and code == 409:
+        result.update(reason='Provider reports a lifecycle conflict; read remote status before another action')
+    elif code == 408 or 500 <= code < 600:
         result.update(state='unknown', reason='Provider error may follow acceptance')
-    elif (provider == 'pagerduty' and code == 202) or (provider != 'pagerduty' and 200 <= code < 300):
+    elif 200 <= code < 300:
         result.update(state='accepted', reason='Provider accepted the request; remote response is unverified')
         try:
             response = json.loads(raw)
         except (ValueError, UnicodeDecodeError):
             response = {}
         if provider == 'pagerduty' and (not isinstance(response, dict) or response.get('dedup_key') != dedup
-                                       or response.get('status') != 'success'):
+                                       or response.get('status') != 'success' or code != 202):
             result.update(state='unknown', reason='Acceptance response did not identify the requested alert')
+        if provider == 'incident.io' and (code != 202 or not isinstance(response, dict)
+                                          or response.get('deduplication_key') != dedup
+                                          or response.get('status') != 'success'):
+            result.update(state='unknown', reason='Acceptance response did not identify the requested alert event')
+        if provider == 'better-stack':
+            observed = better_stack_response(response, payload.get('remote_id', ''))
+            expected_code = 201 if action == 'trigger' else 200
+            if observed is None or code != expected_code:
+                result.update(state='unknown', reason='Response did not identify the requested Better Stack incident')
+            else:
+                result.update(observed)
+                if 'remote_state' in observed:
+                    result['reason'] = 'Provider returned incident state; human response and notification delivery are unverified'
         if provider == 'goalert' and isinstance(response, dict):
             if type(response.get('AlertID')) is int and response['AlertID'] > 0:
                 result['remote_id'] = str(response['AlertID'])
@@ -253,3 +299,57 @@ def send(settings, payload, action, dedup, identity='', transport=None):
         except (TypeError, ValueError, OverflowError):
             pass
     return result
+
+
+# Remote IDs are opaque provider references and must never inject another HTTP path
+def valid_remote_id(value):
+    return isinstance(value, str) and re.fullmatch(r'[0-9]{1,32}', value) is not None
+
+
+# Retain only the incident identity and lifecycle facts, never included monitors or response bodies
+def better_stack_response(response, expected_id=''):
+    data = response.get('data') if isinstance(response, dict) else None
+    if (not isinstance(data, dict) or data.get('type') != 'incident'
+            or not valid_remote_id(data.get('id')) or (expected_id and data['id'] != expected_id)):
+        return None
+    result = {'remote_id': data['id']}
+    attributes = data.get('attributes', {})
+    if not isinstance(attributes, dict):
+        return result
+    status = attributes.get('status')
+    state = {'Started': 'started', 'Acknowledged': 'acknowledged', 'Resolved': 'resolved',
+             'Validating': 'validating', 'Unconfirmed': 'unconfirmed'}.get(status) if isinstance(status, str) else None
+    for field, observed in (('started_at', 'started'), ('acknowledged_at', 'acknowledged'), ('resolved_at', 'resolved')):
+        value = attributes.get(field)
+        if not status and isinstance(value, str):
+            try:
+                timestamp = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                if timestamp.utcoffset() is not None:
+                    state = observed
+            except ValueError:
+                pass
+    if state:
+        result.update(remote_state=state, observed_at=int(time.time()), observation_source='better-stack-api')
+    return result
+
+
+# Read one saved incident without sending another lifecycle transition or acquiring a new identity
+def read_remote(settings, remote_id, identity, transport=None):
+    destination = Destination.model_validate(settings)
+    if destination.provider != 'better-stack' or not valid_remote_id(remote_id):
+        raise Refused('Remote status requires a saved Better Stack incident ID', 422)
+    key = credential(destination.key_env)
+    if not identity or hashlib.sha256(key.encode()).hexdigest() != identity:
+        raise Refused('Originating integration credential changed; inspect its configuration', 422)
+    code, _, raw = (transport or request)(
+        'https://incidents.betterstack.com/api/v3/incidents/' + remote_id, None,
+        {'Authorization': 'Bearer ' + key, 'Accept': 'application/json'}, [], method='GET')
+    try:
+        response = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        response = None
+    observed = better_stack_response(response, remote_id) if code == 200 else None
+    if not observed or 'remote_state' not in observed:
+        return {'state': 'unavailable', 'http_status': max(0, code),
+                'reason': 'Remote status could not be verified; previous observations and send outcomes are unchanged'}
+    return {'state': 'observed', **observed}

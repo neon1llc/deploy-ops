@@ -46,6 +46,8 @@ function pagingField(parent, key, title, value, schema, update, required = false
   else input.value = Array.isArray(value) ? value.join(", ") : value ?? "";
   if (schema.minimum !== undefined) input.min = schema.minimum;
   if (schema.maximum !== undefined) input.max = schema.maximum;
+  if (schema.maxLength !== undefined) input.maxLength = schema.maxLength;
+  if (key === "requester_email") { input.type = "email"; input.autocomplete = "email"; }
   if (input.type === "text") { input.spellcheck = false; input.autocapitalize = "off"; input.setAttribute("autocorrect", "off"); }
   input.oninput = () => update(input.type === "checkbox" ? input.checked : schema.type === "integer" ? Number(input.value) :
     schema.type === "array" ? input.value.split(",").map(item => item.trim()).filter(Boolean) : input.value);
@@ -69,10 +71,13 @@ function pagingDestinationFields() {
   const root = element("paging-destination-fields"); root.replaceChildren();
   const provider = element("paging-provider").value;
   const schema = pagingConfig.forms.destination.properties;
-  const native = ["pagerduty", "goalert"].includes(provider);
-  const keys = ["enabled", ...(native ? ["key_env"] : ["endpoint_env"]), ...(provider === "goalert" ? ["endpoint"] : [])];
+  const native = !pagingConfig.capabilities[provider].notifications;
+  const keys = ["enabled", ...(native ? ["key_env"] : ["endpoint_env"]), ...(provider === "goalert" ? ["endpoint"] : []),
+    ...(provider === "incident.io" ? ["alert_source_id"] : []), ...(provider === "better-stack" ? ["requester_email", "policy_id"] : [])];
   const labels = {enabled: "Enabled for new routes", key_env: "Integration key environment reference", endpoint_env: "Endpoint URL environment reference",
     endpoint: "GoAlert HTTPS generic endpoint", token_env: "Optional bearer token reference", signing_env: "Optional HMAC secret reference",
+    alert_source_id: "HTTP alert source configuration ID", requester_email: "Requester email", policy_id: "Existing escalation policy ID",
+    team_name: "Team name (required for a global API token)",
     allowed_networks: "Approved private networks, comma separated", attempts: "Maximum attempts", retry_seconds: "Initial retry delay (seconds)"};
   for (const key of keys) {
     const value = pagingDestination[key] ?? schema[key].default ?? "";
@@ -80,15 +85,21 @@ function pagingDestinationFields() {
     pagingField(root, key, labels[key], value, schema[key], next => { pagingDestination[key] = next; }, key !== "enabled");
   }
   const advanced = document.createElement("fieldset"); advanced.id = "paging-advanced"; text(advanced, "legend", "Delivery limits and network scope");
-  const extras = ["attempts", "retry_seconds", ...(provider !== "pagerduty" ? ["allowed_networks"] : []), ...(!native ? ["token_env", "signing_env"] : [])];
+  const extras = ["attempts", "retry_seconds", ...(["pagerduty", "incident.io", "better-stack"].includes(provider) ? [] : ["allowed_networks"]),
+    ...(provider === "better-stack" ? ["team_name"] : []), ...(!native ? ["token_env", "signing_env"] : [])];
   for (const key of extras) {
     const value = pagingDestination[key] ?? schema[key].default ?? (schema[key].type === "array" ? [] : "");
     pagingDestination[key] = value;
     pagingField(advanced, key, labels[key], value, schema[key], next => { pagingDestination[key] = next; });
   }
   root.append(advanced);
-  element("paging-provider-help").textContent = native ? "Use DEPLOY_OPS_PAGING_ references, never key values. Native schedules remain provider-managed. " +
-    (provider === "goalert" ? "GoAlert supports create/update and close. Acknowledgement and readback are unsupported." : "PagerDuty supports trigger, acknowledge and resolve through its US Events API. Readback is unsupported.") :
+  const help = {
+    "pagerduty": "PagerDuty supports trigger, acknowledge and resolve through its US Events API. Readback is unsupported.",
+    "goalert": "GoAlert supports create/update and close. Acknowledgement and readback are unsupported.",
+    "incident.io": "Use the HTTP alert source secret. Firing and resolved events affect alerts, not incidents or escalations. Configure source parsing and routing in incident.io. Acknowledgement and readback are unsupported.",
+    "better-stack": "Use a team-scoped Incidents API token and an existing escalation policy. Its policy can contact responders. Creation, API acknowledgement, resolution and explicit status reads are supported; a lost creation response cannot be safely repeated automatically."
+  };
+  element("paging-provider-help").textContent = native ? "Use DEPLOY_OPS_PAGING_ references, never key values. Native schedules remain provider-managed. " + help[provider] :
     "Use DEPLOY_OPS_PAGING_ references. These transports deliver notifications without native acknowledgement or resolution.";
 }
 
@@ -166,14 +177,22 @@ async function pagingRefresh() {
       "; accepted action " + (binding.accepted_action || "none") + "; remote state " + binding.remote_state + "." +
       (binding.locally_resolved ? " The local incident is resolved. Inspect and resolve this destination separately." : ""));
     if (binding.remote_id) text(row, "p", "Provider alert ID: " + binding.remote_id);
-    for (const action of ["acknowledge", "resolve", "retry"]) {
-      if (action === "acknowledge" && binding.provider === "goalert") { text(row, "p", "GoAlert generic acknowledgement is unsupported."); continue; }
-      if (binding.desired_action === "resolve" && action !== "retry") continue;
+    if (binding.observed_at) text(row, "p", "Remote observation: " + new Date(binding.observed_at * 1000).toLocaleString() +
+      " via " + binding.observation_source + ". API acknowledgement does not prove a human responded.");
+    if (binding.last_readback?.state === "unavailable") text(row, "p", binding.last_readback.reason);
+    const capabilities = pagingConfig.capabilities[binding.provider];
+    if (!capabilities.acknowledge) text(row, "p", "Acknowledgement is unsupported by this provider API.");
+    for (const action of ["acknowledge", "resolve", "retry", "readback"]) {
+      if (action !== "retry" && !capabilities[action]) continue;
+      if (binding.remote_state === "resolved" && action !== "readback") continue;
+      if (binding.desired_action === "resolve" && !["retry", "readback"].includes(action)) continue;
+      if (binding.provider === "better-stack" && !binding.remote_id && action !== "retry") continue;
       if (action === "retry" && !["unknown", "failed"].includes(binding.state)) continue;
-      const control = button(action + " at " + binding.destination, async () => pagingRun(async () => {
+      const control = button((action === "readback" ? "Read remote status" : action) + " at " + binding.destination, async () => pagingRun(async () => {
         if (action === "retry" && !window.confirm("Retry the selected operation? A lost response can mean it already succeeded, and another trigger may create a duplicate page.")) return;
         await api("/paging/" + action, "POST", {binding: binding.id, version: binding.version, allow_duplicate: action === "retry"});
-        element("paging-status").textContent = "Selected destination action queued. Local incident and deployment state are unchanged.";
+        element("paging-status").textContent = action === "readback" ? "Remote status checked. Send history, local incident and deployment state are unchanged." :
+          "Selected destination action queued. Local incident and deployment state are unchanged.";
         await pagingRefresh();
       }), binding.id + "-" + action);
       row.append(control);

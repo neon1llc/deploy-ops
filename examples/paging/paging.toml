@@ -16,6 +16,19 @@ provider = "goalert"
 key_env = "DEPLOY_OPS_PAGING_GOALERT"
 endpoint = "https://alerts.example/api/v2/generic/incoming"
 
+# incident.io receives alert events through an existing HTTP source and its source secret
+[destinations.alert-source]
+provider = "incident.io"
+key_env = "DEPLOY_OPS_PAGING_INCIDENT_HTTP"
+alert_source_id = "REPLACE_WITH_HTTP_SOURCE_ID"
+
+# Better Stack retains incident IDs and uses a separately configured responder escalation policy
+[destinations.responders]
+provider = "better-stack"
+key_env = "DEPLOY_OPS_PAGING_BETTER_STACK"
+requester_email = "operator@example.com"
+policy_id = "123456"
+
 # The first matching route fans out once to each named destination
 [[routes]]
 name = "production-incidents"

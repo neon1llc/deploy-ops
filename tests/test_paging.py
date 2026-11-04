@@ -233,6 +233,14 @@ def test_real_local_tls_transport(tmp_path, monkeypatch):
             self.end_headers()
 
 
+        # Read-only native status requests preserve their HTTP method without a body
+        def do_GET(self):
+            received.append(b'GET')
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"state":"fixture"}')
+
+
         # Keep test output free of request paths or sensitive headers
         def log_message(self, *args):
             pass
@@ -249,6 +257,9 @@ def test_real_local_tls_transport(tmp_path, monkeypatch):
         code, _, _ = paging_providers.request(f'https://127.0.0.1:{server.server_port}/', b'{"test":true}',
                                               {'Content-Type': 'application/json'}, ['127.0.0.1/32'])
         assert code == 204 and received == [b'{"test":true}']
+        code, _, body = paging_providers.request(f'https://127.0.0.1:{server.server_port}/', None,
+                                                 {}, ['127.0.0.1/32'], method='GET')
+        assert code == 200 and body == b'{"state":"fixture"}' and received[-1] == b'GET'
         with pytest.raises(Refused, match='private network'):
             paging_providers.request(f'https://127.0.0.1:{server.server_port}/', b'', {}, [])
     finally:

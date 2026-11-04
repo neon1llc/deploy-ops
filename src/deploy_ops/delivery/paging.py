@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from ..config import canonical
 from ..errors import Refused
 from .paging_config import CAPABILITIES, PLANNED, Destination, Paging, Route
-from .paging_providers import credential, send
+from .paging_providers import credential, read_remote, send
 
 
 # Add paging records beside existing incidents without rewriting legacy notification history
@@ -230,6 +230,10 @@ def action(ledger, binding_id, action, version, allow_duplicate=False):
             raise Refused('Paging binding changed; review the latest result')
         if action != 'retry' and not CAPABILITIES[binding['provider']][action]:
             raise Refused('This provider does not support acknowledgement through its selected API', 422)
+        if binding.get('remote_state') == 'resolved':
+            raise Refused('The provider was observed resolved; read status instead of sending another transition', 422)
+        if binding['provider'] == 'better-stack' and action != 'retry' and not binding['remote_id']:
+            raise Refused('Better Stack needs the saved remote incident ID before acknowledgement or resolution', 422)
         if action == 'retry':
             if not allow_duplicate:
                 raise Refused('Retry may create a duplicate page; explicitly allow duplicate risk', 422)
@@ -237,7 +241,9 @@ def action(ledger, binding_id, action, version, allow_duplicate=False):
                                      "ORDER BY rowid DESC LIMIT 1", (binding_id,)).fetchone()
             if (row is None or row['state'] not in ('failed', 'unknown')
                     or row['action'] != binding['desired_action']
-                    or (row['action'] == 'trigger' and binding['locally_resolved'])):
+                    or (row['action'] == 'trigger' and (binding['locally_resolved'] or
+                        (binding['provider'] == 'better-stack' and binding['remote_id'])))
+                    or (row['action'] == 'acknowledge' and binding.get('remote_state') == 'acknowledged')):
                 raise Refused('No retryable current operation; resolved incidents cannot replay triggers', 422)
             if row['attempts'] >= binding['settings']['attempts']:
                 raise Refused('Attempt limit exhausted; inspect the destination before a new incident', 422)
@@ -258,6 +264,38 @@ def action(ledger, binding_id, action, version, allow_duplicate=False):
         ledger.store.event(connection, int(time.time()), 'paging', 'binding.' + action, binding_id,
                            {'actor': 'local-operator', 'duplicate_risk_accepted': allow_duplicate})
     return _public(binding)
+
+
+# Record explicit native readback without rewriting local incidents or uncertain send history
+def readback(ledger, binding_id, version, reader=None):
+    with ledger.store.connect() as connection:
+        binding = _binding(connection, binding_id)
+        in_flight = connection.execute("SELECT 1 FROM notification_obligations WHERE binding_id=? AND state='in-flight'",
+                                       (binding_id,)).fetchone()
+    if binding['version'] != version or in_flight:
+        raise Refused('Binding changed or a send is in flight; refresh before readback')
+    if not CAPABILITIES[binding['provider']]['readback']:
+        raise Refused('The selected provider API does not support remote readback', 422)
+    result = (reader or read_remote)(binding['settings'], binding['remote_id'], binding['identity'])
+    with ledger.store.transaction() as connection:
+        current = _binding(connection, binding_id)
+        in_flight = connection.execute("SELECT 1 FROM notification_obligations WHERE binding_id=? AND state='in-flight'",
+                                       (binding_id,)).fetchone()
+        if current['version'] != version or in_flight:
+            raise Refused('Binding changed during readback; discard this stale observation and refresh')
+        current['last_readback'] = {**result, 'checked_at': int(time.time())}
+        if result['state'] == 'observed':
+            current.update({key: result[key] for key in ('remote_state', 'observed_at', 'observation_source')})
+            if result['remote_state'] == 'resolved':
+                connection.execute("UPDATE notification_obligations SET state='superseded' WHERE binding_id=? "
+                                   "AND state='queued'", (binding_id,))
+                if current['state'] == 'queued':
+                    current['state'] = 'observed'
+        current['version'] += 1
+        _save_binding(connection, current)
+        ledger.store.event(connection, int(time.time()), 'paging', 'binding.readback', binding_id,
+                           {'actor': 'local-operator', 'result': result})
+    return {'binding': _public(current), 'readback': result}
 
 
 # Queue a clearly synthetic incident only after an explicit operator send action
@@ -358,12 +396,15 @@ def _finish(ledger, row, result):
             if state == 'accepted':
                 binding['accepted_action'] = row['action']
                 binding['remote_id'] = result.get('remote_id', binding['remote_id'])
+                for key in ('remote_state', 'observed_at', 'observation_source'):
+                    if key in result:
+                        binding[key] = result[key]
             _save_binding(connection, binding)
 
         # Fallback is explicit and follows only a definite final rejection
         payload = json.loads(row['payload'])
         fallback = payload.get('fallback')
-        if state == 'failed' and fallback and not obsolete:
+        if state == 'failed' and fallback and not obsolete and row['action'] in ('trigger', 'notify'):
             target, target_settings = fallback['name'], fallback['settings']
             native = not CAPABILITIES[target_settings['provider']]['notifications']
             if not target_settings['enabled'] or (native and payload['event'] != 'incident.opened'):
@@ -385,7 +426,7 @@ def drain(ledger, limit=50, sender=None, heartbeat=None):
         if row is None:
             break
         settings, payload = json.loads(row['settings']), json.loads(row['payload'])
-        identity, dedup = '', row['id']
+        identity, dedup, remote_id = '', row['id'], ''
         try:
             if row['binding_id']:
                 # Pin the originating integration hash before the first possible external send
@@ -395,8 +436,10 @@ def drain(ledger, limit=50, sender=None, heartbeat=None):
                     if not binding['identity']:
                         binding['identity'] = observed
                         _save_binding(connection, binding)
-                    identity, dedup = binding['identity'], binding['dedup']
+                    identity, dedup, remote_id = binding['identity'], binding['dedup'], binding['remote_id']
             public_payload = {key: value for key, value in payload.items() if key != 'fallback'}
+            if row['binding_id']:
+                public_payload['remote_id'] = remote_id
             result = (sender or send)(settings, public_payload, row['action'], dedup, identity)
         except Refused:
             result = {'state': 'failed', 'reason': 'Check destination settings and required credential references', 'retryable': False}

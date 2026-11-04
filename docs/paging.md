@@ -1,12 +1,12 @@
 # Named paging destinations
 
-DeployOps routes local deployment incidents to named PagerDuty or GoAlert integrations and ordinary
+DeployOps routes local deployment incidents to named PagerDuty, GoAlert, incident.io or Better Stack integrations and ordinary
 notifications to JSON webhooks, Slack or ntfy. Each destination has independent delivery evidence.
 Multiple instances of the same provider are supported. Provider acceptance does not prove that a person
 received a page, acknowledged an incident or fixed a deployment.
 
-The native adapters are qualified with local protocol fixtures. No live PagerDuty or GoAlert page has
-been sent as part of this implementation. incident.io, Better Stack, Grafana Cloud IRM and ilert remain
+The native adapters are qualified with local protocol fixtures. No live provider page has
+been sent as part of this implementation. Grafana Cloud IRM and ilert remain
 planned native adapters. Optional Apprise support remains planned. Hosted accounts and provider channels
 may require paid plans or incur SMS/voice charges. No subscriptions or background services are installed.
 
@@ -44,6 +44,24 @@ requires `key_env` and a nonsecret HTTPS endpoint ending in `/api/v2/generic/inc
 ntfy use `endpoint_env`, so webhook URLs containing tokens stay outside exported configuration. Their
 optional bearer token and HMAC references are `token_env` and `signing_env`.
 
+incident.io requires `key_env` for the **HTTP alert source secret** and `alert_source_id` for that source's
+configuration ID. Its fixed HTTPS endpoint receives firing and resolved alert events with the same
+deduplication key. Configure source parsing for the provided `title`, `status`, `deduplication_key` and
+metadata, then configure alert routes and escalation in incident.io. Metadata includes project,
+environment, component, severity and release ID; its interpretation is configured upstream. Alert
+resolution does not claim incident closure or escalation acknowledgement. The selected HTTP source
+route does not provide acknowledgement or readback. [Official alert events contract](https://docs.incident.io/openapi/tags/alert-events-v2.json).
+
+Better Stack requires `key_env` for an Incidents API token, `requester_email`, and an existing `policy_id`.
+Prefer a team-scoped token. A global token also requires `team_name`. The selected escalation policy owns
+responder schedules and channels and may cause calls or messages. DeployOps explicitly disables the
+separate entire-team timer with `team_wait: null`; it does not create policies or alter their steps.
+The API's returned incident ID is retained for subsequent actions. A lost creation response without an ID
+cannot be reconciled through this integration and never triggers an automatic duplicate create.
+[Create incident](https://betterstack.com/docs/uptime/api/create-a-new-incident/),
+[manual creation and escalation](https://betterstack.com/docs/uptime/creating-incidents-manually/),
+[token scope](https://betterstack.com/docs/uptime/api/getting-started-with-uptime-api/).
+
 Set referenced credentials in the separately managed worker environment. Never enter secret values in
 console fields, TOML, source repositories or command arguments. The console does not reveal credential
 values. Native bindings retain a hash of the initial integration credential and refuse subsequent sends
@@ -72,7 +90,8 @@ policy, without a hidden exception.
 An optional route `fallback` selects a different destination after a definite final transport failure.
 It does not run after an unknown outcome. There is no fallback chain. It is distinct from transport
 retry and from provider-managed responder escalation. Local escalation ticks do not repeatedly trigger
-native pages. PagerDuty and GoAlert retain responsibility for their own responder schedules.
+native pages. Native providers retain responsibility for their own responder schedules. Lifecycle-action
+failure does not open a new incident at the fallback destination.
 
 ```bash
 # Inspect state without sending
@@ -92,8 +111,9 @@ One worker claims each operation transactionally before network I/O. Operations 
 binding. A stopped in-flight attempt becomes unknown after its claim expires, not silently unsent.
 Backoff and attempt caps survive restart. Throttling honors bounded `Retry-After`. Connection failure
 before sending can retry automatically. A lost response or ambiguous provider error remains unknown.
-There is no exactly-once claim. Both native providers can create a new alert if an old trigger is replayed
-after remote closure.
+There is no exactly-once claim. Replaying an old trigger can create another alert after remote closure.
+Better Stack creation has no assumed idempotency guarantee; an explicit retry after an unknown creation
+can duplicate the incident even while the first one is still open.
 
 ## Respond to one destination
 
@@ -107,13 +127,29 @@ deploy-ops paging resolve BINDING_ID --version CURRENT_VERSION
 
 # Accept duplicate risk explicitly when retrying an unknown or failed native action
 deploy-ops paging retry BINDING_ID --version CURRENT_VERSION --allow-duplicate
+
+# Read one known Better Stack incident without sending another transition
+deploy-ops paging readback BINDING_ID --version CURRENT_VERSION
 ```
 
 [PagerDuty Events API v2](https://docs.pagerduty.com/developer/send-alert-event) supports trigger,
 acknowledge and resolve. [GoAlert's generic API](https://goalert.me/docs/alerting/alerting-from-generic-api/)
 supports create/update and close, and returns unsupported for acknowledgement. Accepted actions are recorded separately from
-remote state, which remains unverified. Neither selected integration provides readback or authenticated
-incoming callbacks in this increment. Do not expose the local console as a callback endpoint.
+remote state, which remains unverified for these integrations and incident.io. Better Stack supports
+[API acknowledgement](https://betterstack.com/docs/uptime/api/acknowledge-an-ongoing-incident/),
+[resolution](https://betterstack.com/docs/uptime/api/resolve-an-ongoing-incident/) and explicit
+[incident status reads](https://betterstack.com/docs/uptime/api/list-a-single-incident/). Requests attribute
+acknowledgement/resolution to the DeployOps API acting on a local operator request; they do not claim a
+human answered a page. A response with the correct incident ID and documented lifecycle facts records an
+observed state and time. Status reads retain only those facts, not included monitor credentials or raw
+provider response content.
+
+Readback leaves uncertain send history unchanged. For example, an acknowledgement timeout can remain an
+unknown send while a later GET proves the incident is currently acknowledged. A failed read leaves the
+last observation intact and reports its failure separately. Version checks reject stale reads racing
+other actions. Observed resolution supersedes queued transitions and blocks replay; none of these
+observations changes local incident state or deployment approvals. No authenticated incoming callbacks
+are implemented. Do not expose the local console as a callback endpoint.
 
 Resolving a local incident supersedes unsent native triggers. It does not claim that an accepted or
 unknown remote incident was closed. Inspect and resolve its retained bindings separately. An already

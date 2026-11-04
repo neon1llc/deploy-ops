@@ -229,6 +229,8 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
             return paging.test_destination(engine.ledger, data.name, data.revision)
         if action == "drain":
             return paging.drain(engine.ledger)
+        if action == "readback":
+            return paging.readback(engine.ledger, data.binding, data.version)
         if action in ("acknowledge", "resolve", "retry"):
             return paging.action(engine.ledger, data.binding, action, data.version, data.allow_duplicate)
         raise Refused("Unknown paging operation", 404)

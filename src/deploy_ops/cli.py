@@ -139,7 +139,7 @@ def parser():
     drain = paging_actions.add_parser("drain")
     drain.add_argument("--limit", type=int, default=50)
     paging_actions.add_parser("worker", help="Run the foreground delivery worker until interrupted")
-    for name in ("acknowledge", "resolve", "retry"):
+    for name in ("acknowledge", "resolve", "retry", "readback"):
         action = paging_actions.add_parser(name)
         action.add_argument("binding")
         action.add_argument("--version", type=int, required=True)
@@ -318,6 +318,8 @@ def dispatch(args):
         if action == "worker":
             paging.run_worker(engine.ledger)
             return {"stopped": True}
+        if action == "readback":
+            return paging.readback(engine.ledger, args.binding, args.version)
         return paging.action(engine.ledger, args.binding, action, args.version, args.allow_duplicate)
     if args.command == "ui":
         from .console import serve

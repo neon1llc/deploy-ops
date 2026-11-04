@@ -10,13 +10,15 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Keep future integrations visible without accepting unfinished provider implementations
-PROVIDERS = ('pagerduty', 'goalert', 'json', 'slack', 'ntfy')
-PLANNED = ('incident.io', 'better-stack', 'grafana-cloud-irm', 'ilert', 'apprise')
+PROVIDERS = ('pagerduty', 'goalert', 'incident.io', 'better-stack', 'json', 'slack', 'ntfy')
+PLANNED = ('grafana-cloud-irm', 'ilert', 'apprise')
 NAME = re.compile(r'^[a-z][a-z0-9-]{0,47}$')
 REFERENCE = re.compile(r'^DEPLOY_OPS_PAGING_[A-Z0-9_]{1,80}$')
 CAPABILITIES = {
     'pagerduty': {'trigger': True, 'acknowledge': True, 'resolve': True, 'readback': False, 'notifications': False},
     'goalert': {'trigger': True, 'acknowledge': False, 'resolve': True, 'readback': False, 'notifications': False},
+    'incident.io': {'trigger': True, 'acknowledge': False, 'resolve': True, 'readback': False, 'notifications': False},
+    'better-stack': {'trigger': True, 'acknowledge': True, 'resolve': True, 'readback': True, 'notifications': False},
     **{name: {'trigger': False, 'acknowledge': False, 'resolve': False, 'readback': False, 'notifications': True}
        for name in ('json', 'slack', 'ntfy')},
 }
@@ -29,13 +31,17 @@ class Record(BaseModel):
 
 # Keep secrets in explicitly named worker environment variables
 class Destination(Record):
-    provider: Literal['pagerduty', 'goalert', 'json', 'slack', 'ntfy']
+    provider: Literal['pagerduty', 'goalert', 'incident.io', 'better-stack', 'json', 'slack', 'ntfy']
     enabled: bool = True
     key_env: str = ''
     endpoint: str = ''
     endpoint_env: str = ''
     token_env: str = ''
     signing_env: str = ''
+    alert_source_id: str = ''
+    requester_email: str = ''
+    policy_id: str = ''
+    team_name: str = Field(default='', max_length=200)
     allowed_networks: list[str] = Field(default_factory=list)
     attempts: int = Field(default=5, ge=1, le=10)
     retry_seconds: int = Field(default=60, ge=1, le=3600)
@@ -47,11 +53,13 @@ class Destination(Record):
         for reference in (self.key_env, self.endpoint_env, self.token_env, self.signing_env):
             if reference and not REFERENCE.fullmatch(reference):
                 raise ValueError('Use a DEPLOY_OPS_PAGING_ environment reference, never a credential value')
-        if self.provider in ('pagerduty', 'goalert'):
+        if self.provider in ('pagerduty', 'goalert', 'incident.io', 'better-stack'):
             if not self.key_env or self.endpoint_env or self.token_env or self.signing_env:
                 raise ValueError('Native paging requires key_env and no generic transport credentials')
             if self.provider == 'pagerduty' and (self.endpoint or self.allowed_networks):
                 raise ValueError('PagerDuty uses its fixed US Events API endpoint')
+            if self.provider in ('incident.io', 'better-stack') and (self.endpoint or self.allowed_networks):
+                raise ValueError('Hosted native paging uses a fixed provider endpoint and public networks')
             if self.provider == 'goalert':
                 parsed = urlsplit(self.endpoint)
                 if parsed.port is not None and not 1 <= parsed.port <= 65535:
@@ -61,6 +69,19 @@ class Destination(Record):
                     raise ValueError('GoAlert needs a public HTTPS generic endpoint without tokens or query parameters')
         elif not self.endpoint_env or self.endpoint or self.key_env:
             raise ValueError('Notification URLs belong in endpoint_env, not exported configuration')
+
+        # Provider-specific fields remain explicit and cannot silently select another account or route
+        if self.provider == 'incident.io':
+            if not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', self.alert_source_id):
+                raise ValueError('incident.io requires the HTTP alert source configuration ID')
+        elif self.alert_source_id:
+            raise ValueError('alert_source_id is only supported by incident.io')
+        if self.provider == 'better-stack':
+            if (not re.fullmatch(r'[^\s@]{1,64}@[^\s@.]+(?:\.[^\s@.]+)+', self.requester_email)
+                    or len(self.requester_email) > 254 or not re.fullmatch(r'[0-9]{1,32}', self.policy_id)):
+                raise ValueError('Better Stack requires a requester email and existing numeric escalation policy ID')
+        elif self.requester_email or self.policy_id or self.team_name:
+            raise ValueError('Requester, policy and team settings are only supported by Better Stack')
         for network in self.allowed_networks:
             value = ipaddress.ip_network(network, strict=True)
             if value.is_link_local or value.is_multicast or value.is_unspecified or value.prefixlen == 0:
