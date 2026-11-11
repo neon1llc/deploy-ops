@@ -1,0 +1,47 @@
+name: release
+
+# Every version in CHANGELOG.md gets an annotated tag. An entry may name the commit it was built from in a
+# comment (<!-- commit: SHA -->), which is how releases made before this workflow were tagged afterwards;
+# an entry without one is tagged on the commit that added it, when it's the top entry. Tags are never
+# moved: a version that already has a tag is left alone (see neon1's versioning standard)
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+# One run at a time, never cancelled halfway
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Walk the changelog's versions, top first, and tag the ones that don't have a tag yet
+      - name: Tag released versions
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --tags --force
+          top=1
+          awk '/^##+ v[0-9]/{if(v)print v" "c; v=$2; c=""} /<!-- commit: [0-9a-f]+ -->/{if(!c){match($0,/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]+/); c=substr($0,RSTART,RLENGTH)}} END{if(v)print v" "c}' CHANGELOG.md > /tmp/versions
+          while read -r v c; do
+            [[ "$v" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::$v is not a version like v0.2.1"; exit 1; }
+            if [ -z "$c" ]; then
+              if [ "$top" = 1 ]; then c="$GITHUB_SHA"; else echo "::warning::$v names no commit; left untagged"; top=0; continue; fi
+            fi
+            top=0
+            if git rev-parse -q --verify "refs/tags/$v" >/dev/null; then continue; fi
+            sha=$(git rev-parse --verify "$c^{commit}") || { echo "::error::$v names $c, which isn't a commit here"; exit 1; }
+            git merge-base --is-ancestor "$sha" HEAD || { echo "::error::$v's commit $c is not on main"; exit 1; }
+            git tag -a "$v" "$sha" -m "$v"
+            git push origin "refs/tags/$v"
+            echo "tagged $v at $sha"
+          done < /tmp/versions
