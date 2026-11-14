@@ -2,7 +2,7 @@
 
 DeployOps releases use `v0.MINOR.PATCH` until the first complete release, v1.0.0, following neon1's [versioning standard](https://neon1.tech/knowledge/standards/versioning/). Each version has an annotated tag on the commit it names. Tags v0.2.0 to v0.13.0 were made when those versions shipped; this changelog was written from them on 2026-11-11. The release workflow adds missing tags and never moves one.
 
-## Unreleased
+## v0.14.1 - 2026-11-14
 
 ### Changed
 - The README, package description, security notes, and support matrix now name one stage, local developer preview, not production-supported, and say which stages have run on each provider: local delivery end to end, some live AWS and Azure stages, and no live GCP deployment.

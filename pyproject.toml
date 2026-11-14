@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 # Keep distribution identity and required license files together
 [project]
 name = "neon1-deploy-ops"
-version = "0.14.0"
+version = "0.14.1"
 description = "Local developer preview of infrastructure and application delivery with exact approvals; cloud support is partial"
 readme = "README.md"
 requires-python = ">=3.11"
