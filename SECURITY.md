@@ -1,6 +1,6 @@
 # Security
 
-DeployOps is a working preview. It has not had an independent security audit or live multi-cloud validation.
+DeployOps is a local developer preview, not production-supported. It has not had an independent security audit, and its cloud paths are only partly live-checked. See the [support matrix](docs/support-matrix.md).
 Keep account-owner credentials and untrusted agent control outside the controller, policy files,
 deployment workflow, runner host and operator token. Trusted local qualification can use explicit native
 credential references under an expiring operator grant. Those checks do not reduce the source identity’s
