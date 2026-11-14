@@ -1,5 +1,9 @@
 # Support and qualification
 
+Stage: local developer preview, not production-supported. The local path is complete. AWS and Azure
+have live checks for the stages listed below, and GCP has none. The [README](../README.md#status) summarizes
+this table by provider.
+
 These are bounded observations for the v0.10.0 baseline through v0.12.0 and subsequent source checks,
 checked on 2026-11-03. A supported configuration
 schema does not prove runtime or cloud compatibility. Versions outside this table may work but have not
@@ -7,7 +11,7 @@ been qualified here. No production reliability or security certification is clai
 
 | Surface | Checked environment | Observed result | Remaining limits |
 |---|---|---|---|
-| Python package on macOS | Python 3.12.10, macOS 26.7.1 | Source checks, 207 tests, installed-wheel demo, static HTTP delivery and promotion | Other macOS/Python combinations |
+| Python package on macOS | Python 3.12.10, macOS 26.7.1, x86_64 | v0.14.0 on 2026-11-13: fresh venv install from the README, source checks, 653 tests, and the demo from both the editable install and an installed wheel, including static HTTP delivery and promotion | Other macOS/Python combinations |
 | Python package on Linux | Python 3.14.4, Ubuntu 26.04, x86_64 | v0.7 runtime base: all 177 tests | Later incident/preview tests not rerun on Python 3.14; other distributions and architectures |
 | CI | Ubuntu, Python 3.11 and 3.13 | Source/tests/demo; inspect each commit's workflow result | CI does not exercise live providers |
 | Local browser console | Chrome 156.0.8078.80 on macOS | Auth, editing, approvals, delivery, promotion, recovery, appearance, focus and narrow layout | Safari, Firefox and assistive-technology audit |
