@@ -1,6 +1,6 @@
 # DeployOps
 
-**0.14.0 preview · by neon1 LLC**
+**0.14.0 · local developer preview, not production-supported · by neon1 LLC**
 
 Deploy infrastructure and applications from separate repositories. Choose an environment,
 review exact changes, and track the result through one CLI, local browser console, and audit history.
@@ -35,10 +35,19 @@ The demo builds, deploys, promotes, and HTTP-checks a real local application. It
 | [Security](SECURITY.md) | Limits that matter before cloud access |
 | [Development](docs/development.md) | Commands, comments, and ownership |
 
-CloudFormation passed a live private S3 lifecycle; ECS passed infrastructure-to-app delivery and an
-app-only image update. Azure passed Bicep/ARM provisioning and an independent Container Apps image update;
-owned cleanup completed after a provider deletion overrun. Other cloud paths have command-contract tests.
-Identity preflight does not qualify a deployment. This is a working preview,
-not a claim of universal repository compatibility or production readiness.
+## Status
+
+DeployOps is a local developer preview, not production-supported. The local path runs end to end on a
+clean machine. Cloud support is partial and differs by provider:
+
+| Target | What has run | Not yet qualified or supported |
+|---|---|---|
+| Local | Build, deploy, app-only release, promotion, and HTTP check run in the demo and in CI. Rollback has local tests. Docker Compose and a kind Kubernetes cluster were also checked | Windows |
+| AWS | Live CloudFormation create, update, and owned deletion of a private S3 bucket, and live ECS delivery to an existing Fargate service, including an app-only image update | Public HTTP check, image publication, a live CDK stack, and live Terraform or OpenTofu apply |
+| Azure | Live Bicep and ARM provisioning and a live Container Apps image update with revision health and logs | Ingress HTTP check and DeployOps-driven deletion of ARM resources |
+| GCP | Cloud Run and the isolated GCP recipe pass command fixtures and offline validation only | Any live deployment |
+
+The [support matrix](docs/support-matrix.md) lists the exact versions, regions, and limits. Identity
+preflight alone does not qualify a deployment.
 
 Licensed under [Apache-2.0](LICENSE), with [attribution notices](NOTICE). See [licensing](docs/licensing.md).
