@@ -1,7 +1,6 @@
 # Capabilities
 
-This table describes the current preview implementation. "Implemented" describes source behavior. "Live" means it actually ran
-in this build environment. Mocked provider commands are not cloud integration evidence.
+"Implemented" means source behavior. "Live" means it ran in this build environment. Mocked provider commands aren't cloud evidence.
 
 | Capability | Current behavior | Evidence or limit |
 |---|---|---|
@@ -38,9 +37,6 @@ in this build environment. Mocked provider commands are not cloud integration ev
 | Canary, blue/green, SBOM enforcement | Research and phased plan | Not implemented |
 | Pulumi, Helm/Kustomize, Argo CD and Flux | Can be invoked through a trusted manual local workflow where applicable | Native lifecycle and reconciliation adapters remain unfinished |
 
-Production never allows unattended delegation in this version. The project is not limited to cloud use,
-but local execution does not simulate the semantics of AWS, Azure, or GCP.
+Production never allows unattended delegation in this version. Local execution doesn't simulate AWS, Azure, or GCP.
 
-See [native infrastructure](native-infrastructure.md) for supported combinations, prerequisites,
-mutation boundaries and recovery. A compiler result, preview or provider response alone does not prove
-application health or a complete cloud journey.
+See [native infrastructure](native-infrastructure.md) for supported combinations, prerequisites, mutation boundaries, and recovery. A compiler result, preview, or provider response alone doesn't prove application health or a complete cloud journey.

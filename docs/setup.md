@@ -2,9 +2,7 @@
 
 ## Install and run
 
-Use Python 3.11 or newer. Local verification used Python 3.12.10 on macOS and Python 3.14.4 on Linux.
-Start with the commands in the [README](../README.md). The version-pinned requirements
-record this environment. They are not an independently audited dependency lock or an SBOM.
+Use Python 3.11 or newer. Verification used Python 3.12.10 on macOS and 3.14.4 on Linux. Start with the commands in the [README](../README.md). The pinned requirements record this environment. They aren't an audited dependency lock or an SBOM.
 
 ```bash
 deploy-ops init ../my-workspace
@@ -14,17 +12,14 @@ deploy-ops run development
 deploy-ops status
 ```
 
-`plan` inspects the dependency graph without executing repository code. `run` prepares real artifacts,
-which can execute configured checks and build commands. It stops at required approvals.
-Read the returned preview and request digest before approving anything.
+`plan` inspects the dependency graph without running repository code. `run` prepares real artifacts, which can run configured checks and build commands, and stops at required approvals. Read the preview and request digest before approving.
 
 ```bash
 deploy-ops approve RELEASE_ID foundation --digest EXACT_REQUEST_DIGEST
 deploy-ops resume RELEASE_ID
 ```
 
-Approve the next waiting component in the same way. An application-only run reuses the recorded
-infrastructure output receipt instead of redeploying infrastructure:
+Approve the next waiting component the same way. An application-only run reuses the recorded infrastructure output receipt instead of redeploying:
 
 ```bash
 deploy-ops run development --component web --only
@@ -36,9 +31,7 @@ deploy-ops run development --component web --only
 deploy-ops ui --token-file "$HOME/.config/deploy-ops/operator.token"
 ```
 
-Open the loopback address printed by the command, rather than the packaged HTML file. Paste the token
-from that file into **Connect workspace**.
-The server creates it with mode `0600` when absent. The browser holds it in memory only.
+Open the loopback address the command prints, not the packaged HTML file. Paste the token from that file into **Connect workspace**. The server creates the file with mode `0600` if it's absent, and the browser holds the token in memory only.
 The console has separate Home, Releases, Infrastructure, Incidents and Controls views. Prepare a release
 from **Releases**, inspect its proposed actions, approve the exact change, then choose **Execute approved
 release**. Approval alone does not start execution. Complete evidence remains available in expandable
@@ -63,9 +56,7 @@ custom colors while retaining the selected density and radius. Reset restores th
 Only appearance preferences use browser storage under `deploy-ops.appearance.v1`. Operator tokens stay in
 memory. If storage is unavailable, appearance changes still work for the current session.
 
-The UI and API bind to `127.0.0.1`. Do not reverse-proxy this local operator interface to the Internet.
-Use the separate authority service for authenticated remote workers. Do not serve deployed app files
-from the operator console's origin.
+The UI and API bind to `127.0.0.1`. Don't reverse-proxy this operator interface to the Internet. Use the separate authority service for authenticated remote workers. Don't serve deployed app files from the console's origin.
 
 ## Review and save configuration from the CLI
 
@@ -128,9 +119,7 @@ docs-site` serves the successful static artifact on loopback until stopped.
 
 ## Cloud setup
 
-Cloud access is opt-in and is not provisioned by installation. Read [security](../SECURITY.md) first.
-The [authority setup](authority-setup.md) and [cloud trust templates](../integrations/clouds) cover
-separate planner and executor identities. Replace every placeholder and validate the provider configuration.
+Installing doesn't set up cloud access. Read [security](../SECURITY.md) first. The [authority setup](authority-setup.md) and [cloud trust templates](../integrations/clouds) cover separate planner and executor identities. Replace every placeholder and validate the provider configuration.
 
 The retained `deploy-ops gate` workflow separates IaC planning and execution jobs. The newer delivery
 worker supports native app rollouts from an already-built immutable image. It refuses repository build
@@ -146,9 +135,7 @@ The [Dockerfile](../Dockerfile) and [Compose file](../compose.yaml) package the 
 They do not install cloud CLIs or mount the Docker socket. Set the controller database to `/state/deploy-ops.db`.
 The service runs as UID 10001. Ensure mounted configuration is readable by that user and keep the token secret.
 
-The local console currently runs from the Python package. A thin desktop wrapper is a later packaging choice,
-not a second implementation. Source and wheel journeys were checked on macOS; the test suite and container execution also passed on
-Linux. Windows remains unqualified. See the [support matrix](support-matrix.md) for exact versions and limits.
+The local console runs from the Python package. Source and wheel journeys were checked on macOS, and the test suite and container execution also passed on Linux. Windows is unqualified. See the [support matrix](support-matrix.md) for exact versions and limits.
 
 For real application delivery on a disposable engine or cluster, copy the [Compose example](../examples/local-compose/README.md)
 or [Kubernetes example](../examples/local-kubernetes/README.md) from the source archive. Both document
@@ -167,8 +154,7 @@ Serve a successful static release on a separate loopback origin:
 deploy-ops preview RELEASE_ID --component web --port 8000
 ```
 
-This process stays in the foreground until stopped. It does not expose the operator console or create
-a permanent hosting service.
+This process stays in the foreground until stopped. It doesn't expose the operator console or create a permanent hosting service.
 
 ## Stop and recover local controller authority
 

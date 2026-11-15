@@ -1,9 +1,6 @@
 # Roadmap
 
-The intended product owns configurable infrastructure and application deployment across repositories,
-environments, clouds, and local targets. Authorization, notifications, audit, and human/agent attribution
-remain part of that delivery lifecycle. The following order protects that vision while avoiding a collection
-of disconnected adapters.
+The goal is configurable infrastructure and application deployment across repositories, environments, clouds, and local targets, with authorization, notifications, audit, and human or agent attribution inside the delivery lifecycle. This order avoids a pile of disconnected adapters.
 
 | Phase | Complete outcome | Acceptance evidence |
 |---|---|---|
@@ -16,21 +13,14 @@ of disconnected adapters.
 | 7. Improve onboarding | Reviewed catalog, form-driven config, existing-pipeline adoption, template generation | One new repository reaches a verified deployment without hidden manual edits |
 | 8. Package and integrate | Desktop wrapper only when useful, optional Deep UI, self-hosted deployment | Same owned core and contracts, no duplicated domain logic, measured operational value |
 
-## Features worth pursuing, not pretending are finished
+## Not finished
 
-A deployment receipt can become the link between infrastructure outputs, app artifact, workflow identity,
-policy version, provider revision, health evidence, and incident record. That makes a human or agent change
-explainable after the fact. It should be signed and independently retained before being trusted across workers.
+A deployment receipt could link infrastructure outputs, app artifact, workflow identity, policy version, provider revision, health evidence, and incident record, so a human or agent change can be explained later. Sign it and keep it independently before trusting it across workers.
 
-Capability negotiation should expose unsupported operations before a run. A provider adapter can say it
-supports rolling image updates but not weighted traffic or reversible database migrations. This is more
-useful than a universal switch that fails late or silently changes semantics.
+Capability negotiation should expose unsupported operations before a run. An adapter might support rolling image updates but not weighted traffic or reversible database migrations. That beats a universal switch that fails late or silently changes meaning.
 
-A preview environment should be a leased environment with a cost envelope and an explicit cleanup plan,
-not merely a branch name. Cleanup that would delete retained data must stop for separate approval.
+A preview environment should be leased, with a cost envelope and an explicit cleanup plan. Cleanup that would delete retained data must stop for separate approval.
 
-Policy simulation can explain why a proposed change needs approval before it reaches the execution queue.
-Cost simulation remains an estimate. Both should use the same policy and preview contracts as execution.
+Policy simulation could explain why a change needs approval before it reaches the execution queue. Cost simulation stays an estimate. Both should use the same policy and preview contracts as execution.
 
-A case study should publish observed outcomes and failure evidence. It should not infer production value
-from passing tests, GitHub stars, or an attractive diagram.
+A case study should publish observed outcomes and failures, and shouldn't infer production value from passing tests, GitHub stars, or a diagram.

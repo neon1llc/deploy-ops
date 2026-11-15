@@ -33,9 +33,7 @@ coordination. `delivery/adapters/` owns tool-specific preparation and execution.
 and `identity.py` own authorization. `store.py` provides transactions and the audit chain. The CLI and console
 call the same operations. No approval or deployment logic is copied into JavaScript.
 
-External tools perform their own specialized work. Terraform/OpenTofu manage their provider graph and
-state. Docker builds and runs containers. AWS, Azure, GCP, and Kubernetes retain their own rollout semantics.
-DeployOps does not emulate clouds or claim one provider switch can translate an application's architecture.
+External tools do their own work. Terraform/OpenTofu manage their provider graph and state. Docker builds and runs containers. AWS, Azure, GCP, and Kubernetes keep their own rollout semantics. DeployOps doesn't emulate clouds or translate an application between providers.
 
 ## Current execution boundaries
 
@@ -59,8 +57,7 @@ flowchart LR
   end
 ```
 
-The local operator identity is labelled `local`, never represented as verified GitHub identity.
-A local token grants control of the trusted local workspace. It is not a multi-user security boundary.
+The local operator identity is labeled `local`, never shown as a verified GitHub identity. A local token controls the trusted local workspace. It isn't a multi-user security boundary.
 
 The remote delivery worker does not execute repository-defined build hooks, generic workflows, or IaC.
 Its GitHub job could otherwise mint writer credentials while untrusted preparation code runs.
@@ -88,10 +85,6 @@ stateDiagram-v2
   cancelled --> [*]
 ```
 
-SQLite records release progress, requests, claims, delegation use, outputs, audit links, and the notification
-outbox. Use one service process on local durable storage. Network filesystems and multi-replica scheduling
-are not supported. A stale execution lock is deliberately not cleared automatically.
+SQLite records release progress, requests, claims, delegation use, outputs, audit links, and the notification outbox. Use one service process on local durable storage. Network filesystems and multi-replica scheduling aren't supported. A stale execution lock is never cleared automatically.
 
-An output receipt proves what DeployOps recorded, not that the live infrastructure remains unchanged.
-Application-only runs intentionally reuse the last successful matching-contract receipt. They do not run
-infrastructure discovery or drift reconciliation. Review that receipt or deploy infrastructure again when needed.
+An output receipt proves what DeployOps recorded, not that live infrastructure is unchanged. Application-only runs reuse the last successful matching-contract receipt and skip infrastructure discovery and drift reconciliation. Review that receipt or redeploy infrastructure when needed.
