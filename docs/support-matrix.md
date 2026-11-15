@@ -1,6 +1,6 @@
 # Support and qualification
 
-Stage: local developer preview, not production-supported. The local path is complete. AWS and Azure have live checks for the stages listed below, and GCP has none. The [README](../README.md#status) summarizes this table.
+Stage: local developer preview, not production-supported. The [README](../README.md#status) summarizes this table.
 
 These are bounded observations from the v0.10.0 baseline through v0.12.0 and later source checks, checked on 2026-11-03. A supported configuration schema doesn't prove runtime or cloud compatibility. Versions outside this table may work but aren't qualified. No production reliability or security certification is claimed.
 
@@ -30,4 +30,4 @@ These are bounded observations from the v0.10.0 baseline through v0.12.0 and lat
 | Isolated GCP recipe | OpenTofu 1.10.0, Terraform 1.12.2, Google 6.50.0, dedicated Lima guest | Offline validation, immutable inputs, supervised process cleanup, CLI/API and receipt fixtures | Live IAM/plan/apply and new browser panel unqualified; native destroy unsupported |
 | Windows | None | Not qualified | Process supervision and filesystem behavior need testing |
 
-The container, Compose, and Kubernetes evidence qualifies the v0.7 execution base and the v0.8 examples. Later changes have local tests and per-commit CI, but this matrix wasn't rerun for each. Runtime checks used a disposable VM without host mounts. The examples use public digest-pinned Python images, which doesn't establish vulnerability status, provenance, or licensing. Keep Docker socket and kubeconfig access scoped. The local worker is for trusted source and isn't a sandbox for hostile build or IaC programs. See [verification](verification.md) and [capabilities](capabilities.md).
+The container, Compose, and Kubernetes evidence qualifies the v0.7 execution base and the v0.8 examples. Later changes have local tests and per-commit CI, but this matrix wasn't rerun for each. Runtime checks used a disposable VM without host mounts. The examples use public digest-pinned Python images, which doesn't establish vulnerability status, provenance, or licensing. Keep Docker socket and kubeconfig access scoped. The local worker is for trusted source and isn't a sandbox for hostile build or IaC programs.

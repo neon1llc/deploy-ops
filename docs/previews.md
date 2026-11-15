@@ -73,4 +73,4 @@ Approve the new digest before executing the new plan, even for a zero-file plan.
 
 Back up state before upgrading, and don't downgrade while preview operations are in progress. Don't delete lock rows, since unattributed legacy locks fail closed in recovery.
 
-Runtime teardown, shared storage, mutable services, cloud previews, automatic expiry deletion, and cross-preview artifact reuse are unsupported. The [support matrix](support-matrix.md) separates local evidence from provider qualification.
+Runtime teardown, shared storage, mutable services, cloud previews, automatic expiry deletion, and cross-preview artifact reuse are unsupported.

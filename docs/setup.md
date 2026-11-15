@@ -19,7 +19,7 @@ deploy-ops approve RELEASE_ID foundation --digest EXACT_REQUEST_DIGEST
 deploy-ops resume RELEASE_ID
 ```
 
-Approve the next waiting component the same way. An application-only run reuses the recorded infrastructure output receipt instead of redeploying:
+Approve the next waiting component the same way. An application-only run reuses the recorded infrastructure output receipt:
 
 ```bash
 deploy-ops run development --component web --only
@@ -45,7 +45,7 @@ The UI and API bind to `127.0.0.1`. Don't reverse-proxy this operator interface 
 
 ## Review and save configuration from the CLI
 
-Use a separate draft file so your saved workspace stays untouched until review. The CLI and console share validation, conflict detection, backups, and audit records.
+Use a separate draft file so your saved workspace stays untouched until review.
 
 ```bash
 cp deploy-ops.toml draft.toml
@@ -84,7 +84,7 @@ Authoring, validation, and save never run build or check arguments. After saving
 
 ## Cloud setup
 
-Installing doesn't set up cloud access. Read [security](../SECURITY.md) first. The [authority setup](authority-setup.md) and [cloud trust templates](../integrations/clouds) cover separate planner and executor identities. Replace every placeholder and validate the provider configuration.
+Read [security](../SECURITY.md) before setting up cloud access. The [authority setup](authority-setup.md) and [cloud trust templates](../integrations/clouds) cover separate planner and executor identities. Replace every placeholder and validate the provider configuration.
 
 The `deploy-ops gate` workflow separates IaC planning and execution jobs. The delivery worker supports native app rollouts from a built immutable image and refuses build hooks, generic commands, and IaC in a cloud-authorized job.
 
@@ -108,8 +108,6 @@ Open **Controls → Controller stop and recovery** and refresh the controller. I
 
 **Pause authority** revokes bounded delegations, cancels approved requests, and marks running requests uncertain. It blocks new approvals and claims and can't undo operations a provider already accepted. Inspect actual outcomes, then record a reconciliation reason and outcome, which records the observation without replaying deployment. **Resume authority** allows fresh decisions without restoring revoked grants.
 
-The equivalent local CLI uses the same workspace and controller:
-
 ```bash
 deploy-ops operator status
 deploy-ops operator requests
@@ -127,8 +125,6 @@ Exact decisions use `operator decision REQUEST_ID --values` with `digest`, `deci
 ## Edit existing local build and deployment settings
 
 In **Controls → Local build and deployment settings**, select an existing directory or static component. Build arguments are ordered lists, not shell commands. Each option shows its effective value and source. **Pin override** authors a value even when it equals the inherited one, and **Use inherited value** removes the override. Applying fields updates the TOML draft only.
-
-The CLI offers the same shared draft operations:
 
 ```bash
 cp deploy-ops.toml draft.toml
@@ -153,4 +149,4 @@ A successful static component offers **Start serving** in its release detail. Th
 deploy-ops preview RELEASE_ID --component web --port 8000
 ```
 
-`--port 0` picks an OS-assigned port. Ctrl-C closes the listener. Console shutdown closes its sessions, and the console can't stop a CLI session. At most eight sessions belong to a console process. Served content is read-only, bounded files from the retained reviewed revision. Keep secrets out of static artifacts, since other local processes can read loopback content and this isn't a sandbox. Serve it on its own origin, never through a proxy or iframe at the console origin.
+`--port 0` picks an OS-assigned port. Console shutdown closes its sessions, and the console can't stop a CLI session. At most eight sessions belong to a console process. Served content is read-only, bounded files from the retained reviewed revision. Keep secrets out of static artifacts, since other local processes can read loopback content and this isn't a sandbox. Serve it on its own origin, never through a proxy or iframe at the console origin.

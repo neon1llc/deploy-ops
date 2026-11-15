@@ -19,5 +19,3 @@ Provider command contracts and federation protocols have local mocked tests only
 ## First cloud case study
 
 Not yet recorded. It needs disposable targets and explicit spending authority: deploy infrastructure, publish a receipt, deploy the app from it, release the app again without an infrastructure apply, and promote the same image to staging. Include a manual approval, a bounded grant, a denied authority change, an expired lease, an interrupted operation blocked until reconciliation, and a rejected role assumption from an unregistered workflow. Publish no account identifiers, raw plans, tokens, or invented numbers. Repeat on Azure and GCP before claiming multi-cloud parity.
-
-See [verification](verification.md), [capabilities](capabilities.md), and [the roadmap](roadmap.md).

@@ -35,7 +35,7 @@ The demo builds, deploys, promotes, and HTTP-checks a real local application. No
 
 ## Status
 
-DeployOps is a local developer preview, not production-supported. The local path runs end to end on a clean machine. Cloud support is partial:
+The local path runs end to end on a clean machine. Cloud support is partial.
 
 | Target | What has run | Not yet qualified or supported |
 |---|---|---|
