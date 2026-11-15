@@ -50,4 +50,6 @@ clean machine. Cloud support is partial and differs by provider:
 The [support matrix](docs/support-matrix.md) lists the exact versions, regions, and limits. Identity
 preflight alone does not qualify a deployment.
 
+The table follows neon1's four [release levels](https://github.com/neon1llc/neon1-corpus/blob/main/corpus/standards/versioning.md#release-levels): Implemented, Verified, Released, and Qualified. "What has run" is Verified evidence. Nothing here is Qualified until it has real use and a tested recovery.
+
 Licensed under [Apache-2.0](LICENSE), with [attribution notices](NOTICE). See [licensing](docs/licensing.md).
