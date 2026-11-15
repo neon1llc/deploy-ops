@@ -46,3 +46,20 @@ jobs:
             # pushed by a person, and the rest still go out
             if git push origin "refs/tags/$v"; then echo "tagged $v at $sha"; else git tag -d "$v"; echo "::warning::$v needs a person to push it (its commit adds a workflow file)"; fi
           done < /tmp/versions
+
+      # Each tagged version gets a GitHub release whose notes are its changelog entry, oldest first, so the
+      # Releases page reads newest first. A version that already has a release is left alone
+      - name: Publish release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --tags --force
+          have=$(gh release list --limit 1000 --json tagName -q '.[].tagName')
+          awk '/^##+ v[0-9]/{print $2}' CHANGELOG.md | tac | while read -r v; do
+            git rev-parse -q --verify "refs/tags/$v" >/dev/null || continue
+            if grep -qxF "$v" <<< "$have"; then continue; fi
+            # The entry runs from its heading to the next version or top-level heading, dated when the heading is
+            awk -v v="$v" '$0 ~ "^##+ "v"( |$)" {f=1; if ($4) print "Released "$4"."; next} /^##+ v[0-9]/ || /^## / {f=0} f' CHANGELOG.md | grep -v '<!-- commit:' > "$RUNNER_TEMP/notes.md"
+            pre=(); [[ $v == *-* ]] && pre=(--prerelease)
+            gh release create "$v" --verify-tag --title "$v" --notes-file "$RUNNER_TEMP/notes.md" "${pre[@]}" || echo "::warning::$v has no release notes yet"
+          done
