@@ -2,22 +2,18 @@
 
 A trusted infrastructure worker publishes typed public outputs through the controller. A separate application worker supplies the resulting execution ID when preparing delivery. The controller verifies producer identity, target, policy, expiry, and revocation before accepting or executing the application change. The application can then release again without another infrastructure apply.
 
-The AWS contract supports OpenTofu 1.10.0, an S3 backend in the default workspace, and `aws-ecs-v1`
-outputs. The [GCP contract](../examples/gcp-receipts/README.md) supports OpenTofu 1.10.0 or Terraform 1.12.2,
-a GCS backend in the default workspace, and `gcp-cloud-run-v1` outputs. Both have local controller and
-provider-command fixture evidence. The complete receipt handoff has not run against live AWS or GCP.
-Other backends, cross-account/project delivery and other output schemas are not qualified here.
+| Contract | Tools | Backend | Outputs |
+|---|---|---|---|
+| AWS | OpenTofu 1.10.0 | S3, default workspace | `aws-ecs-v1` |
+| [GCP](../examples/gcp-receipts/README.md) | OpenTofu 1.10.0 or Terraform 1.12.2 | GCS, default workspace | `gcp-cloud-run-v1` |
+
+Both have fixture evidence only. The full handoff hasn't run against live AWS or GCP. Other backends, cross-account delivery, and other output schemas aren't qualified.
 
 ## Register the contract
 
-Start with [the controller example](../config/receipts.example.toml) and [the application workspace](../examples/aws-receipts/deploy-ops.toml). Replace synthetic repository IDs, reviewed workflow commit pins, role identities, S3 bucket, key, and region, and the workspace digest. Keep these contracts in the protected authority repository, so a contributor's repository can't grant itself receipt access.
+Start with [the controller example](../config/receipts.example.toml) and [the application workspace](../examples/aws-receipts/deploy-ops.toml). Replace the synthetic repository IDs, workflow commit pins, role identities, S3 bucket, key, region, and workspace digest. Keep these contracts in the protected authority repository. The infrastructure target sets `receipt_outputs` and the application target maps dependency names to producer targets through `receipt_dependencies`. Environment, AWS account, and region must match, and staging and production need separate receipts.
 
-The infrastructure target configures `receipt_outputs`. The application target maps workspace dependency
-names to approved producer targets through `receipt_dependencies`. Environment, AWS account and region must
-match. Use separate receipts and target registrations for staging or production.
-
-The infrastructure root must expose exactly these selected public string values. Other outputs are ignored.
-Sensitive values and missing or non-string fields are refused before publication.
+The infrastructure root must expose exactly these public string values. Other outputs are ignored. Sensitive, missing, or non-string fields are refused before publication.
 
 | Output | Required value |
 | --- | --- |
@@ -26,22 +22,13 @@ Sensitive values and missing or non-string fields are refused before publication
 | `container` | Named application container |
 | `image_repository` | ECR repository URL in the same account and region |
 
-OpenTofu initialization metadata must match the registered S3 backend. Planning checks this before creating
-the saved plan, whose backend is bound inside the approved artifact. Execution checks again before apply
-and before reading state. Custom endpoints, credential/profile overrides, role overrides, non-default
-workspaces and unknown backend metadata formats are refused. The worker uses controller-issued credentials.
+OpenTofu init metadata must match the registered S3 backend, checked before planning and again before apply and state reads. Custom endpoints, credential, profile, or role overrides, non-default workspaces, and unknown metadata formats are refused. The worker uses controller-issued credentials.
 
 ## Produce and consume
 
-Use the existing [split-job workflow](../integrations/github/reusable-deploy.yml) for planning and application
-of the saved infrastructure plan. A successful configured apply extracts the selected public outputs and
-state lineage/serial, then records its receipt atomically with completion. The receipt ID is the original
-request ID from the ticket. Repeating identical completion returns the same receipt. Different evidence
-cannot replace it.
+Use the [split-job workflow](../integrations/github/reusable-deploy.yml) to plan and apply the saved infrastructure plan. A successful apply extracts the selected public outputs and state lineage and serial, then records its receipt atomically with completion. The receipt ID is the original request ID, and repeating identical completion returns the same receipt.
 
-Build and push the application image in a separate job with only its required registry permissions and no
-infrastructure writer identity. Pass its immutable ECR digest into the trusted application workflow. That worker
-uses the approved workspace and never executes repository build hooks.
+Build and push the application image in a separate job with only registry permissions. Pass its immutable ECR digest into the trusted application workflow, which never runs repository build hooks.
 
 ```bash
 # In the authenticated application delivery worker:
@@ -52,24 +39,11 @@ deploy-ops --project deploy-ops.toml run development --component web --only \
   --receipts '{"foundation":"RECEIPT_ID"}' --wait-seconds 1800
 ```
 
-Replace the receipt and digest placeholders with their actual values. An app-only release uses the same
-valid receipt and a new immutable image. Promotion accepts `--receipts` for the destination environment,
-keeps the original image digest and requires fresh approval. Cross-account image copying is not automatic.
-The local console accepts the same JSON receipt mapping and shows the producer, source, state identity,
-observation time and validity alongside the prepared change.
-
-The protected [application workflow](../integrations/github/delivery-worker.yml) accepts a JSON `receipts`
-input and selects the reviewed receipt workspace for `development`. Its other named environments keep the
-cloud-app example without receipt dependencies, except `gcp-development`, which selects the GCP receipt workspace.
-Review these fixed mappings and register their exact contract
-before installation. Do not place producer execution tokens in app jobs or workflow outputs.
+An app-only release uses the same valid receipt and a new immutable image. Promotion accepts `--receipts` for the destination environment, keeps the original image digest, and needs fresh approval. Cross-account image copying isn't automatic. The console accepts the same JSON receipt mapping. The [application workflow](../integrations/github/delivery-worker.yml) accepts a JSON `receipts` input. The workflow selects the receipt workspace for `development`, and `gcp-development` selects the GCP one. Never put producer execution tokens in app jobs or workflow outputs.
 
 ## Invalidation and recovery
 
-The controller checks exact receipt references at submission, transactional claim, heartbeat and completion.
-A new producer execution invalidates earlier receipts when it claims authority. Failure or reconciliation
-does not make those receipts valid again, because a failed apply can still change infrastructure.
-Publish fresh observed evidence through a new reviewed infrastructure execution before resuming delivery.
+The controller checks exact receipt references at submission, claim, heartbeat, and completion. A new producer execution invalidates earlier receipts when it claims authority. Failure or reconciliation doesn't make them valid again, because a failed apply can still change infrastructure. Publish fresh evidence through a new reviewed infrastructure execution before resuming delivery.
 
 An operator can revoke a receipt through the existing admin credential:
 
@@ -77,35 +51,14 @@ An operator can revoke a receipt through the existing admin credential:
 deploy-ops gate revoke-receipt RECEIPT_ID
 ```
 
-Revocation prevents new authority and interrupts subsequent heartbeats. It does not undo an operation
-already accepted by AWS. Inspect and reconcile uncertain operations before retrying them.
+Revocation prevents new authority and interrupts later heartbeats. It doesn't undo an operation AWS already accepted, so reconcile uncertain operations before retrying.
 
-Receipts are immutable controller records fetched through authenticated HTTPS. They are not portable
-signed files. Their producer identity derives from verified GitHub OIDC and the claimed execution, not
-caller-supplied identity labels. Raw state and secret outputs are not stored in the receipt or audit event.
-
-The state digest identifies the representation returned by `tofu state pull`, not the original S3 object
-bytes or version ID. A valid receipt proves a trusted worker's observation and controller-known generation.
-It does not detect out-of-band infrastructure drift or prove current health. The ECS adapter still reads
-the service revision before applying and checks convergence afterwards. Stronger live backend observations,
-image provenance enforcement and external application probes remain unfinished.
+The state digest identifies the `tofu state pull` representation, not the S3 object bytes or version ID. A valid receipt proves a trusted worker's observation. It doesn't detect out-of-band drift or prove current health. The ECS adapter reads the service revision before applying and checks convergence afterwards. Live backend observations, image provenance enforcement, and external application probes are unfinished.
 
 ## GCP contract
 
-Use [the GCP controller example](../config/gcp-receipts.example.toml) and
-[the complete GCP workspace](../examples/gcp-receipts/README.md). Both producer and consumer register an explicit
-`receipt_region`, matching project identities and environment. The typed public outputs are `project`, `region`,
-`name` and `image_repository`; the image repository must be a regional Artifact Registry image path in that project.
+Use [the GCP controller example](../config/gcp-receipts.example.toml) and [the GCP workspace](../examples/gcp-receipts/README.md). Producer and consumer both register an explicit `receipt_region`, matching project identities, and environment. The typed outputs are `project`, `region`, `name`, and `image_repository`, which must be a regional Artifact Registry path in that project.
 
-The operator registers a GCS bucket and canonical prefix. Before obtaining credentials, the runner writes a
-temporary native override containing only that backend. It refuses competing source overrides and uses
-`init -reconfigure` to avoid migrating source-selected cached state. The generated file is removed after the run.
-Native backend metadata is then checked before planning, applying and state extraction. Explicit credentials,
-custom endpoints, impersonation, encryption overrides and unknown metadata fields are refused. Environment-based
-short-lived credentials are not stored in the native backend configuration in the two qualified tool versions.
+The operator registers a GCS bucket and canonical prefix. The runner writes a temporary native backend override before obtaining credentials, refuses competing overrides, and uses `init -reconfigure`. Backend metadata is checked before planning, applying, and state extraction. Explicit credentials, custom endpoints, impersonation, encryption overrides, and unknown metadata fields are refused.
 
-This uses the existing isolated OIDC plan/apply workflow and its distinct planning/execution identities. It does
-not enable Terraform/OpenTofu in local cloud grants. The state digest describes the `state pull` representation,
-not a GCS object generation; a receipt remains a trusted worker observation and must be followed by live service
-readback. GCS backend locking is used by the native engine, and backend access must be scoped separately from
-application delivery.
+This uses the isolated OIDC plan and apply workflow with distinct planning and execution identities. It doesn't enable Terraform or OpenTofu in local cloud grants. The state digest describes the `state pull` representation, not a GCS object generation. Follow a receipt with live service readback. Scope backend access separately from application delivery.

@@ -15,4 +15,4 @@ These primary references informed the protocol and integration choices. They are
 | Preview schema | [Terraform JSON format](https://developer.hashicorp.com/terraform/internals/json-format) |
 | Slack request signatures | [Verify Slack requests](https://docs.slack.dev/authentication/verifying-requests-from-slack/) |
 
-Action references in the included workflows use commit SHAs resolved through the GitHub connector. They are pins for this handoff, not a claim that the corresponding major versions are the newest available releases. Review dependency and action updates before adopting them.
+Action references in the included workflows use commit SHAs. They are pins, not a claim that these are the newest releases. Review updates before adopting them.

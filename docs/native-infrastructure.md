@@ -1,6 +1,6 @@
 # Native infrastructure
 
-DeployOps supports bounded CloudFormation, AWS CDK, ARM, and Bicep paths alongside Terraform/OpenTofu. Each uses the shared release, approval, and public-output model but keeps its own provider semantics. The native adapters have local contract checks. No complete live AWS or Azure deployment is qualified yet.
+DeployOps supports bounded CloudFormation, AWS CDK, ARM, and Bicep paths alongside Terraform and OpenTofu. Each uses the shared release, approval, and public-output model. The native adapters have local contract checks only. No complete live AWS or Azure deployment is qualified.
 
 | Input | Preview and execution | Supported boundary |
 |---|---|---|
@@ -10,98 +10,41 @@ DeployOps supports bounded CloudFormation, AWS CDK, ARM, and Bicep paths alongsi
 | ARM JSON | Freeze template/parameters, review what-if, repeat prediction before submission | Incremental deployment into one existing resource group |
 | Compiled Bicep JSON | Same ARM lifecycle, retaining native compiler metadata | Compile in a separate build stage; never rerun source after approval |
 
-See the [configuration reference](configuration.md) for fields. Native infrastructure forms show effective component and environment values and write deliberate overrides into the TOML draft. Credentials and access grants stay outside these forms. Unsupported combinations fail before execution.
+See the [configuration reference](configuration.md) for fields. Credentials and access grants stay outside the forms. Unsupported combinations fail before execution.
 
 ## CloudFormation
 
-Use AWS CLI v2 and configure the expected `account_id`, `region`, `stack_name` and repository-relative
-`template`. JSON needs no extra parser. YAML templates require PyYAML and support reviewed native
-intrinsic tags. Inline templates are limited to 51,200 bytes. Public `parameters`, `tags`, an explicitly
-selected `role_arn` and IAM `capabilities` are optional. The adapter does not add IAM capabilities to make
-a rejected deployment pass.
+Use AWS CLI v2 and set `account_id`, `region`, `stack_name`, and a repository-relative `template`. YAML templates need PyYAML. Inline templates are limited to 51,200 bytes. Public `parameters`, `tags`, a `role_arn`, and IAM `capabilities` are optional, and the adapter never adds capabilities to make a rejected deployment pass.
 
-`deploy-ops plan` only describes the release graph. Preparing a release through `run` creates a remote
-CloudFormation change set and, for a new stack, an empty review stack. **Preparation therefore requires
-cloud mutation authority**, even before resource execution is approved. Keep that distinction in a test
-batch's scope and cleanup plan.
+`deploy-ops plan` only describes the release graph. Preparing with `run` creates a remote CloudFormation change set and, for a new stack, an empty review stack, so **preparation needs cloud mutation authority** before execution is approved. Include that in a test's scope and cleanup plan.
 
-Approval binds the change-set identifier, frozen template, parameters, target, tool version and observed
-stack state. Apply rejects changed evidence, executes that change set once and waits for the expected
-stack outcome with its operation token. No-change previews return the selected existing outputs without
-executing a change set. Replacements and deletions remain visible for review. A failed update, rollback
-or timeout is not reported as successful delivery.
+Approval binds the change-set ID, frozen template, parameters, target, tool version, and observed stack state. Apply rejects changed evidence, executes that change set once, and waits for the expected outcome. No-change previews return the existing outputs. A failed update, rollback, or timeout isn't reported as delivery.
 
-Macros, transforms, custom resources and nested stacks are outside this route. Do not put secret values
-in workspace parameters or select secret-bearing outputs. Automatic checks are limited and do not prove
-that an arbitrary template output is public.
+Macros, transforms, custom resources, and nested stacks are unsupported. Don't put secrets in parameters or select secret-bearing outputs. Automatic checks can't prove an arbitrary output is public.
 
-To destroy a stack, set `operation = "destroy"` and prepare a new reviewed release. The adapter requires
-both retained DeployOps creation evidence and the matching provider ownership tag and stack ID. It binds
-the current resource inventory, template and state before deletion. It never disables termination
-protection or forces deletion. `DeletionPolicy` retention and snapshots remain visible and can continue
-to incur charges. Destruction is not available for an arbitrary pre-existing stack.
-
-The [CloudFormation example](../examples/aws-cloudformation/README.md) creates an ECS workload and exports
-coordinates for a separate application release. Its IAM permissions, public egress, billable Fargate task
-and retained logs/images require a reviewed scope and cleanup plan.
+To destroy a stack, set `operation = "destroy"` and prepare a new reviewed release. It needs retained DeployOps creation evidence and the matching ownership tag and stack ID, and binds the current inventory, template, and state. It never disables termination protection or forces deletion. `DeletionPolicy` retention and snapshots stay and can keep incurring charges. Pre-existing stacks can't be destroyed.
 
 ## AWS CDK
 
-Synthesize in a separate isolated builder, then commit or otherwise freeze the complete cloud assembly
-with its inputs. Set `assembly` to that repository-relative directory and `stack_artifact` to the selected
-stack's manifest identifier. Its account, region and stack name must match the configured target.
-DeployOps never invokes `cdk deploy`, hotswap, the source application or an asset build after approval.
+Synthesize in a separate isolated builder, then freeze the complete cloud assembly. Set `assembly` to that repository-relative directory and `stack_artifact` to the stack's manifest ID. Account, region, and stack name must match the target. DeployOps never runs `cdk deploy`, hotswap, the source application, or an asset build after approval.
 
-The adapter supports already-built files and deterministic zip packaging. Each asset needs one explicit
-destination matching the configured `asset_bucket` and slash-terminated `asset_prefix`. The approval
-includes these `cdk_file_asset` writes. Publication checks the expected bucket owner, uses a conditional
-create, and verifies SHA-256. An existing object with different bytes is refused.
+Already-built files and deterministic zip packaging are supported. Each asset needs one destination matching `asset_bucket` and a slash-terminated `asset_prefix`. The approval includes these `cdk_file_asset` writes. Publication checks the bucket owner, uses a conditional create, and verifies SHA-256. An existing object with different bytes is refused.
 
-Docker/executable assets, unresolved context, dependent stacks, implicit role assumptions and unsupported
-assembly instructions are refused. Deploy dependent stacks separately. Existing bootstrap version metadata
-can be checked, but no bootstrap stack, bucket, registry or IAM role is created or changed automatically.
-The [CDK example](../examples/aws-cdk/README.md) uses the same asset-free ECS template and the native
-`LegacyStackSynthesizer`. Its Python and TypeScript variants both synthesized successfully with
-`aws-cdk-lib` 2.275.0 and Node.js 24.19.0 under local filesystem/network restrictions. This qualifies
-those sample assemblies locally, not every construct library or a live AWS deployment.
-
-Published assets and shared bootstrap resources are retained. Deleting a CloudFormation stack or discarding
-its change set does not remove them. Use a separately reviewed ownership inventory for asset cleanup.
+Command events name allowlisted operations such as `azure.deployment.group.what-if` and the exit code, never arguments or raw errors. Docker and executable assets, unresolved context, dependent stacks, implicit role assumptions, and unsupported assembly instructions are refused. No bootstrap stack, bucket, registry, or IAM role is created or changed, and published assets and bootstrap resources survive stack deletion. The [CDK example](../examples/aws-cdk/README.md) uses an asset-free ECS template and `LegacyStackSynthesizer`. Its Python and TypeScript variants synthesized with `aws-cdk-lib` 2.275.0 and Node.js 24.19.0 under local restrictions. That qualifies those samples locally, not every construct library or a live AWS deployment.
 
 ## ARM and Bicep
 
-Use Azure CLI 2.76.0 or later with an authenticated public-cloud subscription and tenant. Configure
-`subscription_id`, `tenant_id`, `resource_group` and a local JSON `template`. The Bicep path additionally
-requires native compiler metadata in that JSON. Metadata is not an attestation. Both paths bind the
-frozen file digests, public parameters, tool version and authenticated principal.
+Use Azure CLI 2.76.0 or later with an authenticated public-cloud subscription and tenant. Set `subscription_id`, `tenant_id`, `resource_group`, and a local JSON `template`. Bicep also needs native compiler metadata in that JSON, which isn't an attestation. Both bind the frozen file digests, public parameters, tool version, and authenticated principal.
 
-What-if predicts changes and is not a saved executable plan. The adapter requests full provider validation,
-retains a digest of the complete prediction and repeats it immediately before deployment. Changed,
-incomplete, ignored, unsupported or unresolved analysis is refused. Even an unchanged prediction cannot
-prevent a concurrent external resource change after revalidation.
+What-if predicts changes and isn't a saved executable plan. The adapter keeps a digest of the complete prediction and repeats it just before deployment. Changed, incomplete, ignored, unsupported, or unresolved analysis is refused. An unchanged prediction still can't prevent a concurrent external change.
 
-The adapter supports incremental deployments into one existing resource group and public scalar parameters. Secure parameters,
-deployment extensions, nested deployments, scripts, cross-scope resources and role changes are refused.
-The operation name receives a release-specific suffix. A local operation record is saved before submission,
-and existing deployment names are never overwritten by this path.
+Only incremental deployments into one existing resource group with public scalar parameters are supported. Secure parameters, deployment extensions, nested deployments, scripts, cross-scope resources, and role changes are refused. A local operation record is saved before submission, and existing deployment names are never overwritten.
 
-The adapter waits for Azure's deployment result and returns selected public scalar outputs. This is
-infrastructure outcome evidence. The dependent application's runtime adapter checks its revision health.
-After interruption, inspect the named deployment instead of replaying its creation. There is no automatic
-rollback or resource destruction. Deleting an ARM deployment record deletes history, not resources.
+The adapter waits for Azure's result and returns selected public scalar outputs. After an interruption, inspect the named deployment instead of replaying creation. There is no automatic rollback or resource destruction, and deleting an ARM deployment record deletes history, not resources.
 
-If preparation fails before reviewed evidence is saved, provider status reports
-`no-submission-recorded` with the deterministic deployment target when no local submission record exists.
-This does not verify remote resource state or clear the release's uncertainty. Inspect the target and
-correct preparation before explicit recovery and a fresh release; automatic retry remains disabled.
-A submission record without its reviewed evidence requires restoring that evidence before reconciliation.
-Command events identify allowlisted Azure operations such as `azure.deployment.group.what-if` and the
-exit code, without exposing command arguments or raw provider errors.
+If preparation fails before reviewed evidence is saved and no local submission record exists, provider status reports `no-submission-recorded` with the deployment target. This doesn't verify remote state or clear the release's uncertainty. Inspect the target and fix preparation before explicit recovery and a fresh release. Automatic retry stays off.
 
-The [ARM example](../examples/azure-arm/README.md) and [Bicep example](../examples/azure-bicep/README.md)
-feed a separate Container Apps release. The Bicep sample has been compiled locally with v0.41.2.
-It creates no public ingress, managed environment, identity or registry, but its application replica
-can still incur charges. Review the examples' placeholders, prerequisites and cleanup limits before use.
+The [ARM](../examples/azure-arm/README.md) and [Bicep](../examples/azure-bicep/README.md) examples feed a separate Container Apps release. The Bicep sample compiled locally with v0.41.2. Its application replica can still incur charges, so review the prerequisites and cleanup limits.
 
 ## Inspect and recover
 
@@ -112,12 +55,6 @@ deploy-ops provider inspect RELEASE COMPONENT
 deploy-ops provider discard RELEASE COMPONENT
 ```
 
-Inspect reads provider outcomes without replaying a write. CloudFormation/CDK discard removes only the
-exact unexecuted change set. Its stack, published assets and retained resources remain. ARM/Bicep has no
-discard action. Provider inspection records an observation; it does not retroactively change the release
-outcome or remove the need for an explicit recovery decision.
+Inspect reads provider outcomes without replaying a write. For CloudFormation and CDK, discard removes only the exact unexecuted change set, and the stack, published assets, and retained resources remain. ARM and Bicep have no discard action. Inspection records an observation. It doesn't change the release outcome or remove the need for an explicit recovery decision.
 
-If preparation failed before an approval envelope was saved, preserve the operation journal and inspect
-the recorded provider identity or request token before creating a fresh release. A cancelled local process
-does not guarantee that the provider stopped. Keep uncertain outcomes uncertain until readback establishes
-what happened.
+If preparation failed before an approval envelope was saved, keep the operation journal and inspect the provider identity or request token before creating a fresh release. A cancelled local process doesn't guarantee the provider stopped.

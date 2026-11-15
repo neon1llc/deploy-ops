@@ -1,8 +1,6 @@
 # Migration from DeployGuard
 
-The display name is **DeployOps**, repository and command are `deploy-ops`, package is `deploy_ops`,
-and environment variables use `DEPLOY_OPS_`. The proposed package distribution is `neon1-deploy-ops`.
-Registry and trademark availability have not been cleared.
+The display name is **DeployOps**, the repository and command are `deploy-ops`, the package is `deploy_ops`, and environment variables use `DEPLOY_OPS_`. The proposed distribution is `neon1-deploy-ops`. Registry and trademark availability haven't been cleared.
 
 The prior controller, policy, OIDC, Slack, cloud-federation, and split-job IaC behavior was kept and renamed. Its former CLI is now `deploy-ops gate`. The new default CLI owns complete release operations. The previous 66 regression tests remain in the source tree.
 
@@ -13,17 +11,13 @@ Start with a fresh state database and a new operator token. Live DeployGuard req
 3. Revoke old grants.
 4. Replace cloud trust only after testing the new pinned workflow.
 
-Don't copy an active lease into a differently named service or reuse old audience settings.
-
-The full prior ZIP is a separate artifact. The MIT license notice stays in this repository. New features and the combined distribution use Apache-2.0 with NOTICE.
+Don't copy an active lease into a renamed service or reuse old audience settings. The MIT license notice stays in this repository, and new features use Apache-2.0 with NOTICE.
 
 ## Native infrastructure and local cloud grants
 
-The v0.11.0 native adapters use the existing release ledger and approval state machine, so no database schema migration is needed. The optional `local_cloud` target flag defaults to false and is omitted from historical target fingerprints when unused. Existing federation stays separate.
+The v0.11.0 native adapters use the existing release ledger and approval state machine, so no schema migration is needed. The optional `local_cloud` target flag defaults to false and is omitted from historical target fingerprints when unused.
 
-Default protected resource types now include CloudFormation and ARM names alongside Terraform names. This changes policy fingerprints for targets using the default denylist. Finish or reconcile in-flight work before upgrading, then prepare fresh requests and recreate affected delegated windows. Don't reuse an approval under a changed policy.
-
-An explicit local cloud grant uses its own resource-type and action allowlist, needs manual approval, and never enables production or delegation. Missing, expired, or mismatched grants leave configuration editing available but disable cloud execution.
+Default protected resource types now include CloudFormation and ARM names alongside Terraform names. This changes policy fingerprints for targets using the default denylist. Finish or reconcile in-flight work before upgrading, then prepare fresh requests and recreate delegated windows. Don't reuse an approval under a changed policy.
 
 ## Isolated execution and Container Apps recovery
 
