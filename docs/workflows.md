@@ -65,9 +65,11 @@ Cancel a waiting release with `deploy-ops cancel RELEASE_ID`. Cancelling a runni
 deploy-ops recover RELEASE_ID --note "Inspected the target. Recorded the provider revision and confirmed its state."
 ```
 
+Don't reuse that sentence as evidence without inspecting the target. Start a fresh release after reconciliation. The tool never guesses that a failed command had no effects.
+
 For Container Apps, `deploy-ops provider inspect RELEASE_ID COMPONENT` reads the exact app and revision recorded before its update and checks the immutable image, container, template hash, health, and Single-mode activation without replaying the update. A missing or unreadable revision stays unknown, and readback doesn't clear release uncertainty. Same-image delivery makes no update call and verifies the existing revision. Missing evidence for a nondefault setting is refused ([scaling defaults](https://learn.microsoft.com/en-us/azure/container-apps/scale-app), [ephemeral storage](https://learn.microsoft.com/en-us/azure/container-apps/storage-mounts)).
 
-The read and write aren't atomic, so an external concurrent change can still race the update. DeployOps never repeats the update command after recording an attempt. Recovery and no-op behavior have command-fixture coverage only, not a live recovery exercise.
+The adapter uses a release-specific revision suffix, and Azure rejects conflicting suffixes, but that isn't an idempotency guarantee. The read and write aren't atomic, so an external concurrent change can still race the update. DeployOps never repeats the update command after recording an attempt. Recovery and no-op behavior have command-fixture coverage only, not a live recovery exercise.
 
 ## Notify and page
 
