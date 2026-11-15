@@ -1,10 +1,7 @@
 # Security
 
 DeployOps is a local developer preview, not production-supported. It has not had an independent security audit, and its cloud paths are only partly live-checked. See the [support matrix](docs/support-matrix.md).
-Keep account-owner credentials and untrusted agent control outside the controller, policy files,
-deployment workflow, runner host and operator token. Trusted local qualification can use explicit native
-credential references under an expiring operator grant. Those checks do not reduce the source identity’s
-provider permissions; administrator keys remain administrator keys. See [local cloud access](docs/local-cloud-access.md).
+Keep account-owner credentials and untrusted agent control outside the controller, policy files, deployment workflow, runner host, and operator token. Trusted local qualification can use explicit native credential references under an expiring operator grant. That doesn't reduce the source identity's provider permissions, so administrator keys stay administrator keys. See [local cloud access](docs/local-cloud-access.md).
 
 ## Boundaries that exist
 
@@ -26,28 +23,18 @@ a compromised CLI, or a process running as the same OS user may read files, insp
 network, or abuse permissions. Local working-tree mode is only for trusted code. Use isolated runners,
 separate OS identities, restricted network egress, and least-privilege provider roles for higher-risk work.
 
-A GitHub job with cloud-trusted OIDC authority can request cloud credentials independently of an application
-approval unless its trusted execution path or cloud trust prevents that. Do not run untrusted tests or build
-hooks in such a job. The remote delivery engine refuses those hooks and directs IaC to separate plan/apply
-jobs. This does not make a compromised trusted workflow safe.
+A GitHub job with cloud-trusted OIDC authority can request cloud credentials without an application approval unless its trusted execution path or cloud trust prevents that. Don't run untrusted tests or build hooks in such a job. The remote delivery engine refuses those hooks and sends IaC to separate plan and apply jobs. That doesn't make a compromised trusted workflow safe.
 
-Temporary cloud tokens remain usable until their provider expiry. Cancelling a local process, revoking a
-grant, or expiring a lease does not instantly revoke those tokens or undo asynchronous cloud operations.
-Provider-native policy, narrow resource scope, and independent audit are still required.
+Temporary cloud tokens stay usable until the provider expires them. Cancelling a local process, revoking a grant, or expiring a lease doesn't revoke those tokens or undo asynchronous cloud operations. You still need provider-native policy, narrow resource scope, and independent audit.
 
-A hash-linked local audit ledger detects edits to an observed chain. An attacker who controls the database
-can rewrite a complete chain. Export checkpoints to an independently protected system for stronger evidence.
-SQLite is single-node state, not a distributed scheduler. Back up it and the artifact store consistently.
+A hash-linked local audit ledger detects edits to an observed chain. An attacker who controls the database can rewrite a complete chain, so export checkpoints to an independently protected system. SQLite is single-node state, not a distributed scheduler. Back it up together with the artifact store.
 
 Cost estimates and delegation counters are not hard spending limits. New resource types are manual unless
 explicitly allowed by server policy. There is no blanket overnight approval mode.
 
 ## Inputs, logs, and integrations
 
-Do not place secrets in TOML, public output bindings, source commits, or notification URLs intended for logs.
-Saved IaC plans and provider state may contain secrets even when outputs are marked sensitive. Snapshots and
-artifacts are private local files and must not be published. Command output redaction is best effort, not a
-secret-classification guarantee. Unknown provider errors are intentionally not copied into the audit log.
+Don't put secrets in TOML, public output bindings, source commits, or notification URLs meant for logs. Saved IaC plans and provider state may hold secrets even when outputs are marked sensitive. Snapshots and artifacts are private local files and must not be published. Output redaction is best effort, not a guarantee. Unknown provider errors are deliberately kept out of the audit log.
 
 Slack approval identity is checked by workspace, app, and configured member mapping. Notification webhooks
 are transport, not approval authority. Configure only operator-approved destinations. Package installation,
