@@ -1,6 +1,6 @@
 # DeployOps
 
-**0.14.1 · local developer preview, not production-supported · by neon1 LLC**
+**0.14.2 · local developer preview, not production-supported · by neon1 LLC**
 
 DeployOps deploys infrastructure and applications from separate repositories. You choose an environment, review exact changes, and track the result through one CLI, a local browser console, and an audit history. It's for developers who want reviewed, approved releases on their own machine.
 
