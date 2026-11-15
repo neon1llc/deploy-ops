@@ -19,11 +19,11 @@ deploy-ops gate config-check --config config/controller.toml
 deploy-ops gate serve --config config/controller.toml
 ```
 
-Replace the sample repository IDs, workflow pin, cloud identities, and Slack settings before using a real workflow. The sample configuration is structurally valid but cannot match a real pinned workflow. `config-check` validates its shape, not its account access.
+Replace the sample repository IDs, workflow pin, cloud identities, and Slack settings before using a real workflow. The sample is valid in shape but can't match a real pinned workflow. `config-check` validates shape, not account access.
 
-Store the live configuration outside repositories that agents can edit. Keep its file and database permissions restricted to the controller operator. The operator token authorizes approvals and delegation. It does not belong in agent environments, repository secrets, chat messages, or cloud roles.
+Store the live configuration outside repositories that agents can edit, and restrict its file and database permissions to the controller operator. The operator token authorizes approvals and delegation. Keep it out of agent environments, repository secrets, chat messages, and cloud roles.
 
-The service listens on `127.0.0.1:8787` by default. For remote Actions jobs and Slack, expose it through a TLS reverse proxy. Add only that hostname to `allowed_hosts`. Configure request limits, rate limits, and authentication log retention at the proxy. Do not log request bodies or authorization headers. The included server disables access logs and does not trust arbitrary forwarded headers.
+The service listens on `127.0.0.1:8787` by default. For remote Actions jobs and Slack, expose it through a TLS reverse proxy and add only that hostname to `allowed_hosts`. Set request limits, rate limits, and authentication log retention at the proxy. Don't log request bodies or authorization headers. The included server disables access logs and doesn't trust arbitrary forwarded headers.
 
 For Docker Compose, set `database = "/state/deploy_ops.db"` in the live configuration, then run `docker compose up --build`. The sample Compose file still binds to loopback. This release supports one controller and a local SQLite volume, not multiple independently scaled instances or a shared network database.
 
@@ -33,9 +33,9 @@ Each target registers a repository, immutable repository and owner IDs, a branch
 
 The planning environment gets a read identity, plus only the state-backend permissions that planning and locking require. The execution environment gets a separate, resource-scoped writer identity. Neither identity should administer IAM, grant new roles, disable audit logs, change account ownership, or modify the controller.
 
-The [cloud examples](../integrations/clouds) show federation resources. Review their permissions and existing identity requirements before applying them with your human administrator. These templates have not been applied or validated against live cloud accounts in this release.
+The [cloud examples](../integrations/clouds) show federation resources. Review their permissions and identity requirements before applying them as your human administrator. These templates haven't been applied or validated against live cloud accounts in this release.
 
-Use a separate target for personal AWS and neon1 AWS. There is no reason for them to share a writer role or an unattended work window.
+Use a separate target for personal AWS and neon1 AWS, so they never share a writer role or an unattended work window.
 
 ## 4. Install the protected workflow
 

@@ -2,7 +2,7 @@
 
 DeployOps can compile one registered Cloud Run recipe and run Terraform 1.12.2 or OpenTofu 1.10.0 in a dedicated Lima VM. Planning and apply need separate exact approvals. Successful apply issues the existing typed GCP infrastructure receipt, which the application worker can reuse for app-only releases.
 
-This route uses explicit local operator authority. Its records have no GitHub repository IDs or workflow claims. The protected GitHub OIDC runner remains available for general infrastructure source. The local recipe does not accept HCL, modules, data sources, provisioners, command hooks, provider aliases or endpoint overrides.
+This route uses explicit local operator authority, so its records have no GitHub repository IDs or workflow claims. The protected GitHub OIDC runner remains available for general infrastructure source. The local recipe doesn't accept HCL, modules, data sources, provisioners, command hooks, provider aliases, or endpoint overrides.
 
 ## Operator setup
 
@@ -39,7 +39,7 @@ The shared schema is `deploy_ops.isolated_recipe.IsolatedGrant`. Unknown fields 
 
 The fixed recipe enforces IAM checks, ingress ALL for authenticated host probes, CPU 1, memory 256 MiB, request-based CPU allocation, no startup CPU boost, minimum zero, revision maximum one, concurrency one and a 30-second request timeout. It creates no IAM policy or unauthenticated binding. Revision maximum one is not a billing cap. The pinned Google provider does not accept service-level `max_instance_count`. Deletion protection is false for this explicitly disposable recipe; accepted destruction and cleanup remain separately authorized.
 
-Review the full generated public module and tool/lock digests printed by the first planning request. That packet is part of the exact approval digest, not an unbound explanatory label. Every subsequent stage checks the current grant, lock and packet identity.
+Review the generated public module and the tool and lock digests printed by the first planning request. That packet is part of the exact approval digest. Every later stage checks the current grant, lock, and packet identity.
 
 ## Execute the two approved stages
 

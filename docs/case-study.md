@@ -2,12 +2,9 @@
 
 ## Intended outcome
 
-A developer or identified agent can deploy infrastructure and an application from separate repositories.
-The application can be released again without redeploying its infrastructure. Environments may use
-different cloud runtimes. Reviewed artifacts, bounded authority, and traceable outcomes remain consistent.
+A developer or identified agent deploys infrastructure and an application from separate repositories. The application can be released again without redeploying its infrastructure. Environments may use different cloud runtimes, with reviewed artifacts, bounded authority, and traceable outcomes throughout.
 
-This is the DeployOps product boundary. Approval is one subsystem. Builds, dependency outputs, delivery,
-verification, promotion, recovery, and operational evidence are also part of the system.
+Approval is one subsystem. Builds, dependency outputs, delivery, verification, promotion, recovery, and operational evidence are part of the system too.
 
 ## Demonstrated local journey
 
@@ -17,9 +14,7 @@ requests approval of its frozen artifact, and deploys versioned static content. 
 the infrastructure receipt. Staging promotion preserves the artifact digest. A loopback HTTP request verifies
 that the promoted content is served.
 
-The tests also change the local app and restore a prior successful artifact through a new reviewed rollback.
-Changed source, changed artifacts, exhausted delegation, stale prior deployment state, and inappropriate
-cloud authority are refused. These are local execution results, not cloud success stories.
+Tests also change the local app and restore a prior successful artifact through a new reviewed rollback. Changed source, changed artifacts, exhausted delegation, stale prior deployment state, and inappropriate cloud authority are refused. These are local results, not cloud successes.
 
 ## Existing cloud building blocks
 
@@ -27,9 +22,7 @@ The independent authority service verifies GitHub OIDC identity and pinned workf
 Terraform/OpenTofu worker uses separate planning and execution identities. Native app adapters prepare and
 apply exact image changes to existing ECS, Container Apps, Cloud Run, and Kubernetes targets.
 
-Provider command contracts and federation protocols have local mocked tests. The recipes have not run
-against real accounts. Cross-workflow cloud receipt exchange, image provenance enforcement, and a fully
-isolated infrastructure-to-app pipeline still need implementation and live qualification.
+Provider command contracts and federation protocols have local mocked tests. The recipes haven't run against real accounts. Cross-workflow cloud receipt exchange, image provenance enforcement, and a fully isolated infrastructure-to-app pipeline still need implementation and live qualification.
 
 ## Record the first cloud case study
 
@@ -42,16 +35,10 @@ and an interrupted operation that remains blocked until reconciliation. Attempt 
 an unregistered workflow and verify rejection. Capture the source and workflow revisions, artifact and
 request digests, cloud audit correlation, provider result, and external application probe.
 
-Measure deployment time, approval latency, recovery steps, and actual cost only after the scenario runs.
-Record failures alongside successes. Do not publish account identifiers, raw plans, tokens, or fabricated
-performance results. Repeat the complete path on Azure and GCP before claiming live multi-cloud parity.
+Measure deployment time, approval latency, recovery steps, and actual cost only after the scenario runs. Record failures alongside successes. Don't publish account identifiers, raw plans, tokens, or fabricated performance numbers. Repeat the complete path on Azure and GCP before claiming live multi-cloud parity.
 
-## What makes the project useful
+## Design
 
-The same release and authority model serves a local CLI, a local browser console, and trusted CI workers.
-Provider-specific adapters retain meaningful differences instead of promising that every workload moves
-between clouds by changing one word. A future Deep UI can call these operations without owning a second
-copy of the deployment logic.
+The same release and authority model serves a local CLI, a local browser console, and trusted CI workers. Provider adapters keep their real differences instead of promising that a workload moves between clouds by changing one word.
 
-See [verification](verification.md), [capabilities](capabilities.md), and [the roadmap](roadmap.md) for the
-current evidence and next complete user paths.
+See [verification](verification.md), [capabilities](capabilities.md), and [the roadmap](roadmap.md) for current evidence and next steps.

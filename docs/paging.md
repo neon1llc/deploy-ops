@@ -1,22 +1,12 @@
 # Named paging destinations
 
-DeployOps routes local deployment incidents to named PagerDuty, GoAlert, incident.io, Better Stack,
-Grafana Cloud IRM or ilert integrations and ordinary
-notifications to JSON webhooks, Slack or ntfy. Each destination has independent delivery evidence.
-Multiple instances of the same provider are supported. Provider acceptance does not prove that a person
-received a page, acknowledged an incident or fixed a deployment.
+DeployOps routes local deployment incidents to named PagerDuty, GoAlert, incident.io, Better Stack, Grafana Cloud IRM, or ilert integrations, and ordinary notifications to JSON webhooks, Slack, or ntfy. Each destination has its own delivery evidence, and you can have several instances of one provider. Provider acceptance doesn't prove a person received a page, acknowledged an incident, or fixed a deployment.
 
-The native adapters are qualified with local protocol fixtures. No live provider page has
-been sent as part of this implementation. Optional Apprise support remains planned. Hosted accounts and provider channels
-may require paid plans or incur SMS/voice charges. No subscriptions or background services are installed.
+The native adapters are qualified with local protocol fixtures only. No live provider page has been sent. Optional Apprise support is planned. Hosted accounts and provider channels may need paid plans or incur SMS or voice charges. No subscriptions or background services are installed.
 
 ## Configure, preview and activate
 
-The authenticated console's **Paging destinations and routing** panel provides destination fields,
-ordered routes, default destinations and a route preview. Field edits remain in memory until **Save
-paging draft** succeeds. Saving validates but does not activate. **Activate saved revision** makes that
-exact revision effective for new events. The console preserves drafts after failed requests. Loading
-saved settings explicitly replaces the current draft.
+The console's **Paging destinations and routing** panel has destination fields, ordered routes, default destinations, and a route preview. Edits stay in memory until **Save paging draft** succeeds. Saving validates but doesn't activate. **Activate saved revision** makes that exact revision effective for new events. Drafts survive failed requests, and loading saved settings replaces the current draft.
 
 Equivalent CLI operations use [paging.toml](../examples/paging/paging.toml):
 
@@ -33,10 +23,7 @@ deploy-ops paging preview --file examples/paging/paging.toml \
 deploy-ops paging activate --revision 1
 ```
 
-Configuration uses the same typed model for TOML import, CLI and console. It is stored in the existing
-workspace database, independently of deployment approvals. It does not change the deployment workspace
-digest. Repository code cannot install notification destinations. Back up the workspace state before an
-upgrade. The additive delivery tables preserve old incident and notification records.
+TOML import, the CLI, and the console share one typed model. Configuration is stored in the workspace database, separate from deployment approvals, and doesn't change the workspace digest. Repository code can't install notification destinations. Back up workspace state before an upgrade. The additive delivery tables preserve old incident and notification records.
 
 Each destination chooses a provider and worker environment references beginning with
 `DEPLOY_OPS_PAGING_`. PagerDuty requires `key_env` and uses its fixed US Events API endpoint. GoAlert

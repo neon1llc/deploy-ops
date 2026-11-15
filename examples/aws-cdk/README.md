@@ -1,9 +1,6 @@
 # Frozen CDK assembly and independent ECS release
 
-The Python starter synthesizes the same ECS workload as the
-[CloudFormation example](../aws-cloudformation/README.md). It uses CDK's native `CfnInclude`
-and `LegacyStackSynthesizer` so this asset-free example does not need a CDK toolkit stack,
-cloud lookups, implicit roles, or an extra deployment engine.
+The Python starter synthesizes the same ECS workload as the [CloudFormation example](../aws-cloudformation/README.md). It uses CDK's native `CfnInclude` and `LegacyStackSynthesizer`, so this asset-free example needs no CDK toolkit stack, cloud lookups, implicit roles, or extra deployment engine.
 
 Copy `infrastructure/` and the CloudFormation example's `application/` into separate repositories.
 Use the CloudFormation workspace and replace its infrastructure adapter/options with:
@@ -31,7 +28,7 @@ InitialImage = "${env.initial_image}"
 
 Install the pinned requirements and run `python app.py` inside an isolated build environment,
 with `DEPLOY_OPS_EXAMPLE_ACCOUNT` and `DEPLOY_OPS_EXAMPLE_REGION` set to the approved public target.
-Do not mount cloud credentials, the user's home, or a Docker socket. Commit or transfer the complete
+Don't mount cloud credentials, your home directory, or a Docker socket. Commit or transfer the complete
 `cdk.out/` directory with its manifest, templates and metadata into the source snapshot used by DeployOps.
 The trusted deployment worker reads those frozen bytes. It never reruns the application after approval.
 

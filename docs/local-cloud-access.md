@@ -1,14 +1,8 @@
 # Local cloud qualification
 
-The local operator can use an existing AWS IAM-user profile, GCP service-account credential or Azure service-principal certificate for
-explicitly scoped, nonproduction runs. Federated CI workers continue to use the remote OIDC controller.
-The two routes retain different identity and trust boundaries.
+The local operator can use an existing AWS IAM-user profile, GCP service-account credential, or Azure service-principal certificate for explicitly scoped, nonproduction runs. Federated CI workers keep using the remote OIDC controller. The two routes have different identity and trust boundaries.
 
-Local access requires an operator-owned TOML grant outside the workspace and every source repository.
-Set `DEPLOY_OPS_CLOUD_ACCESS_FILE` to its absolute path. Make that file and credential files readable
-only by their owner (`chmod 600`). The grant contains references, expected public identity, allowed
-adapters, exact resource types/actions, a change limit and an expiry. It binds the whole workspace
-digest, shown by `deploy-ops config inspect`. Changing configuration disables the old grant.
+Local access needs an operator-owned TOML grant outside the workspace and every source repository. Set `DEPLOY_OPS_CLOUD_ACCESS_FILE` to its absolute path. Make that file and the credential files owner-readable only (`chmod 600`). The grant holds references, expected public identity, allowed adapters, exact resource types and actions, a change limit, and an expiry. It binds the whole workspace digest, shown by `deploy-ops config inspect`. Changing configuration disables the old grant.
 
 ```toml
 schema_version = 1
@@ -32,10 +26,7 @@ credentials_file = "/secure/aws-credentials"
 config_file = "/secure/aws-config"
 ```
 
-This example is intentionally inactive. A reference to an approval is not spending approval, and the
-change limit is not a cloud billing cap. Supply the exact approved resource types and operations.
-CloudFormation creates a remote change set during preparation, before execution approval, so the
-batch must authorize that operation too. Deletion requires a grant allowing deletion and a separate
+This example is inactive on purpose. A reference to an approval isn't spending approval, and the change limit isn't a billing cap. Supply the exact approved resource types and operations. CloudFormation creates a remote change set during preparation, before execution approval, so the batch must authorize that operation too. Deletion requires a grant allowing deletion and a separate
 reviewed destroy release. CDK file publication also requires `cdk_file_asset` in the grant and explicit
 `asset_bucket`/`asset_prefix` workspace options. No bootstrap or role creation is automatic.
 
@@ -89,23 +80,10 @@ login reuse and client-secret authentication are outside this local route. ARM/B
 frozen JSON, incremental deployment and a fresh matching what-if before execution. Removing Azure
 deployment history does not remove resources; use a separately reviewed cleanup operation.
 
-Local cloud grants allow CloudFormation, frozen CDK assemblies, ECS, Cloud Run, ARM/Bicep and Container Apps. They do not allow
-arbitrary workflows, Terraform/OpenTofu programs, build commands or synthesis commands. Those require
-the existing isolated planning/execution workflow. Build in a separate credentialless environment
-and provide frozen templates, assemblies or digest-pinned images. Federated Azure execution continues
-to use its separate OIDC identity and workflow boundary.
+Local cloud grants allow CloudFormation, frozen CDK assemblies, ECS, Cloud Run, ARM/Bicep, and Container Apps. They don't allow arbitrary workflows, Terraform/OpenTofu programs, build commands, or synthesis commands. Those need the isolated planning and execution workflow. Build in a separate credentialless environment and provide frozen templates, assemblies, or digest-pinned images. Federated Azure execution keeps its own OIDC identity and workflow boundary.
 
-The same controller records cloud target identity, manual approval, one-shot claim, expiry and
-reconciliation. Local grants never enable delegation or production. Every credentialed command checks
-the active grant. Revocation or expiry stops further commands but cannot undo work already accepted
-by a provider. Keep an approved cleanup window and inspect uncertain results before retrying.
+The same controller records cloud target identity, manual approval, one-shot claim, expiry, and reconciliation. Local grants never enable delegation or production. Every credentialed command checks the active grant. Revocation or expiry stops further commands but can't undo work a provider already accepted. Keep an approved cleanup window and inspect uncertain results before retrying.
 
-Credential references are kept out of workspace forms and release manifests. Native command output
-is captured privately where it may contain provider values. The operator should declare only public
-outputs. A plaintext cloud template can still contain sensitive material, so review source and
-outputs before supplying them.
+Credential references stay out of workspace forms and release manifests. Native command output is captured privately because it may contain provider values. Declare only public outputs. A plaintext cloud template can still hold sensitive material, so review source and outputs first.
 
-This remains a trusted local worker. Filesystem permissions, explicit identity checks and a clean
-subprocess environment do not isolate hostile same-user processes or restrict an administrator key
-at IAM level. The grant does not enforce account-wide spend, remote deadlines or automatic cleanup.
-Use a separately isolated worker and provider-side controls where those guarantees are required.
+This is still a trusted local worker. File permissions, identity checks, and a clean subprocess environment don't isolate hostile same-user processes or restrict an administrator key at IAM level. The grant doesn't enforce account-wide spend, remote deadlines, or automatic cleanup. Use an isolated worker and provider-side controls where you need those.

@@ -1,9 +1,6 @@
 # Infrastructure receipts
 
-A trusted infrastructure worker can publish typed public outputs through the existing controller. A separate
-application worker supplies the resulting execution ID when preparing delivery. The controller verifies
-producer identity, target, policy, expiry and revocation before accepting or executing the application change.
-The application can then release again without another infrastructure apply.
+A trusted infrastructure worker publishes typed public outputs through the controller. A separate application worker supplies the resulting execution ID when preparing delivery. The controller verifies producer identity, target, policy, expiry, and revocation before accepting or executing the application change. The application can then release again without another infrastructure apply.
 
 The AWS contract supports OpenTofu 1.10.0, an S3 backend in the default workspace, and `aws-ecs-v1`
 outputs. The [GCP contract](../examples/gcp-receipts/README.md) supports OpenTofu 1.10.0 or Terraform 1.12.2,
@@ -13,10 +10,7 @@ Other backends, cross-account/project delivery and other output schemas are not 
 
 ## Register the contract
 
-Start with [the controller example](../config/receipts.example.toml) and
-[the application workspace](../examples/aws-receipts/deploy-ops.toml). Replace synthetic repository IDs,
-reviewed workflow commit pins, role identities, S3 bucket/key/region and the workspace digest. Keep these
-contracts in the protected authority repository. A contributor's repository cannot grant itself receipt access.
+Start with [the controller example](../config/receipts.example.toml) and [the application workspace](../examples/aws-receipts/deploy-ops.toml). Replace synthetic repository IDs, reviewed workflow commit pins, role identities, S3 bucket, key, and region, and the workspace digest. Keep these contracts in the protected authority repository, so a contributor's repository can't grant itself receipt access.
 
 The infrastructure target configures `receipt_outputs`. The application target maps workspace dependency
 names to approved producer targets through `receipt_dependencies`. Environment, AWS account and region must

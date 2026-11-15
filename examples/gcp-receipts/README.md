@@ -1,6 +1,6 @@
 # GCP infrastructure receipts
 
-This example connects a protected Terraform/OpenTofu worker to a separate Cloud Run application worker. Infrastructure runs once; later app releases reuse its authenticated receipt and supply a new immutable image digest. The controller invalidates the old receipt as soon as another infrastructure execution claims authority, including when that execution later fails or needs reconciliation.
+This example connects a protected Terraform/OpenTofu worker to a separate Cloud Run application worker. Infrastructure runs once, and later app releases reuse its authenticated receipt with a new immutable image digest. The controller invalidates the old receipt as soon as another infrastructure execution claims authority, even if that execution later fails or needs reconciliation.
 
 Use [the controller registration](../../config/gcp-receipts.example.toml), this workspace and the existing [split-job infrastructure workflow](../../integrations/github/reusable-deploy.yml). The [application workflow](../../integrations/github/delivery-worker.yml) selects this workspace for `gcp-development`. Replace repository IDs, workflow commit pins, project, region, backend and workspace digest in operator-controlled configuration. Both Terraform 1.12.2 and OpenTofu 1.10.0 use the same typed `gcp-cloud-run-v1` output contract.
 

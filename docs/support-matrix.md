@@ -4,10 +4,7 @@ Stage: local developer preview, not production-supported. The local path is comp
 have live checks for the stages listed below, and GCP has none. The [README](../README.md#status) summarizes
 this table by provider.
 
-These are bounded observations for the v0.10.0 baseline through v0.12.0 and subsequent source checks,
-checked on 2026-11-03. A supported configuration
-schema does not prove runtime or cloud compatibility. Versions outside this table may work but have not
-been qualified here. No production reliability or security certification is claimed.
+These are bounded observations for the v0.10.0 baseline through v0.12.0 and later source checks, checked on 2026-11-03. A supported configuration schema doesn't prove runtime or cloud compatibility. Versions outside this table may work but aren't qualified. No production reliability or security certification is claimed.
 
 | Surface | Checked environment | Observed result | Remaining limits |
 |---|---|---|---|
@@ -35,19 +32,8 @@ been qualified here. No production reliability or security certification is clai
 | Isolated GCP recipe | OpenTofu 1.10.0, Terraform 1.12.2, Google 6.50.0, dedicated Lima guest | Native offline validation, immutable inputs, supervised process cleanup, shared CLI/API and receipt fixtures | Live IAM/plan/apply and new browser panel unqualified; native destroy unsupported |
 | Windows | None | Not qualified | Process supervision and filesystem behavior need testing |
 
-The container, Compose and Kubernetes evidence qualifies the v0.7 execution base and the v0.8 runnable
-examples. Later incident and preview changes have their own local tests/browser checks and per-commit CI;
-the container/cluster matrix has not been rerun for every later increment. The local runtime checks used a
-dedicated disposable VM without host mounts. The application examples
-use public digest-pinned Python images; pinning binds identity but does not establish vulnerability status,
-provenance or licensing of every image layer. Container engines, kind, kubectl and images are installed
-separately and are not included in the Python distribution.
+The container, Compose, and Kubernetes evidence qualifies the v0.7 execution base and the v0.8 runnable examples. Later incident and preview changes have their own local tests, browser checks, and per-commit CI. The container and cluster matrix hasn't been rerun for every later increment. Local runtime checks used a dedicated disposable VM without host mounts. The application examples use public digest-pinned Python images. Pinning binds identity but doesn't establish vulnerability status, provenance, or licensing of every image layer. Container engines, kind, kubectl, and images are installed separately and aren't in the Python distribution.
 
-Source distributions include the [Compose](../examples/local-compose/README.md) and
-[Kubernetes](../examples/local-kubernetes/README.md) examples and their explicit prerequisite/cleanup steps.
-The wheel includes the default local static starter. Keep runtime access scoped: a Docker socket grants
-substantial host control, and a kubeconfig grants whatever its selected identity permits. The local worker
-is intended for trusted source; it is not a sandbox for hostile build or IaC programs.
+Source distributions include the [Compose](../examples/local-compose/README.md) and [Kubernetes](../examples/local-kubernetes/README.md) examples with their prerequisite and cleanup steps. The wheel includes the default local static starter. Keep runtime access scoped: a Docker socket grants substantial host control, and a kubeconfig grants whatever its identity permits. The local worker is for trusted source and isn't a sandbox for hostile build or IaC programs.
 
-See [verification](verification.md) for detailed evidence and [capabilities](capabilities.md) for unfinished
-product scope. Later commits must rerun checks affected by their changes.
+See [verification](verification.md) for evidence and [capabilities](capabilities.md) for unfinished scope.

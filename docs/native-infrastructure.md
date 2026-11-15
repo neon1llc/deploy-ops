@@ -1,8 +1,6 @@
 # Native infrastructure
 
-DeployOps supports bounded CloudFormation, AWS CDK, ARM and Bicep paths alongside Terraform/OpenTofu.
-Each uses the shared release, approval and public-output model. Their provider semantics remain distinct.
-The native adapters have local contract checks. No complete live AWS or Azure deployment is qualified yet.
+DeployOps supports bounded CloudFormation, AWS CDK, ARM, and Bicep paths alongside Terraform/OpenTofu. Each uses the shared release, approval, and public-output model but keeps its own provider semantics. The native adapters have local contract checks. No complete live AWS or Azure deployment is qualified yet.
 
 | Input | Preview and execution | Supported boundary |
 |---|---|---|
@@ -12,9 +10,7 @@ The native adapters have local contract checks. No complete live AWS or Azure de
 | ARM JSON | Freeze template/parameters, review what-if, repeat prediction before submission | Incremental deployment into one existing resource group |
 | Compiled Bicep JSON | Same ARM lifecycle, retaining native compiler metadata | Compile in a separate build stage; never rerun source after approval |
 
-Use the [configuration reference](configuration.md) for fields. Native infrastructure forms show effective
-component/environment values and write deliberate overrides into the TOML draft. Credentials and access
-grants remain outside these forms. Unsupported combinations fail before execution.
+See the [configuration reference](configuration.md) for fields. Native infrastructure forms show effective component and environment values and write deliberate overrides into the TOML draft. Credentials and access grants stay outside these forms. Unsupported combinations fail before execution.
 
 ## CloudFormation
 

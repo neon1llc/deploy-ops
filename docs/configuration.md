@@ -1,11 +1,8 @@
 # Configuration
 
-The operator-owned `deploy-ops.toml` is the deployment contract. It is not a file that a contributor may
-silently change to obtain additional cloud authority. In remote mode, its canonical model digest must
-match `delivery_digest` in the separate controller configuration.
+The operator-owned `deploy-ops.toml` is the deployment contract. A contributor can't quietly change it to gain cloud authority. In remote mode, its canonical model digest must match `delivery_digest` in the separate controller configuration.
 
-The complete runnable example lives in [the local starter](../src/deploy_ops/templates/local/deploy-ops.toml).
-Print the machine-readable contract with `deploy-ops schema`.
+See [the local starter](../src/deploy_ops/templates/local/deploy-ops.toml) for a complete runnable example. Print the machine-readable contract with `deploy-ops schema`.
 
 ## Objects and ownership
 
@@ -26,10 +23,7 @@ component paths, and option-like Git revisions are rejected. Repository roots mu
 folder. Check out separate Git repositories into that folder, or use the explicit working-tree mode locally.
 Submodules, Git LFS hydration, symlinks, and source trees over 100 MB or 10,000 files are not supported.
 
-Only complete `${env.name}` and `${outputs.component.key}` values are expanded. There is no expression
-language, shell expansion, or arbitrary template evaluation. Outputs must name a declared dependency.
-Environment variables and output records are public configuration. Keep secrets in the provider's secret
-store and pass references, not plaintext values.
+Only complete `${env.name}` and `${outputs.component.key}` values are expanded. There's no expression language, shell expansion, or template evaluation. Outputs must name a declared dependency. Environment variables and output records are public configuration, so keep secrets in the provider's secret store and pass references.
 
 ## Adapter options
 
