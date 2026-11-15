@@ -2,4 +2,4 @@
 
 
 # Expose the installed package version to delivery evidence
-__version__ = "0.14.2"
+__version__ = "0.14.3"

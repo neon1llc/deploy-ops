@@ -3,9 +3,11 @@
 DeployOps releases use `v0.MINOR.PATCH` until the first complete release, v1.0.0, following neon1's [versioning standard](https://neon1.tech/knowledge/standards/versioning/). Each version has an annotated tag on the commit it names. Tags v0.2.0 to v0.13.0 were made when those versions shipped; this changelog was written from them on 2026-11-11. The release workflow adds missing tags and never moves one.
 
 
-## Unreleased
+## v0.14.3 - 2026-11-15
 
+### Changed
 - Cut wording that repeats a table, list, or linked page.
+- Each release's changelog entry is published as its GitHub release.
 
 ## v0.14.2 - 2026-11-15
 
