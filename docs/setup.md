@@ -2,9 +2,7 @@
 
 ## Install and run
 
-Use Python 3.11 or newer. Local verification used Python 3.12.10 on macOS and Python 3.14.4 on Linux.
-Start with the commands in the [README](../README.md). The version-pinned requirements
-record this environment. They are not an independently audited dependency lock or an SBOM.
+Use Python 3.11 or newer. Verification used Python 3.12.10 on macOS and 3.14.4 on Linux. Start with the commands in the [README](../README.md). The pinned requirements aren't an audited dependency lock or an SBOM.
 
 ```bash
 deploy-ops init ../my-workspace
@@ -14,17 +12,14 @@ deploy-ops run development
 deploy-ops status
 ```
 
-`plan` inspects the dependency graph without executing repository code. `run` prepares real artifacts,
-which can execute configured checks and build commands. It stops at required approvals.
-Read the returned preview and request digest before approving anything.
+`plan` inspects the dependency graph without running repository code. `run` prepares real artifacts, which can run configured checks and build commands, and stops at required approvals. Read the preview and digest before approving.
 
 ```bash
 deploy-ops approve RELEASE_ID foundation --digest EXACT_REQUEST_DIGEST
 deploy-ops resume RELEASE_ID
 ```
 
-Approve the next waiting component in the same way. An application-only run reuses the recorded
-infrastructure output receipt instead of redeploying infrastructure:
+Approve the next waiting component the same way. An application-only run reuses the recorded infrastructure output receipt instead of redeploying:
 
 ```bash
 deploy-ops run development --component web --only
@@ -36,41 +31,21 @@ deploy-ops run development --component web --only
 deploy-ops ui --token-file "$HOME/.config/deploy-ops/operator.token"
 ```
 
-Open the loopback address printed by the command, rather than the packaged HTML file. Paste the token
-from that file into **Connect workspace**.
-The server creates it with mode `0600` when absent. The browser holds it in memory only.
-The console has separate Home, Releases, Infrastructure, Incidents and Controls views. Prepare a release
-from **Releases**, inspect its proposed actions, approve the exact change, then choose **Execute approved
-release**. Approval alone does not start execution. Complete evidence remains available in expandable
-sections. Moving between views preserves unsaved form fields.
+Open the loopback address the command prints, not the packaged HTML file. Paste the token from that file into **Connect workspace**. The server creates the file with mode `0600` if absent, and the browser holds the token in memory only.
 
-**Controls** includes searchable repository, environment, component and native infrastructure settings.
-A search result opens its field in the relevant entry. Boolean fields use switches, known choices use
-selection controls, and deployment edits remain in a draft until reviewed and saved. Advanced TOML is
-available for options without guided controls. These forms do not yet cover every workspace setting.
+Prepare a release from **Releases**, inspect its actions, approve the exact change, then choose **Execute approved release**. Approval alone doesn't start execution.
 
-Saving configuration requires all releases to be finished, cancelled, or reconciled. The previous file
-is retained in `.deploy-ops/previous-workspace.toml`. Remote policy cannot be edited through this console.
-Successful application components offer promotion and rollback in the release detail. The core lists declared
-environment paths and explains missing dependency receipts. Each action reuses the artifact in a new release
-with fresh authority and target checks. There is no native Windows or macOS installer.
+**Controls** has searchable repository, environment, component, and native infrastructure settings. Deployment edits stay in a draft until reviewed and saved. Advanced TOML covers options without guided controls. The forms don't cover every workspace setting.
 
-Appearance follows the system by default. Open **Controls → Appearance** to choose a preset, density and
-corner radius. These preferences save immediately in the browser.
-Advanced controls import and export validated appearance JSON, including optional custom colors. Invalid
-or low-contrast settings leave the current appearance and your draft intact. Changing a preset clears
-custom colors while retaining the selected density and radius. Reset restores the system default.
-Only appearance preferences use browser storage under `deploy-ops.appearance.v1`. Operator tokens stay in
-memory. If storage is unavailable, appearance changes still work for the current session.
+Saving configuration requires all releases to be finished, cancelled, or reconciled. The previous file is kept in `.deploy-ops/previous-workspace.toml`. Remote policy can't be edited here.
 
-The UI and API bind to `127.0.0.1`. Do not reverse-proxy this local operator interface to the Internet.
-Use the separate authority service for authenticated remote workers. Do not serve deployed app files
-from the operator console's origin.
+**Controls → Appearance** sets a preset, density, and corner radius. Only these preferences use browser storage, under `deploy-ops.appearance.v1`.
+
+The UI and API bind to `127.0.0.1`. Don't reverse-proxy this operator interface to the Internet. Use the separate authority service for authenticated remote workers. Don't serve deployed app files from the console's origin.
 
 ## Review and save configuration from the CLI
 
-Use a separate draft file to retain your saved workspace until review. The CLI and console share validation,
-conflict detection, backups and audit records.
+Use a separate draft file so your saved workspace stays untouched until review. The CLI and console share validation, conflict detection, backups, and audit records.
 
 ```bash
 cp deploy-ops.toml draft.toml
@@ -80,16 +55,11 @@ deploy-ops config diff --file draft.toml
 deploy-ops config save --file draft.toml --source-hash SAVED_SOURCE_HASH
 ```
 
-Use the `source_hash` returned by inspecting the saved workspace, or `saved_source_hash` from draft
-validation. `config patch --file draft.toml` returns revised TOML without writing it. A save refuses a changed
-saved file or an outstanding release. Console and CLI operations must use the same operator state directory
-for coordination. After a successful save, reload any running console to use the new configuration.
+Use the `source_hash` from `config inspect`, or `saved_source_hash` from draft validation. `config patch --file draft.toml` returns revised TOML without writing it. A save refuses a changed saved file or an outstanding release. Console and CLI must share one operator state directory. After a save, reload any running console.
 
 ## Add a local application to an existing workspace
 
-Register sources and environments before their components. These operations change a draft only.
-Repository capture defaults to committed Git source. New environments default to local and nonproduction.
-Use a separate directory resource for the new application so its active destination stays independent.
+Register sources and environments before their components. These operations change a draft only. Repository capture defaults to committed Git source, and new environments default to local and nonproduction.
 
 ```bash
 deploy-ops config add --section repositories --name docs-app --path docs-app --draft-out draft.toml
@@ -106,81 +76,37 @@ deploy-ops config diff --file draft.toml
 deploy-ops config save --file draft.toml --source-hash SAVED_SOURCE_HASH
 ```
 
-Use the captured `source_hash` from the saved workspace's `config inspect`, or `saved_source_hash` from
-draft validation. `--draft-out` writes successful add/patch results to a separate file. An invalid addition
-leaves that file intact. It cannot name the saved workspace. Without this flag the result includes proposed
-`toml`, `diff`, draft `source_hash` and effective configuration as JSON. Duplicate names are refused.
-`--values` accepts a structured entry for advanced fields such as environment variables, build context
-and environment `targets`. Don't specify the same field through both flags and `--values`.
+`--draft-out` writes successful add or patch results to a separate file, never the saved workspace. Without it, the result is JSON with proposed `toml`, `diff`, draft `source_hash`, and effective configuration. Duplicate names are refused. `--values` accepts a structured entry for advanced fields such as environment variables, build context, and environment `targets`. Don't set one field through both a flag and `--values`.
 
-The authenticated `POST /api/config/add` takes `configuration` (draft TOML), `section`, `name` and `values`
-and calls the same configuration owner. Controls offers compact creation forms for repositories,
-environments, directory infrastructure and static applications. Build/check argument lists are JSON data.
-Other component adapters use advanced TOML or structured CLI/API input with their existing contracts.
-Artifact paths stay inside component source, while local destinations use deployment-relative paths or
-whole environment/dependency references. Credentials stay outside this document.
+The authenticated `POST /api/config/add` takes `configuration` (draft TOML), `section`, `name`, and `values`. Controls has compact forms for repositories, environments, directory infrastructure, and static applications. Other adapters use advanced TOML or structured CLI/API input.
 
-Authoring, inspection, validation and save never execute build/check arguments. After saving, separately
-prepare `deploy-ops run local-test --component docs-site`, review the exact requests, approve them, then
-use `deploy-ops resume RELEASE_ID` to execute. Each dependency may require its own approval. Approval alone
-does not execute. Inspect with `deploy-ops status RELEASE_ID`; `deploy-ops preview RELEASE_ID --component
-docs-site` serves the successful static artifact on loopback until stopped.
+Authoring, validation, and save never run build or check arguments. After saving, run `deploy-ops run local-test --component docs-site`, approve the requests, then `deploy-ops resume RELEASE_ID`. Check with `deploy-ops status RELEASE_ID`.
 
 ## Cloud setup
 
-Cloud access is opt-in and is not provisioned by installation. Read [security](../SECURITY.md) first.
-The [authority setup](authority-setup.md) and [cloud trust templates](../integrations/clouds) cover
-separate planner and executor identities. Replace every placeholder and validate the provider configuration.
+Installing doesn't set up cloud access. Read [security](../SECURITY.md) first. The [authority setup](authority-setup.md) and [cloud trust templates](../integrations/clouds) cover separate planner and executor identities. Replace every placeholder and validate the provider configuration.
 
-The retained `deploy-ops gate` workflow separates IaC planning and execution jobs. The newer delivery
-worker supports native app rollouts from an already-built immutable image. It refuses repository build
-hooks, generic commands, and IaC in a cloud-authorized delivery job. These need separate workers before
-safe full cross-repository cloud automation can be claimed.
+The `deploy-ops gate` workflow separates IaC planning and execution jobs. The delivery worker supports native app rollouts from a built immutable image and refuses build hooks, generic commands, and IaC in a cloud-authorized job.
 
-`integrations/github/delivery-worker.yml` is a reviewed-runner recipe, not a ready-to-enable public workflow.
-Cloud CLIs, provider identities, backend state, registry credentials, and existing app resources must be supplied.
+`integrations/github/delivery-worker.yml` is a reviewed-runner recipe, not a ready-to-enable workflow. You supply cloud CLIs, provider identities, backend state, registry credentials, and existing app resources.
 
 ## Docker and other systems
 
-The [Dockerfile](../Dockerfile) and [Compose file](../compose.yaml) package the authority service only.
-They do not install cloud CLIs or mount the Docker socket. Set the controller database to `/state/deploy-ops.db`.
-The service runs as UID 10001. Ensure mounted configuration is readable by that user and keep the token secret.
+The [Dockerfile](../Dockerfile) and [Compose file](../compose.yaml) package the authority service only. They don't install cloud CLIs or mount the Docker socket. Set the controller database to `/state/deploy-ops.db`. The service runs as UID 10001, so make mounted configuration readable by that user and keep the token secret.
 
-The local console currently runs from the Python package. A thin desktop wrapper is a later packaging choice,
-not a second implementation. Source and wheel journeys were checked on macOS; the test suite and container execution also passed on
-Linux. Windows remains unqualified. See the [support matrix](support-matrix.md) for exact versions and limits.
+The local console runs from the Python package. Source and wheel journeys were checked on macOS, and tests and container execution passed on Linux. Windows is unqualified. See the [support matrix](support-matrix.md).
 
-For real application delivery on a disposable engine or cluster, copy the [Compose example](../examples/local-compose/README.md)
-or [Kubernetes example](../examples/local-kubernetes/README.md) from the source archive. Both document
-first deployment, app-only reuse, exact approvals and scoped cleanup. Kubernetes also covers promotion.
-The foundation component is a local marker; cluster or engine setup is an explicit prerequisite.
+For app delivery on a disposable engine or cluster, copy the [Compose](../examples/local-compose/README.md) or [Kubernetes](../examples/local-kubernetes/README.md) example from the source archive. Both cover first deployment, app-only reuse, approvals, and cleanup, and Kubernetes also covers promotion.
 
-## Exit codes and local preview
+## Exit codes
 
-CLI operations return 0 on success, 1 for a failed or uncertain release, 2 for invalid or refused input,
-and 3 when a run is waiting for approval. Read-only status commands return 0 when the record is found.
-CI must not treat a pending deployment as a successful rollout.
-
-Serve a successful static release on a separate loopback origin:
-
-```bash
-deploy-ops preview RELEASE_ID --component web --port 8000
-```
-
-This process stays in the foreground until stopped. It does not expose the operator console or create
-a permanent hosting service.
+The CLI returns 0 on success, 1 for a failed or uncertain release, 2 for invalid or refused input, and 3 when a run is waiting for approval. Read-only status commands return 0 when the record is found. CI must not treat a pending deployment as a successful rollout.
 
 ## Stop and recover local controller authority
 
-Open **Controls → Controller stop and recovery**, then refresh the controller. Inspect a request's target,
-normalized changes and exact source/artifact digest before approving or rejecting it. Approval records
-permission only. Execution remains a separate release action.
+Open **Controls → Controller stop and recovery** and refresh the controller. Inspect a request's target, changes, and exact digest before approving or rejecting it. Approval records permission only, and execution is a separate release action.
 
-**Pause authority** revokes bounded delegations, cancels approved requests and marks running requests
-uncertain. It blocks new approvals and claims. It cannot undo operations already accepted by a provider.
-Inspect actual outcomes before recording a reconciliation reason and outcome. Reconciliation records the
-observation without replaying deployment. **Resume authority** allows fresh decisions without restoring
-revoked grants. Refresh also shows delegation history and the verified audit-chain head.
+**Pause authority** revokes bounded delegations, cancels approved requests, and marks running requests uncertain. It blocks new approvals and claims and can't undo operations a provider already accepted. Inspect actual outcomes, then record a reconciliation reason and outcome, which records the observation without replaying deployment. **Resume authority** allows fresh decisions without restoring revoked grants.
 
 The equivalent local CLI uses the same workspace and controller:
 
@@ -196,22 +122,11 @@ deploy-ops operator audit
 deploy-ops operator resume
 ```
 
-Exact decisions use `operator decision REQUEST_ID --values` with `digest`, `decision` (`approve` or
-`reject`) and an optional `note`. Reconciliation requires an inspection reason of 10–500 characters. Keep
-credentials out of notes. This panel and CLI adapter support the existing local controller only. Remote
-and isolated modes report unavailable here and retain their existing dedicated operator interfaces.
-Controller reconciliation and release recovery are separate records. Inspect the release afterward and
-use its recovery action when an interrupted release also needs reconciliation. Pausing one workspace's
-controller does not pause a different state directory.
+Exact decisions use `operator decision REQUEST_ID --values` with `digest`, `decision` (`approve` or `reject`), and an optional `note`. Reconciliation needs an inspection reason of 10 to 500 characters. Keep credentials out of notes. The panel and CLI cover the local controller only. Remote and isolated modes keep their own interfaces. After reconciling, use the release's recovery action if it was also interrupted.
 
 ## Edit existing local build and deployment settings
 
-In **Controls → Local build and deployment settings**, select an existing directory/static component.
-Build arguments are ordered lists, not shell commands. Remove the whole command or every check to clear
-that setting. Component defaults and environment overrides have separate scopes. Each option shows its
-current effective value and source. An environment's **Pin override** authors that value even when it equals
-its inherited value. **Use inherited value** removes only that field's override. Applying fields updates
-the TOML draft; validation, review and guarded saving remain separate actions.
+In **Controls → Local build and deployment settings**, select an existing directory or static component. Build arguments are ordered lists, not shell commands. Each option shows its effective value and source. **Pin override** authors a value even when it equals the inherited one, and **Use inherited value** removes the override. Applying fields updates the TOML draft only.
 
 The CLI offers the same shared draft operations:
 
@@ -226,48 +141,16 @@ deploy-ops config validate --file draft.toml
 deploy-ops config diff --file draft.toml
 ```
 
-`local_edit_forms` in inspection reports authored component options, explicit overrides, effective values
-and their source. Omitted adapter defaults stay omitted when an unchanged form is applied. In particular,
-an absent static destination keeps its runtime default. Draft validation checks typed fields, paths and
-declared references. It does not check that a future dependency output exists or execute any build code.
-Use whole `${env.name}` and `${outputs.component.key}` references; dependency output availability is checked
-during preparation. No shell expression or string interpolation is evaluated by the editor.
+`local_edit_forms` in inspection reports effective values and their source. Use whole `${env.name}` and `${outputs.component.key}` references only. Draft validation doesn't check that a future output exists or run build code.
 
-Save with the existing `config save --file draft.toml --source-hash SAVED_SOURCE_HASH` or console action.
-Finalize the whole intended contract before the development release used for promotion. Establish staging
-infrastructure separately, then promote the successful development application artifact under that same
-contract. A configuration change after the origin release requires a fresh release; it does not rewrite
-an approval or relax promotion checks. These guided operations cover local build checks/command and
-DirectoryOptions/StaticOptions, not environment-specific builds or arbitrary provider options.
+Save with `config save --file draft.toml --source-hash SAVED_SOURCE_HASH` or the console. A configuration change after the origin release needs a fresh release before promotion. These operations cover local build checks and command plus DirectoryOptions and StaticOptions, not environment-specific builds or arbitrary provider options.
 
 ## Serve a selected static revision
 
-A successful static component offers **Start serving** in its release detail. The console starts an
-owned listener on a separate OS-assigned loopback port. Inspect its session status and URL, then open the
-link explicitly. **Stop serving** closes that session only. Neither action builds, deploys, changes active
-pointers or approvals, retires previews, or deletes files. A newer deployment does not change the selected
-revision's content. Session status describes the listener and preview lifetime, not current activation or
-application health.
-
-The existing foreground command uses the same serving core:
+A successful static component offers **Start serving** in its release detail. The console starts an owned listener on a separate OS-assigned loopback port. Open the session's URL explicitly. **Stop serving** closes that session only. Neither action builds, deploys, changes active pointers or approvals, retires previews, or deletes files. Session status describes the listener and preview lifetime, not activation or application health.
 
 ```bash
 deploy-ops preview RELEASE_ID --component web --port 8000
 ```
 
-Use `--port 0` for an OS-assigned port. Ctrl-C or termination closes the CLI's own listener. Console
-shutdown closes its sessions; restarting restores none. The console cannot stop a separate CLI's session.
-Repeated console starts return the existing session; refresh resolves an unknown start response before
-retrying. At most eight sessions belong to a console process. A port collision never evicts its occupant.
-
-Content is read-only and limited to bounded regular files from the retained reviewed revision. Missing or
-changed evidence and files are refused. Unknown paths, symlinks, directory listings and known controller
-state filenames are not served. Keep secrets out of static artifacts; this is not a secret scanner or a
-hostile-code sandbox. Other local processes can read loopback content. Content must use its own origin,
-never a proxy or iframe at the operator console origin. No console token, CORS permission or credential
-cookie is added to content responses.
-
-For isolated previews, expiry or actual retirement refuses new content with HTTP 410. Preparing or
-approving cleanup alone preserves reads. A response already accepted may finish. Stopping a session leaves
-all deployment and cleanup records/files unchanged. Source, CLI/HTTP and DOM checks do not establish
-foreground-browser or production-hosting qualification.
+`--port 0` picks an OS-assigned port. Ctrl-C closes the listener. Console shutdown closes its sessions, and the console can't stop a CLI session. At most eight sessions belong to a console process. Served content is read-only, bounded files from the retained reviewed revision. Keep secrets out of static artifacts, since other local processes can read loopback content and this isn't a sandbox. Serve it on its own origin, never through a proxy or iframe at the console origin.

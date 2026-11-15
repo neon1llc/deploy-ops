@@ -25,25 +25,18 @@ sequenceDiagram
   Ops-->>Operator: Record release and notification event
 ```
 
-This complete sequence is exercised locally. The cloud IaC path currently uses the separate gate workflow.
-Do not collapse cloud planning, arbitrary source builds, and writer credentials into one job.
+This sequence runs locally. The cloud IaC path uses the separate gate workflow. Never combine cloud planning, arbitrary source builds, and writer credentials in one job.
 
 ## Review and delegation
 
-`deploy-ops run development` pauses at an exact request. Approve its displayed digest, then resume.
-A changed artifact, source snapshot, target policy, or workspace cannot reuse that approval.
+`deploy-ops run development` pauses at an exact request. Approve its digest, then resume. A changed artifact, source snapshot, target policy, or workspace can't reuse that approval.
 
 ```bash
 deploy-ops delegate development --hours 2 --uses 2
 deploy-ops run development
 ```
 
-The local command grants each component a separate allowance. Only known non-production local directory
-and static changes qualify by default. Unknown operations still wait. Use the gate's operator command to
-manage remote grants for specific targets. There is no global "approve everything" mode.
-
-A grant can stop new claims and supervised local processes. It cannot unissue a bearer cloud token,
-undo an accepted provider request, or guarantee a hard spending ceiling. See [security](../SECURITY.md).
+The local command gives each component its own allowance. By default only known non-production local directory and static changes qualify, and unknown operations still wait. Use the gate's operator command for remote grants. There is no global approve-everything mode.
 
 ## Promote without rebuilding
 
@@ -54,9 +47,7 @@ deploy-ops promote SOURCE_RELEASE_ID staging --component web
 # Review the staging request, then approve and resume it.
 ```
 
-`promote_from` defines allowed environment transitions. Promotion uses the source release's successful
-artifact and records its origin. The workspace contract must still match. The destination's dependency
-receipt must exist. Infrastructure is not silently cloned across clouds.
+`promote_from` defines allowed environment transitions. Promotion reuses the source release's successful artifact and records its origin. The workspace contract must still match, and the destination's dependency receipt must exist. Infrastructure is never cloned across clouds.
 
 To restore a previously successful artifact within the same environment:
 
@@ -64,59 +55,32 @@ To restore a previously successful artifact within the same environment:
 deploy-ops rollback PREVIOUS_RELEASE_ID development --component web
 ```
 
-Rollback creates a new reviewed release. It is not an inverse infrastructure plan or a database restore.
-Schema migrations and external side effects require a separate recovery plan.
+Rollback creates a new reviewed release. It isn't an inverse infrastructure plan or a database restore, so schema migrations and external side effects need their own recovery plan.
 
 ## Interrupted work
 
-Cancel a waiting release with `deploy-ops cancel RELEASE_ID`. Cancellation during a running command
-requests termination, but provider-side activity may continue. The target stays uncertain and blocked.
-Stop the worker, inspect the actual target, and reconcile it explicitly:
+Cancel a waiting release with `deploy-ops cancel RELEASE_ID`. Cancelling a running command requests termination, but provider activity may continue, so the target stays uncertain and blocked. Stop the worker, inspect the target, and reconcile:
 
 ```bash
 deploy-ops recover RELEASE_ID --note "Inspected the target. Recorded the provider revision and confirmed its state."
 ```
 
-Do not reuse that sentence as evidence without actually inspecting the target. Start a fresh release after
-reconciliation. The tool never guesses that a failed command had no effects.
+Don't reuse that sentence as evidence without inspecting the target. Start a fresh release after reconciliation. The tool never guesses that a failed command had no effects.
 
-For Container Apps, `deploy-ops provider inspect RELEASE_ID COMPONENT` reads the exact app and
-revision recorded before its update. It checks the immutable image, container, template hash, health
-and Single-mode activation without replaying the update. A missing or unreadable revision remains
-unknown; provider readback does not itself clear release uncertainty. Configuration and environment
-values are represented by hashes in the operation record. Same-image delivery makes no update call
-and verifies the existing revision as a no-op.
+For Container Apps, `deploy-ops provider inspect RELEASE_ID COMPONENT` reads the exact app and revision recorded before its update and checks the immutable image, container, template hash, health, and Single-mode activation without replaying the update. A missing or unreadable revision stays unknown, and readback doesn't clear release uncertainty. Same-image delivery makes no update call and verifies the existing revision. Missing evidence for a nondefault setting is refused ([scaling defaults](https://learn.microsoft.com/en-us/azure/container-apps/scale-app), [ephemeral storage](https://learn.microsoft.com/en-us/azure/container-apps/storage-mounts)).
 
-Template comparison accounts for the revision API omitting the suffix, default scaling intervals and
-CPU-derived default ephemeral storage. The exact revision resource name binds the suffix separately.
-Nondefault scaling, resource limits, environment values, commands, probes and unknown fields remain
-part of the comparison; missing evidence for a nondefault setting is refused. Azure documents the
-[scaling defaults](https://learn.microsoft.com/en-us/azure/container-apps/scale-app) and
-[ephemeral storage allowances](https://learn.microsoft.com/en-us/azure/container-apps/storage-mounts).
-
-The adapter uses a release-specific revision suffix. Azure [rejects conflicting suffixes](https://learn.microsoft.com/en-us/azure/container-apps/azure-resource-manager-api-spec#propertiestemplate);
-this is not an idempotency guarantee. DeployOps never repeats the update command after recording an
-attempt. The native last-read/write interval is not atomic, and an external concurrent change can still
-race the update. Recovery and no-op behavior have local command-fixture coverage; they are not yet
-qualified by a live recovery exercise.
+The adapter uses a release-specific revision suffix, and Azure rejects conflicting suffixes, but that isn't an idempotency guarantee. The read and write aren't atomic, so an external concurrent change can still race the update. DeployOps never repeats the update command after recording an attempt. Recovery and no-op behavior have command-fixture coverage only, not a live recovery exercise.
 
 ## Notify and page
 
-Events are saved before notification delivery. Send the outbox from a trusted scheduled worker or after a run:
+Events are saved before delivery. Send the outbox from a trusted scheduled worker or after a run:
 
 ```bash
 export DEPLOY_OPS_NOTIFY_URL='https://your-approved-receiver.example/events'
 deploy-ops notify
 ```
 
-Use `--kind slack` for an incoming Slack webhook or `--kind ntfy` for a topic endpoint. JSON webhooks can
-be signed with `DEPLOY_OPS_NOTIFY_SECRET`. Optional receiver authentication uses `DEPLOY_OPS_NOTIFY_TOKEN`.
-Receivers should deduplicate the `Idempotency-Key`. Delivery is at least once with at most ten attempts.
-Retries are triggered by another flush, not an undisclosed daemon.
-
-Keep event payloads small. They contain release IDs and event names, not source code, cloud tokens, or
-raw plans. Slack interactive approvals remain in the separate authority service. Paging escalation and
-on-call schedules belong to an external incident system until a tested adapter is added.
+Use `--kind slack` for an incoming Slack webhook or `--kind ntfy` for a topic endpoint. JSON webhooks can be signed with `DEPLOY_OPS_NOTIFY_SECRET`, and `DEPLOY_OPS_NOTIFY_TOKEN` adds receiver authentication. Receivers should deduplicate the `Idempotency-Key`. Delivery is at least once with at most ten attempts, retried on another flush. Payloads hold release IDs and event names, not source, tokens, or plans. Paging and on-call schedules belong to an external system until a tested adapter exists.
 
 ## Observe local drift
 
@@ -126,20 +90,8 @@ After a successful local deployment, compare the deployed files with reviewed ev
 deploy-ops observe RELEASE_ID
 ```
 
-The console offers **Inspect deployed files** in release detail and retains observations in event history.
-The result includes observation time, component findings and expected/observed digests. It records an audit
-event without changing deployed files, approvals or the original release outcome.
+The console offers **Inspect deployed files** in release detail. The result has observation time, findings, and expected and observed digests, and records an audit event without changing files, approvals, or the release outcome. Static observations compare retained files with the current activation pointer. A later activation shows as `superseded`, and older corruption still reports `drifted`. Directory observations compare only `resource.json`.
 
-Static observations compare the selected release's retained files and the current activation pointer.
-A later successful activation is shown as `superseded`, while corruption of the older artifact still reports
-`drifted`. Activation order comes from successful execution events, not release creation order. Directory
-observations compare only `resource.json`; nested app deployments are separate components.
+`matching` means the inspected files matched at that time. `drifted` means missing or different recorded data. `unknown` means evidence is unreadable, unsafe, changing, or blocked by unresolved local execution. Other adapters report `unsupported`. File permissions, empty-directory changes, application health, cloud state, and container runtimes are out of scope.
 
-`matching` means the inspected file scope matched at that time. `drifted` identifies missing or different
-recorded data. `unknown` means evidence is unreadable, unsafe, changing or blocked by unresolved local
-execution. Other adapters report `unsupported`. File permissions, empty-directory changes, application
-health, cloud state and container runtimes are outside this observation contract.
-
-No repair runs automatically. Inspect a drifted or unknown target and prepare a new exact change only after
-understanding what happened. A matching observation is not a filesystem snapshot or protection against a
-malicious process running as the same OS user.
+Nothing is repaired automatically. Inspect a drifted or unknown target, then prepare a new exact change. A matching observation isn't a snapshot or protection against a malicious process running as the same OS user.

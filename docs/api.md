@@ -24,35 +24,18 @@ The service expects HTTPS outside loopback. Requests use JSON except for Slack's
 | `GET /v1/admin/audit/verify` | Operator token | Verify links and return the head hash |
 | `POST /v1/slack` | Slack HMAC and configured member | Handle approval buttons and commands |
 
-Bearer tokens use `Authorization: Bearer TOKEN`. GitHub tokens need the configured `deploy_ops` audience. An execution token cannot authorize operator endpoints. The operator token is not accepted as a workflow identity for submitting or claiming a deployment.
+Bearer tokens use `Authorization: Bearer TOKEN`. GitHub tokens need the configured `deploy_ops` audience. An execution token can't authorize operator endpoints, and the operator token isn't accepted as a workflow identity for submitting or claiming.
 
-The authoritative request shapes are in [models.py](../src/deploy_ops/models.py). Extra fields are rejected. Costs use whole USD cents per month and may be unknown. Unknown estimates cannot qualify for automatic approval unless the target operator explicitly changes that rule.
+Request shapes are in [models.py](../src/deploy_ops/models.py), and extra fields are rejected. Costs are whole USD cents per month and may be unknown. Unknown estimates can't qualify for automatic approval unless the operator changes that rule.
 
-A denied or rejected request cannot be turned into an approved request by editing its record. Submit a new plan. A policy change also requires a new request. A claim failure never means that a caller should apply anyway.
+A denied or rejected request can't be approved by editing it, so submit a new plan. A policy change also needs a new request. A claim failure never means a caller should apply anyway.
 
-The API has no shell endpoint, credential export endpoint, public registration route, or agent-accessible policy editor. The generic manifest contract does not add one.
-
-An operator can reject a pending or approved request before execution is claimed, including after its
-approval expires. Rejection and claiming use the same transaction boundary. Once execution starts,
-inspect and reconcile its outcome instead of treating rejection as a rollback.
-
+An operator can reject a pending or approved request before execution is claimed, even after approval expires. Once execution starts, inspect and reconcile instead, since rejection isn't rollback.
 
 ## Local incident operations
 
-The authenticated loopback console exposes `GET/POST /api/incidents`, `POST /api/incidents/tick`,
-`POST /api/incidents/{id}/acknowledge`, `POST /api/incidents/{id}/resolve` and `GET /api/notifications`.
-Opening accepts `release_id`, `owner`, `note`, `interval_seconds` and `limit`. Decisions require the
-current `version` and a `note`. Read-only outbox inspection sends nothing. All endpoints use the existing
-console token and origin/host checks; none grants remote paging or deployment authority.
-See [local incidents](incidents.md) for the lifecycle and receiver ordering contract.
-
+The loopback console exposes `GET/POST /api/incidents`, `POST /api/incidents/tick`, `POST /api/incidents/{id}/acknowledge`, `POST /api/incidents/{id}/resolve`, and `GET /api/notifications`. Opening takes `release_id`, `owner`, `note`, `interval_seconds`, and `limit`. Decisions need the current `version` and a `note`. All endpoints use the console token plus origin and host checks and grant no remote authority. See [local incidents](incidents.md).
 
 ## Isolated static previews
 
-Release creation accepts `preview_owner`, `preview_hours` and `retain_preview_data` only for an opted-in
-preview environment. `GET /api/previews` lists ownership, expiry and cleanup state. The loopback console
-exposes `POST /api/previews/{release_id}/{action}` with actions `prepare-cleanup`, `approve-cleanup`,
-`cleanup` and `reconcile`. Approval requires `digest`; reconciliation requires an inspection `note` and
-optionally `confirm_removed`. Release detail includes the separate `cleanup_request`. All routes retain
-console authentication and use the shared core. See [static previews](previews.md) for exact safety and
-recovery semantics.
+Release creation accepts `preview_owner`, `preview_hours`, and `retain_preview_data` only for an opted-in preview environment. `GET /api/previews` lists ownership, expiry, and cleanup state. `POST /api/previews/{release_id}/{action}` takes `prepare-cleanup`, `approve-cleanup` (needs `digest`), `cleanup`, or `reconcile` (needs `note`, optionally `confirm_removed`). Release detail includes `cleanup_request`. All routes keep console authentication. See [static previews](previews.md).

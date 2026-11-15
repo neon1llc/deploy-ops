@@ -2,9 +2,7 @@
 
 ## One deployment model
 
-A workspace joins repositories, environments, components, and dependency outputs. A release freezes its
-source revisions and configuration. Each component prepares evidence, requests authority, executes an exact
-reviewed artifact, verifies the result, and records public outputs.
+A workspace joins repositories, environments, components, and dependency outputs. A release freezes source revisions and configuration. Each component prepares evidence, requests authority, executes an exact reviewed artifact, verifies the result, and records public outputs.
 
 ```mermaid
 flowchart TD
@@ -28,14 +26,7 @@ flowchart TD
 
 ## Owned code and external tools
 
-`delivery/spec.py` owns the configuration contract. `delivery/engine.py` owns release state and dependency
-coordination. `delivery/adapters/` owns tool-specific preparation and execution. `service.py`, `policy.py`,
-and `identity.py` own authorization. `store.py` provides transactions and the audit chain. The CLI and console
-call the same operations. No approval or deployment logic is copied into JavaScript.
-
-External tools perform their own specialized work. Terraform/OpenTofu manage their provider graph and
-state. Docker builds and runs containers. AWS, Azure, GCP, and Kubernetes retain their own rollout semantics.
-DeployOps does not emulate clouds or claim one provider switch can translate an application's architecture.
+`delivery/spec.py` owns the configuration contract, `delivery/engine.py` release state and dependency coordination, and `delivery/adapters/` tool-specific preparation and execution. `service.py`, `policy.py`, and `identity.py` own authorization, and `store.py` provides transactions and the audit chain. The CLI and console call the same operations. No approval or deployment logic is copied into JavaScript.
 
 ## Current execution boundaries
 
@@ -59,15 +50,9 @@ flowchart LR
   end
 ```
 
-The local operator identity is labelled `local`, never represented as verified GitHub identity.
-A local token grants control of the trusted local workspace. It is not a multi-user security boundary.
+The local operator identity is labeled `local`, never a verified GitHub identity. A local token controls the trusted local workspace and isn't a multi-user boundary.
 
-The remote delivery worker does not execute repository-defined build hooks, generic workflows, or IaC.
-Its GitHub job could otherwise mint writer credentials while untrusted preparation code runs.
-The OpenTofu worker can issue typed AWS ECS output receipts through the existing controller. A separate app
-worker resolves authorized receipts and binds their exact digests into its approval. The controller rechecks
-validity at submission, claim, heartbeat and completion. A later infrastructure claim permanently invalidates
-earlier receipts. See [infrastructure receipts](infrastructure-receipts.md) for the supported backend and limits.
+The remote delivery worker doesn't run repository build hooks, generic workflows, or IaC, because its GitHub job could mint writer credentials while untrusted code runs. The OpenTofu worker can issue typed AWS ECS output receipts. A separate app worker binds their digests into its approval, and the controller rechecks them at submission, claim, heartbeat, and completion. A later infrastructure claim permanently invalidates earlier receipts. See [infrastructure receipts](infrastructure-receipts.md).
 
 ## State and interruption
 
@@ -88,10 +73,6 @@ stateDiagram-v2
   cancelled --> [*]
 ```
 
-SQLite records release progress, requests, claims, delegation use, outputs, audit links, and the notification
-outbox. Use one service process on local durable storage. Network filesystems and multi-replica scheduling
-are not supported. A stale execution lock is deliberately not cleared automatically.
+SQLite records release progress, requests, claims, delegation use, outputs, audit links, and the notification outbox. Use one service process on local durable storage. Network filesystems and multi-replica scheduling aren't supported, and a stale execution lock is never cleared automatically.
 
-An output receipt proves what DeployOps recorded, not that the live infrastructure remains unchanged.
-Application-only runs intentionally reuse the last successful matching-contract receipt. They do not run
-infrastructure discovery or drift reconciliation. Review that receipt or deploy infrastructure again when needed.
+An output receipt proves what DeployOps recorded, not that live infrastructure is unchanged. App-only runs reuse the last matching receipt and skip infrastructure discovery and drift reconciliation.
