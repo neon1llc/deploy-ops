@@ -59,8 +59,6 @@ A component may set `adapter = "ecs"` by default and override it under an enviro
 
 Use `deploy-ops run <environment> --component web --only --image registry/repo@sha256:<64-hex>` when the component declares an exact `image_repository`. Other repositories, mutable tags, and replacement images during promotion are refused, and the approval binds the resolved digest. Registry provenance and image signatures still need your own verification before production use. See [the multi-cloud workspace](../examples/cloud-app/deploy-ops.toml) and [the worker recipe](../integrations/github/README.md).
 
-See [the multi-cloud application workspace](../examples/cloud-app/deploy-ops.toml) and [the trusted worker recipe](../integrations/github/README.md).
-
 ## Isolated infrastructure outputs
 
 Remote AWS ECS workers resolve infrastructure dependencies through controller-issued receipts. See [infrastructure receipts](infrastructure-receipts.md).
@@ -71,7 +69,7 @@ The console's **Workspace configuration** panel edits existing repositories, env
 
 **Validate configuration** shows the complete diff before **Save local configuration**. A save keeps the previous file in local state, refuses outstanding releases, and rejects stale file revisions. If another tab or editor changed the file, keep your draft before reloading. This detects observed conflicts and isn't a filesystem lock. Remote-controller consoles can prepare and validate drafts but can't save controller or workspace authority.
 
-The CLI uses the same draft editor, without writing the source file:
+The CLI edits a draft without writing the source file:
 
 ```bash
 deploy-ops --project deploy-ops.toml config inspect

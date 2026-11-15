@@ -4,8 +4,6 @@ An incident records who owns the response to a failed or uncertain release. It d
 
 ## Open, acknowledge and resolve
 
-Inspect the release first, then open one incident with an owner, a note, and a bounded escalation policy:
-
 ```bash
 deploy-ops incidents open RELEASE_ID --owner operations \
   --note 'Investigate the failed readiness check' --interval-seconds 900 --limit 3

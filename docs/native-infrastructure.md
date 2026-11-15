@@ -48,8 +48,6 @@ The [ARM](../examples/azure-arm/README.md) and [Bicep](../examples/azure-bicep/R
 
 ## Inspect and recover
 
-The console and CLI use the same provider operations:
-
 ```sh
 deploy-ops provider inspect RELEASE COMPONENT
 deploy-ops provider discard RELEASE COMPONENT

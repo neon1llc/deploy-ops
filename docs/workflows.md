@@ -84,8 +84,6 @@ Use `--kind slack` for an incoming Slack webhook or `--kind ntfy` for a topic en
 
 ## Observe local drift
 
-After a successful local deployment, compare the deployed files with reviewed evidence:
-
 ```bash
 deploy-ops observe RELEASE_ID
 ```

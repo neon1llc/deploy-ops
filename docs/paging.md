@@ -8,7 +8,7 @@ The native adapters are qualified with local protocol fixtures only. No live pro
 
 The console's **Paging destinations and routing** panel has destination fields, ordered routes, defaults, and a route preview. Edits stay in memory until **Save paging draft** succeeds. Saving validates but doesn't activate. **Activate saved revision** makes that revision effective for new events. Configuration lives in the workspace database, apart from deployment approvals. Repository code can't install destinations. Back up workspace state before an upgrade.
 
-Equivalent CLI operations use [paging.toml](../examples/paging/paging.toml):
+CLI, using [paging.toml](../examples/paging/paging.toml):
 
 ```bash
 # Inspect the current revision before saving a TOML draft
