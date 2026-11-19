@@ -148,6 +148,14 @@ function control(key) {
   assert.equal(nodes.get('capture-state').value, '/C');
   assert.equal(nodes.get('capture-id').value, 'c'.repeat(32));
   vm.runInContext('api=capture', context);
+  // A private-cache warning stays separate from primary release status and behind native evidence controls
+  context.fixture.release.nodes.web.private_cache_cleanup = {state: 'failed', recording: 'recorded',
+    categories: {home: 'failed', 'build-home': 'removed'}, warning: 'Inspect private cache; do not repeat deployment.'};
+  await vm.runInContext('show("release-fixture")', context);
+  assert(nodes.get('detail').querySelectorAll('p').some(node => node.textContent === 'Inspect private cache; do not repeat deployment.'));
+  assert(nodes.get('detail').querySelectorAll('summary').some(node => node.textContent === 'Temporary private cache cleanup'));
+  assert.equal(context.fixture.release.status, 'waiting');
+  delete context.fixture.release.nodes.web.private_cache_cleanup;
   // Save recovery retains authored drafts, binds the observed hash, and offers reload as a separate choice
   nodes.set('save-recovery', new Node('div')); nodes.set('inspect-save', new Node('button'));
   nodes.set('config', new Node('textarea')); nodes.get('config').value = 'unsaved owner draft';

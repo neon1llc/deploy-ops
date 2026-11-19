@@ -361,7 +361,10 @@ def test_incomplete_provider_preview_can_be_inspected_without_replay(local_cloud
     observed = engine.provider_status(release["id"], "foundation")
     assert observed["status"] == "REVIEW_IN_PROGRESS"
     assert provider.writes == ["create-change-set"]
-    assert engine.ledger.events(release["id"])[-1]["name"] == "provider.observed"
+    events = engine.ledger.events(release["id"])
+    assert events[-2]["name"] == "provider.observed"
+    assert events[-1]["name"] == "private_cache.observed"
+    assert events[-1]["detail"]["components"]["foundation"]["state"] == "removed"
     with pytest.raises(Refused):
         engine.provider_status(release["id"], "foundation", discard=True)
     assert provider.writes == ["create-change-set"]

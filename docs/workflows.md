@@ -120,3 +120,31 @@ The console offers **Inspect deployed files** in release detail. The result has 
 `matching` means the inspected files matched at that time. `drifted` means missing or different recorded data. `unknown` means evidence is unreadable, unsafe, changing, or blocked by unresolved local execution. Other adapters report `unsupported`. File permissions, empty-directory changes, application health, cloud state, and container runtimes are out of scope.
 
 Nothing is repaired automatically. Inspect a drifted or unknown target, then prepare a new exact change. A matching observation isn't a snapshot or protection against a malicious process running as the same OS user.
+
+## Temporary private cache outcomes
+
+Each component can retain a separate `private_cache_cleanup` observation for its runtime `home` and
+`build-home`. Read it with `deploy-ops status RELEASE_ID`, the release API, or the console's native
+**Temporary private cache cleanup** disclosure. A warning appears only for unverified or failed
+cleanup/recording; confirmed removal stays quiet. The primary deployment or provider-readback result
+is separate. Cache recording merges only its metadata into the current record; it cannot replace
+newer primary state or outputs. Readback/discard eligibility is checked after native lock ownership. A cache warning does not turn a confirmed success into a reason to replay deployment.
+
+`removed` means the selected private directory was removed and its location checked absent;
+`absent` means it was absent at inspection. `failed` means native removal failed, and `unverified`
+means supported ownership/path/removal evidence was unavailable. Categories are fixed to the two
+operation-owned homes, not source, artifacts, application data, external grants or user credentials.
+No cache contents, sensitive paths or raw exceptions enter the observation. Metadata is published as
+pending before cache use, so unavailable final recording cannot leave an older clean observation
+looking current. Immediate command/readback results disclose an unverified recording separately.
+
+Inspect a warning through the original local operator after checking that the operation's worker
+has stopped. This feature adds no cleanup retry, automatic janitor, permission override, deployment
+replay, credential rotation or provider rollback. Existing worker exclusion remains mandatory. Unknown cache-shaped folders on unvisited components
+are not adopted or deleted. Existing unrecorded or replaced runtime-home entries refuse use without
+permission repair; preserve them for the original operator.
+Removal uses no-follow directory descriptors and the platform's symlink-resistant native removal;
+unsupported platforms retain an unverified result rather than taking a weaker fallback. The two
+fixed categories bound scope, not recursive removal time or filesystem capacity. Absence/removal
+does not prove secure erasure, memory clearing or token revocation; interrupted/power-loss cleanup
+is not guaranteed.

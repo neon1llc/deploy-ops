@@ -231,3 +231,12 @@ without loading the inspected location's workspace. Unsupported marker versions 
 The private backup extent adds the allowlisted marker filename. Unregistered partial source folders
 remain explicitly omitted. Use the matching current runtime to inspect/restore that extent: an older
 backup reader can refuse the newly supported filename. Restoration stays read-only.
+
+## Private runtime-cache observations
+
+New writers retain optional per-component private-cache observations through existing release/event
+storage. Older releases without them have no recorded cleanup qualification; no backfill or new
+database table is introduced. Existing backup/artifact allowlists still exclude private homes while
+retaining ordinary public release metadata. An existing runtime home with no native cleanup record is not adopted or removed; inspect it
+through the original operator before further native use. Stop older writers before upgrade; their silent cache
+removal cannot maintain these observations. Primary source/artifact/approval contracts are unchanged.

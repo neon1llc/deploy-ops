@@ -18,7 +18,7 @@ from ..models import Caller, Proposal
 from ..store import Store
 from .adapters import REGISTRY
 from .adapters.base import Context
-from .files import digest_tree, inside, private_directory, snapshot
+from .files import digest_tree, inside, private_cache_directory, private_directory, remove_private_cache, snapshot
 from .gate import LocalGate, RemoteGate, target_name
 from .ledger import Ledger
 from .process import Process
@@ -96,19 +96,22 @@ class Engine:
 
     # Read uncertain provider outcomes without replaying an accepted write
     def provider_status(self, release_id: str, name: str, discard: bool = False) -> dict:
-        release = self.ledger.get(release_id)
-        if release["config_digest"] != self.spec.digest or name not in release["nodes"]:
-            raise Refused("Select a component under the unchanged workspace contract", 422)
-        node = release["nodes"][name]
-        adapter = REGISTRY[node["adapter"]]
-        action = getattr(adapter, "discard" if discard else "inspect", None)
-        if action is None:
-            raise Refused("This adapter does not support the requested provider operation", 422)
-        if discard and release["status"] not in {"waiting", "cancelled", "failed"}:
-            raise Refused("Only an unexecuted reviewed change set can be discarded", 409)
         scope = "release:" + release_id
         self.ledger.lock(scope, release_id)
+        release, observed = None, None
+        cleanup_allowed = False
         try:
+            # Revalidate readback and discard against the state owned by this lock, not a pre-lock snapshot
+            release = self.ledger.get(release_id)
+            if release["config_digest"] != self.spec.digest or name not in release["nodes"]:
+                raise Refused("Select a component under the unchanged workspace contract", 422)
+            node = release["nodes"][name]
+            adapter = REGISTRY[node["adapter"]]
+            action = getattr(adapter, "discard" if discard else "inspect", None)
+            if action is None:
+                raise Refused("This adapter does not support the requested provider operation", 422)
+            if discard and release["status"] not in {"waiting", "cancelled", "failed"}:
+                raise Refused("Only an unexecuted reviewed change set can be discarded", 409)
             # Pending readback uses durable operation identity without inventing reviewed evidence
             prepared_path = self.state / "releases" / release_id / name / "prepared.json"
             envelope = None
@@ -123,6 +126,7 @@ class Engine:
             # Readback and preview cleanup still require the current provider grant
             target = target_name(self.spec.name, release["environment"], name)
             credentials = self.gate.credentials(self.gate.context(target))
+            cleanup_allowed = True
             context = self._context(release, name, credentials)
             if envelope:
                 context.options = envelope["options"]
@@ -134,8 +138,43 @@ class Engine:
                 self.cancel(release_id)
             return observed
         finally:
-            shutil.rmtree(self.state / "releases" / release_id / name / "home", ignore_errors=True)
-            self.ledger.unlock(scope, release_id)
+            try:
+                if cleanup_allowed:
+                    cleanup = self._cleanup_caches(release, [name], 'provider-discard' if discard else 'provider-readback')
+                    if isinstance(observed, dict) and name in cleanup:
+                        observed['private_cache_cleanup'] = cleanup[name]
+            finally:
+                self.ledger.unlock(scope, release_id)
+
+
+    # Keep primary operation results distinct from private-cache removal and recording
+    def _cleanup_caches(self, release: dict, names: list[str], operation: str) -> dict:
+        observed = {}
+        for name in names:
+            previous = release['nodes'][name].get('private_cache_cleanup', {})
+            if not previous:
+                continue
+            categories = {category: remove_private_cache(self.state, release['id'], name, category)
+                          for category in ('home', 'build-home')}
+            if all(value == 'absent' for value in categories.values()) and (
+                    not previous or previous.get('state') in {'removed', 'absent'}):
+                continue
+            state = ('failed' if 'failed' in categories.values() else 'unverified' if 'unverified' in categories.values()
+                     else 'absent' if all(value == 'absent' for value in categories.values()) else 'removed')
+            result = {'state': state, 'categories': categories, 'operation': operation,
+                      'observed_at': int(time.time()), 'recording': 'recorded'}
+            if state not in {'removed', 'absent'}:
+                result['warning'] = 'Temporary private cache cleanup was not verified. Inspect it through the original local operator; do not repeat a deployment to clear it.'
+            release['nodes'][name]['private_cache_cleanup'] = result
+            observed[name] = result
+        if observed:
+            try:
+                self.ledger.cache_observation(release['id'], observed, record_event=True)
+            except Exception:
+                # A recording failure cannot undo a confirmed result or justify replaying it
+                for result in observed.values():
+                    result.update(recording='unverified', warning='Private cache cleanup recording is unavailable. Preserve the primary operation result and inspect through the original local operator; do not replay deployment.')
+        return observed
 
 
     # Expose the dependency graph without executing source or provider commands
@@ -354,8 +393,17 @@ class Engine:
         if not source.is_dir():
             raise Refused("Component working directory does not exist", 422)
         private_directory(folder / "artifacts")
-        private_directory(folder / "home")
-        private_directory(folder / "build-home")
+        recorded = bool(release['nodes'][name].get('private_cache_cleanup'))
+        # Refuse known unknown entries before allocating either runtime home
+        for category in ('home', 'build-home'):
+            private_cache_directory(self.state, folder / category, recorded, create=False)
+        for category in ('home', 'build-home'):
+            private_cache_directory(self.state, folder / category, recorded)
+        # Publish an incomplete cleanup observation before caches can be used by native commands
+        release['nodes'][name]['private_cache_cleanup'] = {
+            'state': 'unverified', 'operation': 'cache-use', 'observed_at': int(time.time()),
+            'recording': 'pending', 'warning': 'No completed private cache cleanup observation for this operation.'}
+        self.ledger.cache_observation(release['id'], {name: release['nodes'][name]['private_cache_cleanup']})
         if reviewed is not None:
             # Execution consumes the exact frozen resolution without rewriting producer provenance
             resolved = reviewed['options']
@@ -709,7 +757,8 @@ class Engine:
                     # Re-observing one exact pending request is not another decision-needed transition
                     waiting = {"request_id": node["request_id"], "request_digest": node["request_digest"]}
                     if release["status"] == "waiting" and node["status"] == "waiting" and node.get("waiting_request") == waiting:
-                        return self.ledger.get(release_id)
+                        release = self.ledger.get(release_id)
+                        return release
                     node["status"] = "waiting"
                     node["waiting_request"] = waiting
                     release["status"] = "waiting"
@@ -733,11 +782,10 @@ class Engine:
             release["reason"] = str(error) if isinstance(error, Refused) else type(error).__name__ + ": inspect the local setup"
             return self.ledger.save(release, "release." + release["status"], {"component": current_name})
         finally:
-            # Credential caches are not release artifacts and must not survive a stage
-            for name in release["order"]:
-                for directory in ("home", "build-home"):
-                    shutil.rmtree(self.state / "releases" / release_id / name / directory, ignore_errors=True)
-            self.ledger.unlock(scope, release_id)
+            try:
+                self._cleanup_caches(release, release['order'], 'advance')
+            finally:
+                self.ledger.unlock(scope, release_id)
 
 
     # Require the exact request currently shown for this component
