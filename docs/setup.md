@@ -171,3 +171,10 @@ rollback, dependency output reuse, provider inspection and preview retirement. C
 change the contract. Exact historical gates remain in force. Save retains one previous workspace copy
 in local state; preserve that exact TOML separately before another Save replaces it. Returning to an old
 contract uses the normal validate, review and hash-guarded Save flow, without altering approvals.
+
+Controller review and release detail show the observed request/approval expiries, provisional budget
+before claim, configured maximum execution window and the actual admitted execution deadline afterward.
+The contact timestamp and its age describe the server observation, not proof that a provider stopped.
+A known budget below the server's minimum hides Execute; the controller still rechecks every claim and
+heartbeat. Old controllers without this projection report timing unavailable. A component's longer
+command timeout cannot extend authority, and no countdown renews approval or retries an operation.

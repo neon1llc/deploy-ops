@@ -414,11 +414,12 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         # Read current approval without exposing controller identities or execution credentials
         request_statuses = {}
         for name, node in release["nodes"].items():
-            if node.get("status") != "waiting" or not node.get("request_id"):
+            if not node.get("request_id"):
                 continue
             try:
                 request = engine.gate.status(node["request_id"])
-                request_statuses[name] = {"status": request["status"], "digest": request["digest"]}
+                request_statuses[name] = {"status": request["status"], "digest": request["digest"],
+                                          "reason": request.get("reason"), "timing": request.get("timing")}
             except Exception:
                 request_statuses[name] = {"status": "unavailable", "digest": None}
         return {"serving_sessions": [item for item in serving.list() if item["release"] == release_id],

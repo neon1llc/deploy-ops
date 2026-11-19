@@ -698,12 +698,15 @@ def test_console_separates_current_approval_from_execution(engine, monkeypatch):
     client = TestClient(create_app(engine, token), base_url="http://127.0.0.1:8765",
                         headers={"Authorization": "Bearer " + token})
     route = "/api/releases/" + release["id"]
-    assert client.get(route).json()["request_statuses"][name] == {
-        "status": "pending", "digest": node["request_digest"]}
+    pending = client.get(route).json()["request_statuses"][name]
+    assert pending["status"] == "pending" and pending["digest"] == node["request_digest"]
+    assert pending["reason"] and pending["timing"]["approval_expires_at"] is None
     response = client.post(route + "/approve", json={"component": name, "digest": node["request_digest"]})
     assert response.status_code == 200
     observed = client.get(route).json()
-    assert observed["request_statuses"][name] == {"status": "approved", "digest": node["request_digest"]}
+    approved = observed["request_statuses"][name]
+    assert approved["status"] == "approved" and approved["digest"] == node["request_digest"]
+    assert approved["timing"]["approval_expires_at"] is not None
     assert observed["release"]["status"] == "waiting"
     assert observed["release"]["nodes"][name]["status"] == "waiting"
     assert not any(event["name"] == "component.succeeded" for event in observed["events"])
@@ -856,3 +859,58 @@ def test_console_static_serving_shutdown_and_auth(engine):
         httpx.get(session['url'], timeout=1)
     with TestClient(create_app(engine, 'x' * 43), base_url='http://127.0.0.1:8765') as client:
         assert client.get('/api/serving', headers=headers).json() == []
+
+
+# A component timeout cannot expand the exact authority admitted by the real controller
+def test_release_timing_projects_short_lease_and_lost_contact(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from deploy_ops.console import create_app
+    from deploy_ops.delivery.operator import Operator
+    from deploy_ops.delivery.adapters import local
+    path = create(tmp_path / 'timed-workspace')
+    engine = Engine(path)
+    controller = engine.gate.controller
+    controller.settings.execution_seconds = 60
+    clock = [controller.now()]
+    controller.clock = lambda: clock[0]
+    release = engine.advance(engine.create('development', 'foundation', False)['id'])
+    node = release['nodes']['foundation']
+    engine.approve(release['id'], 'foundation', node['request_digest'])
+    observed = []
+    apply = local.apply
+
+    # Inspect the supervisor that actually receives the admitted lease, then perform the local mutation
+    def bounded(context, prepared):
+        observed.append((context.component.timeout_seconds, context.process.deadline))
+        return apply(context, prepared)
+
+    monkeypatch.setattr(local, 'apply', bounded)
+    result = engine.advance(release['id'])
+    assert result['status'] == 'succeeded'
+    assert observed == [(600, clock[0] + 60)]
+    projected = Operator(engine).call('request', node['request_id'])
+    assert projected['timing']['execution_deadline'] == clock[0] + 60
+    assert projected['timing']['execution_started_at'] == clock[0]
+    assert 'execution' not in projected
+
+    # A different real claim loses contact; neither request expiry nor a long command timeout clears it
+    next_release = engine.advance(engine.create('staging', 'foundation', False)['id'])
+    pending = next_release['nodes']['foundation']
+    engine.approve(next_release['id'], 'foundation', pending['request_digest'])
+    request = engine.gate.status(pending['request_id'])
+    lease = engine.gate.claim(request, next_release)
+    clock[0] += 61
+    with pytest.raises(Refused):
+        engine.gate.heartbeat(lease)
+    client = TestClient(create_app(engine, 't' * 40), base_url='http://127.0.0.1:8765')
+    detail = client.get('/api/releases/' + next_release['id'], headers={'Authorization': 'Bearer ' + 't' * 40}).json()
+    current = detail['request_statuses']['foundation']
+    assert current['status'] == 'uncertain'
+    assert current['reason']
+    assert current['timing']['last_contact_age_seconds'] == 61
+    assert current['timing']['execution_remaining_seconds'] == 0
+    assert current['timing']['last_seen'] == clock[0] - 61
+    assert current['timing']['execution_deadline'] == clock[0] - 1
+    assert current['timing']['observed_at'] == clock[0]
+    assert lease['token'] not in json.dumps(detail)
+    assert 'token_hash' not in json.dumps(detail)

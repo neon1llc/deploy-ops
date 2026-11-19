@@ -262,3 +262,27 @@ def test_generic_manifests_never_inherit_automatic_delegation(system, source):
         "changes": [{"address": "web", "resource_type": "aws_ecs_service", "action": "update"}],
     }})
     assert controller.submit(proposal, source)["status"] == "pending"
+
+
+# Explain the enforced window without exposing execution tokens or changing retained records
+def test_observed_timing_tracks_earliest_authority_bound(system, proposal, source):
+    from deploy_ops.delivery.operator import Operator
+    controller, target, clock = system
+    controller.settings.execution_seconds = 60
+    controller.settings.approval_seconds = 120
+    request = approve(controller, controller.submit(proposal, source))
+    before = controller.store.audit()
+    initial = Operator.request(controller.get(request['id']))
+    assert initial['timing']['provisional_remaining_seconds'] == 60
+    assert initial['timing']['approval_expires_at'] == clock[0] + 120
+    clock[0] += 91
+    near = controller.get(request['id'])
+    assert near['timing']['provisional_remaining_seconds'] == 29
+    with pytest.raises(Refused, match='less than 30 seconds'):
+        claim(controller, target, request)
+    assert controller.store.audit() == before
+    clock[0] += 30
+    expired = controller.get(request['id'])
+    assert expired['status'] == 'expired'
+    assert expired['timing']['provisional_remaining_seconds'] == 0
+    assert expired['digest'] == request['digest']

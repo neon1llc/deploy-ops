@@ -100,4 +100,5 @@ class Operator:
         keys = ("target", "cloud", "engine", "artifact_digest", "preview_digest", "preview", "tool_version",
                 "lock_digest", "source", "schema_version", "caller", "agent", "estimated_monthly_delta_cents", "policy_digest")
         return {key: record[key] for key in ("id", "digest", "status", "reason", "created_at", "expires_at")} | {
-            "manifest": {key: manifest[key] for key in keys if key in manifest}}
+            "manifest": {key: manifest[key] for key in keys if key in manifest},
+            "timing": record.get("timing")}

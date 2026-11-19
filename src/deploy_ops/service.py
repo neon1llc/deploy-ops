@@ -17,6 +17,10 @@ from .policy import changed_resources, fits_delegation, hard_denial
 from .store import Store
 
 
+# Preserve the minimum admission window across enforcement and read-only timing
+MIN_CLAIM_SECONDS = 30
+
+
 # Keep authorization transitions and audit events in one owner
 class Controller:
     """Keep each state change atomic with its audit event."""
@@ -224,11 +228,31 @@ class Controller:
             stage = "plan" if source.environment == target.planner_environment else "execute"
             self.check_source(target, source, stage)
         result = self.public(request)
-        # Expiry is computed at the read boundary even when no worker is polling
-        if result["status"] in ("pending", "approved") and self.now() >= self._deadline(result):
+        result["timing"] = self.timing(result)
+        # Expiry and timing use one server observation without rewriting history
+        if result["status"] in ("pending", "approved") and result["timing"]["observed_at"] >= self._deadline(result):
             result["status"] = "expired"
             result["reason"] = "Approval window expired. Submit a fresh request"
         return result
+
+    # Project observed authority limits without returning credentials or extending a lease
+    def timing(self, request: dict) -> dict:
+        now = self.now()
+        execution = request.get("execution") or {}
+        approval = request.get("approval") or {}
+        provisional = min(self._deadline(request), now + self.settings.execution_seconds)
+        return {"observed_at": now, "request_expires_at": request["expires_at"],
+                "approval_expires_at": approval.get("expires_at"),
+                "maximum_execution_seconds": self.settings.execution_seconds,
+                "minimum_claim_seconds": MIN_CLAIM_SECONDS,
+                "provisional_deadline": provisional if not execution else None,
+                "provisional_remaining_seconds": max(0, provisional - now) if not execution else None,
+                "execution_started_at": execution.get("started_at"),
+                "execution_deadline": execution.get("deadline"),
+                "last_seen": execution.get("last_seen"),
+                "last_contact_age_seconds": max(0, now - execution["last_seen"]) if execution.get("last_seen") is not None else None,
+                "execution_remaining_seconds": max(0, execution["deadline"] - now) if execution.get("deadline") is not None else None,
+                "execution_finished_at": execution.get("finished_at")}
 
     # Return bounded history with current expiry interpretation
     def list_requests(self, limit: int = 100, targets: list[str] | None = None) -> list[dict]:
@@ -383,7 +407,7 @@ class Controller:
             if self.store.paused(connection) or request["status"] != "approved":
                 raise Refused("Request is not available for execution")
             deadline = min(self._deadline(request), now + self.settings.execution_seconds)
-            if deadline - now < 30:
+            if deadline - now < MIN_CLAIM_SECONDS:
                 raise Refused("Approval has expired or has less than 30 seconds remaining")
             busy = connection.execute(
                 "SELECT id FROM requests WHERE target=? AND status IN ('running','uncertain')",
