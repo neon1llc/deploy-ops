@@ -45,6 +45,16 @@ No source from these repositories was copied into this release. The machine-read
 
 ## What changed in the design
 
+The portable inspection contract also compared current public operation records in
+[Argo CD](https://github.com/argoproj/argo-cd/blob/6f235dafe346b288983dda2dbe69fda0f7021ec8/pkg/apis/application/v1alpha1/types.go)
+and [Kargo](https://github.com/akuity/kargo/blob/73db55255a3702c683d8a7ef3863c125c03624c9/api/v1alpha1/promotion_types.go).
+The observed repository metadata on 2026-11-05 showed 24,547 and 3,761 stars respectively, Apache-2.0
+license declarations, and activity that day. Both distinguish operation phase from other status
+details. DeployOps keeps that distinction in its existing ledger rather than introducing either
+Kubernetes controller as a desktop dependency. This was a conceptual source comparison; no upstream
+implementation was copied and neither controller was runtime-qualified here. Arbitrary messages
+and execution state are deliberately excluded from the portable projection.
+
 Coolify, Dokploy, and Dokku reinforce that users need an end-to-end app outcome, not just an approval card.
 DeployOps now has a workspace, release graph, artifact preparation, local deployment, provider runtime
 adapters, promotion, and a local console. It does not copy their entire hosting platform or claim their maturity.

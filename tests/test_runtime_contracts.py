@@ -314,7 +314,7 @@ def test_container_apps_rejects_wrong_revision_evidence(container_app, change):
 def test_container_apps_recovery_requires_matching_intent(container_app):
     ctx = container_app
     prepared = cloud.prepare(ctx)
-    with pytest.raises(Refused, match="No owned"):
+    with pytest.raises(Refused, match="submission and cloud outcome are unknown"):
         cloud.inspect_pending(ctx)
     cloud.apply(ctx, prepared)
     altered = copy.deepcopy(prepared)

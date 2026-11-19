@@ -44,6 +44,7 @@ def ecs_record(context: Context, record: dict) -> None:
 
 # Sync operation intent before provider calls whose response may disappear
 def durable_record(path, record: dict) -> None:
+    record['recorded_at'] = int(time.time())
     private_json(path, record)
     with path.open("rb") as handle:
         os.fsync(handle.fileno())
@@ -80,7 +81,7 @@ def inspect_pending(context: Context) -> dict:
         raise Refused("This application adapter has no operation readback contract", 422)
     path = context.stage.parent / "ecs-operation.json"
     if not path.is_file():
-        raise Refused("No ECS operation has been submitted for this release", 409)
+        raise Refused("No retained ECS operation record exists; submission and cloud outcome are unknown", 409)
     record = json.loads(path.read_text())
     if record.get("scope") != ecs_scope(context):
         raise Refused("ECS operation target differs from its recorded scope", 409)
@@ -109,6 +110,7 @@ def inspect_pending(context: Context) -> dict:
     services = current.get("services", [])
     observed = ecs_observation(services[0]) if len(services) == 1 and not current.get("failures") else {"status": "missing"}
     record["observed"] = observed
+    record["observed_at"] = int(time.time())
     record["candidate_revisions"] = candidates
     record["discovery_truncated"] = truncated
     ecs_record(context, record)
@@ -246,7 +248,7 @@ def container_observe(context: Context, request: dict) -> dict:
 def container_inspect(context: Context, prepared: dict | None = None) -> dict:
     path = context.stage.parent / "container-apps-operation.json"
     if not path.is_file() or path.is_symlink():
-        raise Refused("No owned Container Apps operation record exists for this release", 409)
+        raise Refused("No retained Container Apps operation record exists; submission and cloud outcome are unknown", 409)
     record = json.loads(path.read_text())
     request = record.get("request", {})
     if (request.get("scope") != container_scope(context) or fingerprint(request) != record.get("request_digest")
@@ -255,6 +257,7 @@ def container_inspect(context: Context, prepared: dict | None = None) -> dict:
         raise Refused("Container Apps operation differs from its reviewed request", 409)
     observed = container_observe(context, request)
     record["observed"] = observed
+    record["observed_at"] = int(time.time())
     durable_record(path, record)
     return {**observed, "operation": record["status"], "replay_allowed": False}
 
@@ -375,6 +378,7 @@ def apply(context: Context, prepared: dict) -> dict:
         states = response.get("services", [])
         state = states[0] if len(states) == 1 and not response.get("failures") else {}
         record["observed"] = ecs_observation(state)
+        record["observed_at"] = int(time.time())
         converged = state.get("taskDefinition") == task and not any(
             deployment.get("rolloutState") == "FAILED" for deployment in state.get("deployments", []))
         record["status"] = "converged" if converged else "not-converged"

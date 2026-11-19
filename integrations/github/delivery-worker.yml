@@ -73,11 +73,54 @@ jobs:
             *) echo "Unsupported registered environment" >&2; exit 2 ;;
           esac
       - name: Prepare, await approval, and deliver
+        id: delivery
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          # Keep the exact deployment exit, including waiting=3; evidence capture runs separately
+          set +e
           deploy-ops --project workspace/deploy-ops.toml run "$DEPLOY_ENVIRONMENT" \
             --component web --only --image "$DEPLOY_IMAGE" --receipts "$DEPLOY_RECEIPTS" \
-            --caller-label "$CALLER_LABEL" --wait-seconds 1800
+            --caller-label "$CALLER_LABEL" --wait-seconds 1800 > delivery-result.json
+          outcome=$?
+          cat delivery-result.json
+          exit "$outcome"
+      # Capture one returned release; pre-execution absence fails capture rather than inventing an outcome
+      - name: Capture portable inspection
+        id: inspection_capture
+        if: always()
+        run: |
+          set -euo pipefail
+          release=$(python -c 'import json; print(json.load(open("delivery-result.json"))["id"])')
+          deploy-ops --project workspace/deploy-ops.toml evidence capture "$release" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --out inspection.json
+      # This new artifact contains only the validated projection, under the same private job recipients
+      - name: Upload portable inspection
+        id: inspection_upload
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: deployment-inspection-${{ github.run_id }}-${{ github.run_attempt }}
+          path: inspection.json
+          if-no-files-found: error
+          retention-days: 1
+      # Record returned transport identity independently of deployment and capture outcomes
+      - name: Record inspection transport
+        if: always()
+        env:
+          DELIVERY_OUTCOME: ${{ steps.delivery.outcome }}
+          CAPTURE_OUTCOME: ${{ steps.inspection_capture.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.inspection_upload.outcome }}
+          ARTIFACT_ID: ${{ steps.inspection_upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.inspection_upload.outputs.artifact-digest }}
+          ARTIFACT_URL: ${{ steps.inspection_upload.outputs.artifact-url }}
+        run: |
+          # An absent identity is unavailable, never a successful deployment or durable retention promise
+          python - <<'PY'
+          import json, os
+          keys = ("DELIVERY_OUTCOME", "CAPTURE_OUTCOME", "UPLOAD_OUTCOME", "ARTIFACT_ID", "ARTIFACT_DIGEST", "ARTIFACT_URL")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("\nInspection transport\n```json\n" + json.dumps({key.lower(): os.environ.get(key) or None for key in keys}, indent=2) + "\n```\n")
+          PY
       # Use an allowlist. Interrupted stages may leave cloud login caches in their private home
       # Retain evidence for reconciliation, not source, credentials, or an automatically replayable deployment
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

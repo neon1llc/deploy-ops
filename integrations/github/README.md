@@ -51,3 +51,28 @@ coverage and native offline backend checks; a live protected-workflow journey re
 
 Runtime health means the adapter's documented provider readiness check. Add external application probes
 before production qualification. No example automatically rolls back a database or destructive IaC change.
+
+## Portable inspection artifact
+
+The application recipe preserves the deployment command's exit code and captures its returned release
+separately. Its new `deployment-inspection-RUN-ATTEMPT` artifact includes only `inspection.json`, a
+[versioned allowlisted summary](../../docs/inspection.md). It does not add raw state or source to that
+artifact. The existing private `deployment-evidence` administrative artifact contract is retained
+separately; its raw database and prepared files have different privacy and restore requirements.
+
+Capture failure, pre-execution absence and a missing upload file fail their own steps. They cannot
+manufacture a successful release. The transport summary records deployment/capture/upload step
+outcomes and the upload action's returned artifact ID, archive digest and URL. The archive digest is
+distinct from the inspection summary's content digest. `upload: not_recorded` inside the file is
+intentional: the capture cannot attest to an upload that has not happened yet.
+
+The same private repository access boundary, reviewed action/toolkit pins and one-day retention remain.
+This recipe does not grant additional recipients access or promise indefinite availability. An expired
+or failed upload leaves the artifact unavailable; retain the job outcome and transport record. A hard
+runner loss or cancellation can prevent capture and `always()` steps from running at all. Do not infer
+that a missing artifact means no provider write occurred.
+
+Download the artifact and run `deploy-ops evidence inspect inspection.json --html inspection.html`
+from any directory with the matching runtime installed. No source or cloud login is needed. Current
+local interruption/inspection checks do not qualify GitHub upload, expiry, OIDC or a protected live
+workflow; those must be exercised separately before relying on this transport operationally.

@@ -397,6 +397,14 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         return engine.ledger.list()
 
 
+    # Use the same source-free capture and report owner as offline CLI inspection
+    @app.get("/api/releases/{release_id}/inspection", dependencies=[Depends(operator)])
+    def inspection(release_id: str, report: bool = False):
+        from .delivery import evidence
+        document = evidence.capture(engine.state, release_id)
+        return {'html': evidence.report(document)} if report else document
+
+
     # Combine release evidence with currently available follow-up actions
     @app.get("/api/releases/{release_id}", dependencies=[Depends(operator)])
     def detail(release_id: str):
