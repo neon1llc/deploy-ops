@@ -117,6 +117,11 @@ function control(key) {
     {name: "command.failed", detail: {component: "web", tool: "<script>literal</script>", outcome: "interrupted", elapsed_ms: 500, exit_code: null}},
     {name: "command.failed", detail: {component: "web", tool: "az", exit_code: 7}},
   ];
+  context.fixture.release.nodes.web.request_id = "observed-request";
+  context.fixture.request_statuses.web.reason = "Waiting for human approval";
+  context.fixture.request_statuses.web.timing = {observed_at: 1800000061, request_expires_at: 1800000090,
+    approval_expires_at: null, maximum_execution_seconds: 60, minimum_claim_seconds: 30,
+    provisional_remaining_seconds: 29};
   context.fixture.release.nodes.web.preview = {changes: [
     {address: "fixture.web", resource_type: "application_revision", action: "update"},
     {address: "fixture.keep", resource_type: "fixture_type", action: "no-op"}],
@@ -129,6 +134,10 @@ function control(key) {
     "web · <script>literal</script> · interrupted · 500 ms",
     "web · az · failed · duration unavailable · exit 7",
   ]);
+  assert(content.some(node => node.textContent === "Controller: Waiting for human approval"));
+  assert(content.some(node => node.textContent === "Provisional execution budget at observation"));
+  assert(content.some(node => node.textContent === "29 seconds"));
+  assert(content.some(node => node.textContent === "Minimum budget to claim"));
   assert(content.some(node => node.tagName === "th" && node.scope === "row" && node.textContent === "fixture.web"));
   assert(content.some(node => node.textContent === "1 update · 1 no-op"));
   assert(content.some(node => node.tagName === "li" && node.textContent === "Inspect <script>literal fixture</script> values"));
@@ -172,7 +181,8 @@ function control(key) {
 
   // Expired, missing or mismatched observations never expose an execution shortcut
   for (const request of [{status: "expired", digest: "exact-fixture"},
-    {status: "approved", digest: "changed-fixture"}, {status: "unavailable", digest: null}]) {
+    {status: "approved", digest: "changed-fixture"},
+    {status: "approved", digest: "exact-fixture", timing: {provisional_remaining_seconds: 29, minimum_claim_seconds: 30}}, {status: "unavailable", digest: null}]) {
     context.fixture.request_statuses.web = request;
     await vm.runInContext('show("release-fixture")', context);
     assert.equal(control("approve-web"), undefined);

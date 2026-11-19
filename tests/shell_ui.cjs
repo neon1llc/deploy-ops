@@ -355,7 +355,7 @@ console.log("Shell navigation, complete settings discovery, retained drafts, fac
     if (path === "/operator/decision") { request.status = "approved"; return request; }
     throw new Error("Unexpected operator route");
   };
-  vm.runInContext('function button(label,action){const node=document.createElement("button");node.textContent=label;node.onclick=action;return node;} function reviewFacts(){} function reviewChanges(){} function reviewEvidence(){}', app.context);
+  vm.runInContext('function button(label,action){const node=document.createElement("button");node.textContent=label;node.onclick=action;return node;} function reviewFacts(){} function reviewTiming(){} function reviewChanges(){} function reviewEvidence(){}', app.context);
   vm.runInContext(fs.readFileSync("src/deploy_ops/ui/operator.js", "utf8"), app.context);
   await vm.runInContext("operatorLoad()", app.context);
   await app.node("operator-requests").children[0].onclick();

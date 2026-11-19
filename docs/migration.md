@@ -41,3 +41,10 @@ or reconcile old work under its matching runtime before upgrading. Previously pr
 is derived from authenticated artifacts when checking another writer. Missing historical evidence
 requires inspection before assigning a different owner. Failed and cancelled reservations are retained.
 No database migration, automatic takeover or implicit cleanup is supplied.
+
+## Observed controller timing
+
+Request reads add a safe `timing` projection without changing retained manifests, request digests,
+approvals or database records. Older clients can ignore it. New clients report timing unavailable
+when an older controller omits it; existing controller enforcement remains authoritative. The
+projection contains explicitly selected timestamps and limits, without execution tokens or hashes.

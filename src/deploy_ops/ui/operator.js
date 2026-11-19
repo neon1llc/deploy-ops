@@ -39,6 +39,7 @@ function operatorReview(request) {
   const root = element("operator-detail"); root.replaceChildren();
   reviewFacts(root, [["Request", request.id], ["Status", request.status], ["Target", request.manifest.target],
     ["Exact digest", request.digest], ["Reason", request.reason]]);
+  reviewTiming(root, request.timing);
   reviewChanges(root, "Controller request", request.manifest.preview, new Set());
   reviewEvidence(root, "operator-manifest", "Source, artifact and policy bindings", request.manifest);
   operatorButtons();

@@ -333,6 +333,34 @@ async function refresh() {
 }
 
 
+// Use known observed limits for affordances while leaving current authority to the controller
+function observedClaimWindow(request) {
+  const timing = request?.timing;
+  return !Number.isFinite(timing?.provisional_remaining_seconds) || !Number.isFinite(timing?.minimum_claim_seconds)
+    || timing.provisional_remaining_seconds >= timing.minimum_claim_seconds;
+}
+
+
+// Display server observations separately from command timeouts and provider lifetime
+function reviewTiming(root, timing) {
+  if (!timing) { text(root, "p", "Controller timing unavailable. Refresh or inspect with the original controller."); return; }
+  const timestamp = value => Number.isFinite(value) ? new Date(value * 1000).toLocaleString() : "Unavailable";
+  const facts = [["Controller observed at", timestamp(timing.observed_at)],
+    ["Request expires", timestamp(timing.request_expires_at)],
+    ["Approval expires", timestamp(timing.approval_expires_at)],
+    ["Maximum execution window", timing.maximum_execution_seconds + " seconds"]];
+  if (Number.isFinite(timing.execution_deadline)) facts.push(
+    ["Execution started", timestamp(timing.execution_started_at)], ["Execution authority ends", timestamp(timing.execution_deadline)],
+    ["Last worker contact", timestamp(timing.last_seen)],
+    ["Contact age at observation", timing.last_contact_age_seconds + " seconds"],
+    ["Execution budget at observation", timing.execution_remaining_seconds + " seconds"]);
+  else facts.push(["Provisional execution budget at observation", timing.provisional_remaining_seconds + " seconds"],
+    ["Minimum budget to claim", timing.minimum_claim_seconds + " seconds"]);
+  reviewFacts(root, facts);
+  text(root, "p", "Observed limits only; the controller rechecks at claim and heartbeat. Command timeouts do not extend authority. Expiry or lost contact does not prove the provider stopped or rolled back.");
+}
+
+
 // Present recorded facts without inferring provider behavior from names or adapter labels
 function reviewFacts(parent, entries) {
   const list = document.createElement("dl");
@@ -496,10 +524,14 @@ async function show(id) {
 
     // Use the current controller observation rather than a remembered successful approval click
     const request = data.request_statuses?.[name];
+    if (node.request_id) {
+      if (request?.reason) text(area, "p", "Controller: " + request.reason);
+      reviewTiming(area, request?.timing);
+    }
     const matchingRequest = request?.digest === node.request_digest && Boolean(node.request_digest);
     if (node.status === "waiting") {
       text(area, "p", matchingRequest ? "Approval: " + request.status + (request.status === "approved"
-        ? ". Ready for separate execution." : ".") : "Approval status unavailable or changed. Refresh before acting.");
+        ? (observedClaimWindow(request) ? ". Ready for separate execution." : ". Observed execution budget is below the minimum; prepare fresh evidence.") : ".") : "Approval status unavailable or changed. Refresh before acting.");
     }
     if (node.status === "waiting" && matchingRequest && request.status === "pending") area.append(button("Approve this exact change", async () => {
       if (!await confirmAction("Approve the displayed change for " + name + "?")) return;
@@ -529,7 +561,7 @@ async function show(id) {
   const waiting = Object.entries(release.nodes).filter(([, node]) => node.status === "waiting");
   const approved = waiting.length > 0 && waiting.every(([name, node]) => {
     const request = data.request_statuses?.[name];
-    return request?.status === "approved" && request.digest === node.request_digest && Boolean(node.request_digest);
+    return request?.status === "approved" && request.digest === node.request_digest && Boolean(node.request_digest) && observedClaimWindow(request);
   });
   if (release.status === "queued" || (release.status === "waiting" && approved)) root.append(button(
     release.status === "waiting" ? "Execute approved release" : "Run release", async () => {
