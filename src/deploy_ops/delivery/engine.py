@@ -523,9 +523,14 @@ class Engine:
                     self._prepare(release, name)
                 request = self.gate.status(node["request_id"])
                 if request["status"] == "pending":
+                    # Re-observing one exact pending request is not another decision-needed transition
+                    waiting = {"request_id": node["request_id"], "request_digest": node["request_digest"]}
+                    if release["status"] == "waiting" and node["status"] == "waiting" and node.get("waiting_request") == waiting:
+                        return self.ledger.get(release_id)
                     node["status"] = "waiting"
+                    node["waiting_request"] = waiting
                     release["status"] = "waiting"
-                    return self.ledger.save(release, "release.waiting", {"component": name})
+                    return self.ledger.save(release, "release.waiting", {"component": name, **waiting})
                 if request["status"] != "approved":
                     raise Refused("Deployment request is " + request["status"])
                 self._apply(release, name, request)

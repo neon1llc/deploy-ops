@@ -73,6 +73,13 @@ The adapter uses a release-specific revision suffix, and Azure rejects conflicti
 
 ## Notify and page
 
+Entering approval wait records one event with the exact component/request ID and digest. Repeated
+bounded waits or resume observations of that same pending request still recheck authority, but do
+not create another decision-needed event or notification obligation. A new pending component/request
+gets its own event. Worker start/stop evidence remains separate. If cancellation settles while an
+already-waiting CLI sleeps, the waiter reports the cancelled record without execution. A direct
+resume of a terminal release still refuses.
+
 Events are saved before delivery. Send the outbox from a trusted scheduled worker or after a run:
 
 ```bash

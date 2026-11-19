@@ -1,5 +1,14 @@
 # Verification
 
+## Waiting transition identity, 2026-11-05
+
+Actual Engine/LocalGate/SQLite fixtures reproduced four waiting events and both outbox obligations
+for one unchanged request. New durable request identity makes repeated checks and reconstruction
+quiet while preserving distinct next-component events. A lost return after the real waiting commit
+reopens without another transition. The bounded CLI waiter still makes four live checks across
+its 12-second controlled clock and honors approval, rejection, expiry and settled cancellation
+between checks. Source events/outbox IDs stay historical; no reminder scheduler or sender added.
+
 **Checked:** 2026-11-03. The local and browser observations below qualify the v0.10.0 baseline.
 Later sections record the v0.11.0–v0.12.0 increments and subsequent checks separately.
 

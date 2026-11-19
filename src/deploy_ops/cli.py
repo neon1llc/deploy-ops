@@ -190,8 +190,17 @@ def advance(engine, release, wait_seconds):
     if not 0 <= wait_seconds <= 3600:
         raise Refused("Wait must be between 0 and 3600 seconds", 422)
     deadline = time.monotonic() + wait_seconds
+    result = None
     while True:
-        result = engine.advance(release)
+        try:
+            result = engine.advance(release)
+        except Refused:
+            # Cancellation may settle while this already-waiting caller sleeps; report it without resuming
+            if result and result["status"] == "waiting":
+                current = engine.ledger.get(release)
+                if current["status"] == "cancelled":
+                    return current
+            raise
         if result["status"] != "waiting" or time.monotonic() >= deadline:
             return result
         time.sleep(min(5, max(0, deadline - time.monotonic())))
