@@ -103,7 +103,8 @@ def local_forms(source: str, workspace: Workspace) -> dict:
             override = component.targets.get(environment, {})
             environments[environment] = {key: {"component": base.get(key), "component_authored": key in base,
                 "override": override.get(key), "override_authored": key in override,
-                "effective": effective.options.get(key, None if component.adapter == "static" and key == "destination" else definition.get("default")),
+                "effective": effective.options.get(key, None if component.adapter == "static" and key == "destination" else
+                    f"{environment}-{name}" if component.adapter == "compose" and key == "project" else definition.get("default")),
                 "runtime_default": component.adapter == "static" and key == "destination" and key not in effective.options,
                 "source": "override" if key in override else "component" if key in base else "adapter default"}
                 for key, definition in fields.items()}
@@ -123,7 +124,7 @@ def edit(source: str, name: str, scope: str, values: dict, environment: str = ""
         return native_edit(source, before, name, scope, values, environment, field)
     contract = before["local_edit_forms"].get(name)
     if contract is None or scope not in {"build", "base", "environment"}:
-        raise Refused("Choose an existing directory/static component and explicit edit scope", 422)
+        raise Refused("Choose an existing directory/static/Compose component and explicit edit scope", 422)
     if (scope == "environment" and environment not in contract["environments"]) or (scope != "environment" and environment):
         raise Refused("Choose an applicable local environment only for environment scope", 422)
     allowed = {"checks", "command"} if scope == "build" else set(contract["fields"])
@@ -216,7 +217,7 @@ def local_addition(workspace: Workspace, name: str):
             continue
         expected = "infrastructure" if component.adapter == "directory" else "application"
         if environment.provider != "local" or component.kind != expected:
-            raise ValueError("Guided directory/static components need a local environment and matching kind")
+            raise ValueError("Guided directory/static/Compose components need a local environment and matching kind")
 
 
 

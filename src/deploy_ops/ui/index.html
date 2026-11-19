@@ -515,9 +515,9 @@
             </div>
             <div data-view="controls" hidden>
               <!-- Edit local build and target settings as a draft before reviewing and saving -->
-              <details id="local-settings" data-setting="local build checks command arguments static directory artifact destination inheritance overrides">
+              <details id="local-settings" data-setting="local build checks command arguments static directory compose file project artifact destination inheritance overrides">
                 <summary>Local build and deployment settings</summary>
-                <p>Edit existing directory/static components. Applying fields changes the draft only. Review and save before preparing a release. Output references are checked for availability during preparation.</p>
+                <p>Edit existing directory/static/Compose components. Applying fields changes the draft only. Review and save before preparing a release. Output references are checked for availability during preparation.</p>
                 <button id="local-reload" type="button" class="secondary">Discard local field edits and reload from draft</button>
                 <label for="local-component">Component</label><select id="local-component"></select>
                 <label for="local-scope">Settings scope</label><select id="local-scope"><option value="build">Build arguments</option><option value="base">Component defaults</option><option value="environment">Environment override</option></select>
@@ -568,11 +568,11 @@
                 <button id="load-forms" type="button" class="secondary">
                   Load forms from current draft
                 </button>
-                <details data-setting="add create register repository environment directory static build artifact">
+                <details data-setting="add create register repository environment directory static compose build artifact">
                   <summary>Add to the workspace draft</summary>
                   <p>
                     Register a repository, then an environment and its components. Guided component
-                    creation supports local directory infrastructure and static applications.
+                    creation supports local directory infrastructure, static and Compose applications.
                     Other adapters use the advanced TOML path. Adding never saves or executes.
                   </p>
                   <form id="config-add-form" action="/api/config/add" method="post">
@@ -584,6 +584,7 @@
                         <option value="environments">Environment</option>
                         <option value="directory">Directory infrastructure</option>
                         <option value="static">Static application</option>
+                        <option value="compose">Compose application</option>
                       </select>
                       <label for="config-add-name">New name (required)</label>
                       <input id="config-add-name" name="name" required />

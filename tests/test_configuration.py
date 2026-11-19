@@ -627,6 +627,40 @@ def test_local_edit_preserves_target_siblings_and_authored_sources(workspace):
     assert result['local_edit_forms']['web']['build_sources']['command'] == 'component'
 
 
+# Compose edits preserve native identity semantics without invoking rendering or a daemon
+def test_compose_guided_creation_and_inheritance_are_pure(workspace, monkeypatch):
+    from deploy_ops.delivery.process import Process
+    original = workspace.read_text()
+
+    # Settings inspection and edits must not invoke native rendering or contact a daemon
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Compose command during configuration editing')
+
+    monkeypatch.setattr(Process, 'run', forbidden)
+    created = dispatch(parser().parse_args(['--project', str(workspace), 'config', 'add', '--section', 'components',
+        '--name', 'container', '--repository', 'application', '--kind', 'application', '--adapter', 'compose',
+        '--compose-file', 'compose.yaml']))
+    contract = created['local_edit_forms']['container']
+    assert contract['required'] == ['file']
+    assert contract['environments']['development']['project']['effective'] == 'development-container'
+    assert 'project' not in contract['base']
+    assert edit(created['toml'], 'container', 'base', {'file': 'compose.yaml', 'project': ''})['toml'] == created['toml']
+    pinned = edit(created['toml'], 'container', 'environment', {'project': 'development-container'}, 'development')
+    changed = edit(pinned['toml'], 'container', 'base', {'project': 'shared-project'})
+    assert changed['local_edit_forms']['container']['environments']['development']['project']['effective'] == 'development-container'
+    assert changed['local_edit_forms']['container']['environments']['staging']['project']['effective'] == 'shared-project'
+    reset = edit(changed['toml'], 'container', 'base', {}, field='project')
+    assert reset['local_edit_forms']['container']['environments']['staging']['project']['effective'] == 'staging-container'
+    inherited = edit(reset['toml'], 'container', 'environment', {}, 'development', 'project')
+    assert inherited['local_edit_forms']['container']['environments']['development']['project']['source'] == 'adapter default'
+    for values in [{'file': '../outside.yaml'}, {'project': 'UpperCase'}, {'project': ''}, {'file': ''}, {'unknown': True}]:
+        with pytest.raises(Refused):
+            edit(created['toml'], 'container', 'environment', values, 'development')
+    with pytest.raises(Refused):
+        edit(created['toml'], 'container', 'base', {}, field='file')
+    assert workspace.read_text() == original
+
+
 # Check actual retained-draft handlers without browser or provider dependencies
 def test_retained_local_field_conflicts():
     import shutil
