@@ -67,6 +67,12 @@ deploy-ops recover RELEASE_ID --note "Inspected the target. Recorded the provide
 
 Don't reuse that sentence as evidence without inspecting the target. Start a fresh release after reconciliation. The tool never guesses that a failed command had no effects. If controller inspection already resolved the request as failed while delivery still shows waiting, cancel the release to close that tracking record. Cancellation preserves the controller's final decision.
 
+The console's release inspector shows command outcomes in execution order. The same records are
+available through `deploy-ops events RELEASE_ID`: tool, component, local exit code when known, and
+elapsed milliseconds. An interrupted command has no confirmed exit code at the interruption point;
+inspect its target before retrying. A `not-started` result means the local process could not launch.
+Older records show duration unavailable. These process results do not establish provider health or rollback.
+
 For Container Apps, `deploy-ops provider inspect RELEASE_ID COMPONENT` reads the exact app and revision recorded before its update and checks the immutable image, container, template hash, health, and Single-mode activation without replaying the update. A missing or unreadable revision stays unknown, and readback doesn't clear release uncertainty. Same-image delivery makes no update call and verifies the existing revision. Missing evidence for a nondefault setting is refused ([scaling defaults](https://learn.microsoft.com/en-us/azure/container-apps/scale-app), [ephemeral storage](https://learn.microsoft.com/en-us/azure/container-apps/storage-mounts)).
 
 The adapter uses a release-specific revision suffix, and Azure rejects conflicting suffixes, but that isn't an idempotency guarantee. The read and write aren't atomic, so an external concurrent change can still race the update. DeployOps never repeats the update command after recording an attempt. Recovery and no-op behavior have command-fixture coverage only, not a live recovery exercise.

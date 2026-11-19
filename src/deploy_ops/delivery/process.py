@@ -82,11 +82,18 @@ class Process:
             if input_text is not None:
                 stdin.write(input_text.encode())
                 stdin.seek(0)
-            process = subprocess.Popen(
-                argv, cwd=cwd, env=self.env, stdin=stdin,
-                stdout=output, stderr=diagnostic, start_new_session=os.name == "posix",
-            )
             started = time.monotonic()
+            try:
+                process = subprocess.Popen(
+                    argv, cwd=cwd, env=self.env, stdin=stdin,
+                    stdout=output, stderr=diagnostic, start_new_session=os.name == "posix",
+                )
+            except OSError:
+                # A launch refusal is not an attempted provider operation; keep host paths private
+                self.emit("command.failed", {**metadata, "elapsed_ms": round((time.monotonic() - started) * 1000),
+                          "outcome": "not-started", "exit_code": None})
+                label = metadata.get("operation", metadata["tool"])
+                raise Refused(f"{label} could not start; check the local executable and working directory") from None
             try:
                 # Authority expiry and output limits interrupt local execution without claiming rollback
                 while process.poll() is None:
@@ -104,13 +111,18 @@ class Process:
                     raise Refused("Command output exceeded its 10 MB limit")
                 if process.returncode != 0:
                     # Raw provider output can contain secrets that the controller never received
-                    self.emit("command.failed", {**metadata, "exit_code": process.returncode})
                     label = metadata.get("operation", metadata["tool"])
                     raise Refused(f"{label} failed with exit code {process.returncode}")
                 if not capture and text:
                     self.emit("command.output", {"text": redact(text[-4000:], self.secrets)})
-                self.emit("command.finished", metadata)
+                self.emit("command.finished", {**metadata, "elapsed_ms": round((time.monotonic() - started) * 1000)})
                 return text
+            except Exception:
+                # Record local interruption without exposing diagnostics or implying provider rollback
+                self.emit("command.failed", {**metadata, "exit_code": process.poll(),
+                          "elapsed_ms": round((time.monotonic() - started) * 1000),
+                          "outcome": "failed" if process.returncode is not None else "interrupted"})
+                raise
             finally:
                 if os.name == "posix":
                     # Descendants may survive a parent exit and ignore graceful termination
