@@ -91,3 +91,14 @@ matching runtime to enforce that boundary. Older runtimes do not understand it a
 to bypass admission. Original absolute references remain unchanged. `preview --retained` permits
 only compatible, reviewed static readback. There is no automatic writable restore or provider-resume
 procedure. See [private backups](backups.md) for scope, bounds and original-location exercises.
+
+## Cloud Run native operations in v0.21.0
+
+New Cloud Run preparation carries a version 1 native request inside the existing approved envelope.
+The former CLI-only preparation lacks this identity and cannot be executed by the new writer. Retain
+the matching runtime for old work, inspect uncertain provider effects and prepare a fresh release;
+no historical approval, digest or audit row is rewritten. The new fixed-origin REST writer uses current
+native credentials and service etags, records both operation boundaries and never retries an attempted
+write. It supports one existing container and an untagged single route. Portable inspection format 2
+adds this native scope/phase; the reader preserves exact format 1 extents. Private backups additionally
+include `cloud-run-operation.json`. No database schema migration or implicit grant change is supplied.

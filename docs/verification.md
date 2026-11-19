@@ -1,5 +1,33 @@
 # Verification
 
+## Cloud Run native boundary, 2026-11-05
+
+The v0.21.0 candidate's v2 API fixtures exercise separate conditional candidate/traffic writes,
+lost acknowledgements at both boundaries, exact actual image/readiness, etag conflict, external
+route/configuration/UID changes, no-op and read-only inspection. Existing receipt and isolated-owner
+journeys use that same adapter with native responses replaced by fixtures. Inspection format 2 adds
+Cloud Run scope/phase; a version 1 extent remains readable without reserialization.
+
+Three finite native attempts used newly owned internal-only, IAM-protected sample services, an
+existing runtime identity, no secret data and no IAM/API/billing/public-access changes. The first two
+stopped before an application write. They established short parent-service names and omitted default
+false protobuf booleans; the adapter and fixtures were corrected. The third prepared and held exact
+approval, created a candidate with an acknowledged/completed native operation, preserved the template
+digest and baseline route, then stopped before traffic switching. Its readback showed that
+`latestReadyRevision` can remain the serving baseline while the candidate receives no traffic. The
+guard was corrected to use the candidate's own image/readiness instead. Final focused checks cover
+that observed shape; no fourth live attempt was made.
+
+All three owned services were deleted, subsequent GET returned 404 and revision inventories were
+empty. Temporary grants were closed. The first private cleanup receipt hit a helper error after
+deletion; a separate native read confirmed deletion and zero revisions. Failed/uncertain release and
+controller records, operation IDs and the actual version 2 offline inspection remain retained.
+No missing completion or success was fabricated. Actual billed cost was not measured.
+
+Traffic switching, same-image no-op, end-to-end native workload HTTP and the new mounted Cloud Run
+console control remain unqualified. Source/native evidence preceded final package binding. Fixture
+success and candidate acceptance do not qualify the full cloud journey, which remains open.
+
 ## Private backup candidate and desktop browser, 2026-11-05
 
 The v0.20.0 candidate's existing Edge connection exercised interrupted Save inspection, Escape

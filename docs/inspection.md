@@ -20,14 +20,14 @@ files are preserved. Treat public resource identities as private operational inf
 
 ## What the summary means
 
-The version 1 format records its toolkit version, capture time and SHA-256 over the normalized
+The version 2 format records its toolkit version, capture time and SHA-256 over the normalized
 allowlisted summary, excluding the `sha256` field. Optional `--run-id` and `--run-attempt` bind a
 capture to a runner attempt; supply both. The release-record hash identifies the exact release data
 read without exporting that data. Each included native journal has its exact file hash.
 The CLI capture result also returns the exact output file's byte hash, separately from the summary digest.
 
 Controller request digests identify canonical manifests. ECS native request digests identify the
-frozen task request file; Container Apps native request digests identify canonical request JSON.
+frozen task request file; Container Apps and Cloud Run native request digests identify canonical request JSON.
 These are different identities and remain separate. Artifact hashes identify prepared envelopes,
 not proof that an image was deployed or is healthy.
 
@@ -36,11 +36,15 @@ are present, unavailable or not applicable to this format. Expected identities t
 make capture partial. An unknown native adapter contract is explicitly not applicable; a complete
 capture covers only this inspection extent. It does not establish a complete deployment or backup.
 
-ECS and Container Apps journals retain exact recorded scope, image, durable phase, request identity
+ECS, Container Apps and Cloud Run journals retain exact recorded scope, image, durable phase, request identity
 and selected last observation. ECS candidate revisions and truncated discovery are retained when
 available. New journal writes record their time; an old record without a timestamp remains unknown.
 An acknowledgement does not establish convergence. A missing journal says **no retained operation
 record**: submission and current cloud outcome are unknown, even if the release is failed or cancelled.
+
+Version 2 adds GCP project/service scope and Cloud Run's candidate/traffic phases. Version 1 remains
+readable with its original exact extent and checksum; its narrower native-adapter scope is preserved.
+An older reader rejects version 2 rather than silently dropping its new facts.
 
 Source trees, raw databases/WAL, prepared request contents, task definitions, arbitrary provider
 responses/messages, login homes, credentials, tokens, leases and Terraform state are omitted. Capture

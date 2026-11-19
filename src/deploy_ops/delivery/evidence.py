@@ -45,6 +45,7 @@ class Scope(Public):
     resource_group: Text | None = None
     name: Text | None = None
     app_id: Text | None = None
+    project_id: Text | None = None
 
 
 # Keep only the documented public readback fields, never arbitrary provider messages
@@ -63,9 +64,10 @@ class Observation(Public):
 # Retain durable native intent even when submission acknowledgement is missing
 class Native(Public):
     journal_sha256: Digest
-    provider: Literal['aws', 'azure']
+    provider: Literal['aws', 'azure', 'gcp']
     phase: Literal['register-submitted', 'registered', 'update-submitted', 'update-acknowledged',
-                   'converged', 'not-converged', 'no-op']
+                   'converged', 'not-converged', 'no-op', 'candidate-submitted', 'candidate-acknowledged',
+                   'candidate-ready', 'traffic-submitted', 'traffic-acknowledged']
     scope: Scope
     request_digest: Digest
     request_digest_kind: Literal['sha256-file', 'sha256-canonical-json']
@@ -103,7 +105,7 @@ class Component(Public):
 # Hash the exact allowlisted extent, not a restorable database or an approval credential
 class Summary(Public):
     format: Literal['deploy-ops.inspection'] = 'deploy-ops.inspection'
-    version: Literal[1] = 1
+    version: Literal[1, 2] = 2
     toolkit_version: Name
     captured_at: int
     run_id: Annotated[str, StringConstraints(pattern=r'^[0-9]{1,24}$')] | None = None
@@ -132,7 +134,8 @@ def journal(state: Path, release_id: str, name: str, adapter: str):
         current = current / part
         if current.is_symlink():
             raise Refused('Inspection journal parents must not be symbolic links', 422)
-    filename = 'ecs-operation.json' if adapter == 'ecs' else 'container-apps-operation.json'
+    filename = {'ecs': 'ecs-operation.json', 'container-apps': 'container-apps-operation.json',
+                'cloud-run': 'cloud-run-operation.json'}[adapter]
     path = current / filename
     if not path.exists() and not path.is_symlink():
         return None
@@ -143,17 +146,20 @@ def journal(state: Path, release_id: str, name: str, adapter: str):
     # These identities are facts from the captured release, never inferred from the current workspace
     if scope['release_id'] != release_id or scope['component'] != name:
         raise Refused('Inspection journal belongs to a different release or component', 409)
-    if adapter == 'container-apps' and fingerprint(request) != record['request_digest']:
-        raise Refused('Container Apps inspection request digest does not match its retained record', 409)
-    fields = ('region', 'cluster', 'service') if adapter == 'ecs' else ('subscription_id', 'resource_group', 'name', 'app_id')
+    if adapter != 'ecs' and fingerprint(request) != record['request_digest']:
+        raise Refused('Native inspection request digest does not match its retained record', 409)
+    fields = {'ecs': ('region', 'cluster', 'service'),
+              'container-apps': ('subscription_id', 'resource_group', 'name', 'app_id'),
+              'cloud-run': ('project_id', 'region', 'name', 'service')}[adapter]
     public_scope = {key: scope[key] for key in ('release_id', 'component', 'environment', *fields)}
     observed = record.get('observed')
     observation = None if observed is None else {key: observed[key] for key in Observation.model_fields if key in observed}
-    return Native(journal_sha256=hashlib.sha256(content).hexdigest(), provider='aws' if adapter == 'ecs' else 'azure',
+    return Native(journal_sha256=hashlib.sha256(content).hexdigest(), provider={'ecs': 'aws', 'container-apps': 'azure', 'cloud-run': 'gcp'}[adapter],
                   phase=record['status'], scope=public_scope, request_digest=record['request_digest'],
                   request_digest_kind='sha256-file' if adapter == 'ecs' else 'sha256-canonical-json',
-                  operation_id=record.get('operation_id'), image=request['image'], revision=request.get('revision'),
-                  previous_revision=request.get('previous_revision'), recorded_at=record.get('recorded_at'),
+                  operation_id=record.get('operation_id', request.get('operation_id')), image=request['image'],
+                  revision=request.get('candidate') if adapter == 'cloud-run' else request.get('revision'),
+                  previous_revision=request.get('baseline', {}).get('route') if adapter == 'cloud-run' else request.get('previous_revision'), recorded_at=record.get('recorded_at'),
                   observed_at=record.get('observed_at'), observation=observation,
                   candidate_revisions=record.get('candidate_revisions'), discovery_truncated=record.get('discovery_truncated'))
 
@@ -171,14 +177,14 @@ def capture(state: Path, release_id: str, run_id=None, run_attempt=None) -> dict
         for name, node in release['nodes'].items():
             if not re.fullmatch(r'[A-Za-z0-9_.-]{1,128}', name) or name in {'.', '..'}:
                 raise Refused('Retained component identity is unsafe for inspection', 422)
-            native = journal(state, release_id, name, node['adapter']) if node['adapter'] in {'ecs', 'container-apps'} else None
+            native = journal(state, release_id, name, node['adapter']) if node['adapter'] in {'ecs', 'container-apps', 'cloud-run'} else None
             if native and native.scope.environment != release['environment']:
                 raise Refused('Inspection journal belongs to a different environment', 409)
             controller = Controller(request_id=node['request_id'], request_digest=node['request_digest']) if node.get('request_id') else None
             components.append(Component(name=name, adapter=node['adapter'], outcome=node['status'], controller=controller,
                 artifact_sha256=node.get('artifact_digest'), artifact_status='present' if node.get('artifact_digest') else 'unavailable',
                 controller_status='present' if controller else 'unavailable', journal='present' if native else
-                'unavailable' if node['adapter'] in {'ecs', 'container-apps'} else 'not_applicable', native=native))
+                'unavailable' if node['adapter'] in {'ecs', 'container-apps', 'cloud-run'} else 'not_applicable', native=native))
         value = Summary(toolkit_version=__version__, captured_at=int(time.time()), run_id=run_id, run_attempt=run_attempt,
             release_id=release_id, project=release['project'], environment=release['environment'],
             config_digest=release['config_digest'], source_digest=release['source_digest'], outcome=release['status'],
@@ -197,7 +203,14 @@ def validate(document: dict) -> dict:
     try:
         value = Summary.model_validate(document)
         normalized = value.model_dump(mode='json')
-        if normalized != document or value.sha256 != fingerprint({key: item for key, item in document.items() if key != 'sha256'}):
+        if value.version == 1:
+            for component in normalized['components']:
+                native = component.get('native')
+                if native:
+                    if native['provider'] == 'gcp' or native['scope'].pop('project_id', None) is not None or native['phase'] in {
+                            'candidate-submitted', 'candidate-acknowledged', 'candidate-ready', 'traffic-submitted', 'traffic-acknowledged'}:
+                        raise ValueError('legacy format')
+        if type(document.get('version')) is not int or normalized != document or value.sha256 != fingerprint({key: item for key, item in document.items() if key != 'sha256'}):
             raise ValueError('extent')
         if bool(value.run_id) != bool(value.run_attempt):
             raise ValueError('run')
@@ -208,16 +221,20 @@ def validate(document: dict) -> dict:
             names.add(component.name)
             if ((component.controller_status == 'present') != bool(component.controller)
                     or (component.artifact_status == 'present') != bool(component.artifact_sha256)
-                    or (component.journal == 'not_applicable') != (component.adapter not in {'ecs', 'container-apps'})):
+                    or (component.journal == 'not_applicable') != (component.adapter not in
+                        ({'ecs', 'container-apps'} if value.version == 1 else {'ecs', 'container-apps', 'cloud-run'}))):
                 raise ValueError('completeness')
             native = component.native
             if native and (native.scope.release_id != value.release_id or native.scope.component != component.name
                            or native.scope.environment != value.environment
-                           or (native.provider, component.adapter) not in {('aws', 'ecs'), ('azure', 'container-apps')}):
+                           or (native.provider, component.adapter) not in {('aws', 'ecs'), ('azure', 'container-apps'), ('gcp', 'cloud-run')}):
                 raise ValueError('scope')
             if native:
-                required = ('region', 'cluster', 'service') if native.provider == 'aws' else ('subscription_id', 'resource_group', 'name', 'app_id')
-                forbidden = ('subscription_id', 'resource_group', 'name', 'app_id') if native.provider == 'aws' else ('region', 'cluster', 'service')
+                provider_fields = {'aws': ('region', 'cluster', 'service'),
+                                   'azure': ('subscription_id', 'resource_group', 'name', 'app_id'),
+                                   'gcp': ('project_id', 'region', 'name', 'service')}
+                required = provider_fields[native.provider]
+                forbidden = set(Scope.model_fields) - {'release_id', 'component', 'environment', *required}
                 kind = 'sha256-file' if native.provider == 'aws' else 'sha256-canonical-json'
                 if (any(not getattr(native.scope, key) for key in required)
                         or any(getattr(native.scope, key) is not None for key in forbidden)
