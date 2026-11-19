@@ -564,7 +564,12 @@ class Engine:
         else:
             for node in release["nodes"].values():
                 if node.get("request_id") and node["status"] == "waiting":
-                    self.gate.approve(node["request_id"], node["request_digest"], "reject")
+                    # A separately inspected controller failure already withdrew execution authority
+                    request = self.gate.status(node["request_id"])
+                    if request["status"] in {"pending", "approved"}:
+                        self.gate.approve(node["request_id"], node["request_digest"], "reject")
+                    elif request["status"] not in {"failed", "rejected", "expired", "cancelled"}:
+                        raise Refused("Inspect and reconcile the controller execution before cancelling this release")
             release["status"] = "cancelled"
         return self.ledger.save(release, "release.cancel_requested")
 
