@@ -332,6 +332,10 @@ def workspace_lock(state):
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise Refused("Workspace configuration or release preparation is active; retry after it finishes") from None
+        # A random token written once inside the lock file survives only with that file; a recreated file can reuse the old inode
+        if not os.pread(descriptor, 64, 0):
+            os.pwrite(descriptor, uuid.uuid4().hex.encode('ascii'), 0)
+            os.fsync(descriptor)
         yield descriptor
     finally:
         os.close(descriptor)
@@ -391,9 +395,10 @@ def save_recovery(project, state, *, locked=False):
     try:
         intent = json.loads(read_regular(path, 64 * 1024).decode('utf-8'))
         fields = {'version', 'id', 'project_path', 'state_path', 'before_hash', 'after_hash', 'old_digest',
-                  'new_digest', 'created_at', 'lock_device', 'lock_inode'}
+                  'new_digest', 'created_at', 'lock_device', 'lock_inode', 'lock_token'}
         if (set(intent) != fields or intent['version'] != 1 or not re.fullmatch(r'[0-9a-f]{32}', intent['id'])
                 or any(not re.fullmatch(r'[0-9a-f]{64}', intent[key]) for key in ('before_hash', 'after_hash', 'old_digest', 'new_digest'))
+                or not re.fullmatch(r'[0-9a-f]{32}', intent['lock_token'])
                 or any(type(intent[key]) is not int for key in ('created_at', 'lock_device', 'lock_inode'))):
             raise ValueError('format')
         if intent['project_path'] != str(project) or intent['state_path'] != str(state):
@@ -416,7 +421,8 @@ def save_recovery(project, state, *, locked=False):
         descriptor = os.open(state / 'workspace.lock', os.O_RDONLY | os.O_NOFOLLOW)
         try:
             metadata = os.fstat(descriptor)
-            if (metadata.st_dev, metadata.st_ino) != (intent['lock_device'], intent['lock_inode']):
+            if ((metadata.st_dev, metadata.st_ino) != (intent['lock_device'], intent['lock_inode'])
+                    or os.pread(descriptor, 64, 0) != intent['lock_token'].encode('ascii')):
                 raise ValueError('lock identity')
             if not locked:
                 try:
@@ -529,7 +535,8 @@ def save(engine, source: str, expected_hash: str, worker_active: bool = False) -
             intent = {'version': 1, 'id': operation_id, 'project_path': str(engine.path), 'state_path': str(engine.state),
                       'before_hash': expected_hash, 'after_hash': source_hash(source), 'old_digest': current_digest,
                       'new_digest': proposed['digest'], 'created_at': int(time.time()),
-                      'lock_device': metadata.st_dev, 'lock_inode': metadata.st_ino}
+                      'lock_device': metadata.st_dev, 'lock_inode': metadata.st_ino,
+                      'lock_token': os.pread(lock_descriptor, 64, 0).decode('ascii')}
             private_json(engine.state / 'workspace-save.json', intent, durable=True)
             if source_hash(read_source(engine.path)) != expected_hash:
                 raise Refused("The workspace changed during saving. Preserve your draft and inspect Save recovery")
