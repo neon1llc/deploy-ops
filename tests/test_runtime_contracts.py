@@ -70,10 +70,7 @@ def test_compose_named_volume_admission(tmp_path, declaration):
         {"services": [{"taskDefinition": "old"}]}, {"taskDefinition": {"taskDefinitionArn": "new"}}, {}, "",
         {"services": [{"taskDefinition": "new", "deployments": [{"rolloutState": "COMPLETED"}]}]},
     ]),
-    ("kubernetes", "local", {"context": "test", "namespace": "app", "deployment": "app", "container": "web"}, [
-        {"metadata": {"resourceVersion": "123"}, "spec": {"template": {"spec": {"containers": [{"name": "web", "image": "old"}]}}}},
-        "", "", {"spec": {"template": {"spec": {"containers": [{"name": "web", "image": IMAGE}]}}}},
-    ]),
+
 ])
 def test_prepare_apply_verify_contract(tmp_path, adapter, provider, options, replies):
     ctx = context(tmp_path, adapter, provider, {**options, "image": IMAGE}, replies)

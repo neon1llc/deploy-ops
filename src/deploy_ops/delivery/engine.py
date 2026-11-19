@@ -25,6 +25,22 @@ from .process import Process
 from .spec import load, options
 
 
+# Share read-only compatibility reasons with execution admission without claiming current authority
+def require_execution_contract(envelope: dict) -> None:
+    if (envelope['adapter'] == 'static' and envelope['prepared'].get('activation') == 'separate'
+            and envelope.get('adapter_contract_version') != 3):
+        raise Refused('Separate activation requires a newly reviewed adapter contract 3')
+    if envelope['adapter'] == 'kubernetes':
+        from .adapters.kubernetes import reviewed
+        reviewed(envelope['prepared'])
+    if envelope["adapter"] in {"terraform", "opentofu"}:
+        from .adapters.iac import require_contract
+        require_contract(envelope["prepared"], envelope["adapter"])
+    if envelope["adapter"] in {"cloudformation", "cdk"}:
+        from .adapters.cloudformation import require_destroy_contract
+        require_destroy_contract(envelope["prepared"])
+
+
 # Coordinate immutable release evidence through one approval and deployment lifecycle
 class Engine:
     # Bind the workspace, private ledger and selected authority backend
@@ -554,6 +570,9 @@ class Engine:
         node.update(status="prepared", request_id=request["id"], request_digest=request["digest"],
                     artifact_digest=proposal.artifact_digest, preview=prepared["preview"],
                     warnings=prepared.get("warnings", []))
+        if component.adapter == 'kubernetes':
+            node['kubernetes_binding'] = {'connection': prepared['kubernetes_request']['connection'],
+                                          'uid': prepared['kubernetes_request']['baseline']['uid']}
         if component.adapter in {"terraform", "opentofu"}:
             node.update(infrastructure_backend=prepared["backend"], output_readiness=prepared["output_readiness"])
         self.ledger.save(release, "component.prepared", {"component": name, "request_id": request["id"]})
@@ -564,15 +583,7 @@ class Engine:
         node = release["nodes"][name]
         folder = self.state / "releases" / release["id"] / name
         envelope = self._reviewed_envelope(release, name)
-        if (envelope['adapter'] == 'static' and envelope['prepared'].get('activation') == 'separate'
-                and envelope.get('adapter_contract_version') != 3):
-            raise Refused('Separate activation requires a newly reviewed adapter contract 3')
-        if envelope["adapter"] in {"terraform", "opentofu"}:
-            from .adapters.iac import require_contract
-            require_contract(envelope["prepared"], envelope["adapter"])
-        if envelope["adapter"] in {"cloudformation", "cdk"}:
-            from .adapters.cloudformation import require_destroy_contract
-            require_destroy_contract(envelope["prepared"])
+        require_execution_contract(envelope)
         if envelope["config_digest"] != self.spec.digest or digest_tree(folder / "source") != envelope["source_digest"]:
             raise Refused("Reviewed source or workspace changed")
         if digest_tree(folder / "artifacts") != envelope["artifact_tree"]:

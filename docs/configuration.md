@@ -36,7 +36,7 @@ Only complete `${env.name}` and `${outputs.component.key}` values are expanded, 
 | `ecs` | `region`, `cluster`, `service`, `container`, `image` | Existing ECS-controller service |
 | `container-apps` | `name`, `resource_group`, `subscription_id`, `image` | Existing Single revision mode app with one named container |
 | `cloud-run` | `name`, `project_id`, `region`, `image` | Existing service with one 100% traffic target |
-| `kubernetes` | `context`, `namespace`, `deployment`, `container`, `image` | Dedicated kubeconfig and existing Deployment |
+| `kubernetes` | `context`, `namespace`, `deployment`, `container`, `image` | Dedicated kubeconfig; reviewed connection and existing Deployment UID; [native profile](kubernetes.md) |
 | `workflow` | `apply` and `verify` command lists, optional `prepare` and `outputs_file` | Local trusted scripts only, manual approval, no preview equivalence guarantee |
 
 Native app images must use `registry/repository@sha256:...`. Tags such as `latest` are rejected. The same registry artifact can be promoted, but cross-provider replication and credentials aren't automatic.

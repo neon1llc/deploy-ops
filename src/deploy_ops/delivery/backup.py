@@ -30,7 +30,7 @@ MAX_BYTES = 512_000_000
 MAX_FILE_BYTES = 100_000_000
 MAX_ENTRIES = 20000
 MAX_MANIFEST_BYTES = 16_000_000
-JOURNALS = {'ecs-operation.json', 'container-apps-operation.json', 'cloud-run-operation.json', 'cloudformation-operation.json', 'arm-operation.json'}
+JOURNALS = {'kubernetes-operation.json', 'ecs-operation.json', 'container-apps-operation.json', 'cloud-run-operation.json', 'cloudformation-operation.json', 'arm-operation.json'}
 RESTORE_MANIFEST = '.deploy-ops-backup-manifest.json'
 
 

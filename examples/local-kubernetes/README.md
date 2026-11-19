@@ -2,6 +2,8 @@
 
 This example updates two existing Deployments in a disposable local kind cluster. Install Docker,
 kind and kubectl first. The checked combination is kind 0.31.0, Kubernetes 1.35.0 and kubectl 1.35.0.
+That workload proof is historical v0.7 evidence. The current [connection/UID profile](../../docs/kubernetes.md)
+has separate native-client qualification and still needs current real-cluster workload qualification.
 Use a new copy of this directory and a cluster name that does not already exist.
 
 Create the explicit prerequisite resources with a dedicated kubeconfig:
@@ -58,7 +60,8 @@ deploy-ops promote FIRST_RELEASE_ID staging --component web
 
 Promotion requires a fresh exact approval. `deploy-ops rollback FIRST_RELEASE_ID development --component web`
 also prepares a newly approved image update; it does not undo database changes. The adapter checks the
-Deployment resource version before patching, waits for rollout and verifies the selected image.
+selected connection, Deployment UID, resource version and container before patching, waits for rollout
+and verifies the same object and selected image.
 
 Inspect HTTP separately. Run the following in a second terminal with the same dedicated kubeconfig, then
 visit `http://127.0.0.1:18081` or use `curl --fail`:

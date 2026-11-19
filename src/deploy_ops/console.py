@@ -631,6 +631,14 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
                 request_statuses[name] = {"status": request["status"], "digest": request["digest"],
                                           "reason": request.get("reason"), "timing": request.get("timing"),
                                           "execution_blocker": request.get("execution_blocker")}
+                if request['status'] in {'pending', 'approved'} and node.get('artifact_digest'):
+                    try:
+                        from .delivery.engine import require_execution_contract
+                        require_execution_contract(engine._reviewed_envelope(release, name))
+                    except Refused as error:
+                        request_statuses[name]['execution_blocker'] = str(error)
+                    except Exception:
+                        request_statuses[name]['execution_blocker'] = 'Prepared compatibility is unavailable. Inspect the retained evidence before execution.'
             except Exception:
                 request_statuses[name] = {"status": "unavailable", "digest": None}
         sessions = serving.list()
