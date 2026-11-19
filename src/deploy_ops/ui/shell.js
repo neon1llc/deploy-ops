@@ -31,7 +31,7 @@ function navigate(focus = false) {
   shellElement("view-eyebrow").textContent = eyebrow;
   shellElement("view-description").textContent = description;
   shellElement("appearance-view").hidden = name !== "controls" || location.protocol === "file:";
-  shellElement("unlock").hidden = connected || location.protocol === "file:" || name === "controls";
+  shellElement("unlock").hidden = connected || location.protocol === "file:";
   document.title = title + " · DeployOps";
   if (focus) shellElement("view-title").focus({preventScroll: true});
 }
@@ -127,7 +127,7 @@ function workspaceLoaded(event) {
     shellElement(kind + "-count").textContent = String(names.length);
     shellElement(kind + "-summary").textContent = names.join(" · ") || "None configured";
   }
-  navigate();
+  navigate(true);
 }
 
 

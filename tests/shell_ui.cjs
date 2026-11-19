@@ -141,7 +141,18 @@ for (const link of app.document.querySelectorAll("[data-view-link]")) {
   assert.equal(link.attributes["aria-current"], "page");
   assert.equal(app.document.activeElement, app.node("view-title"));
   assert.equal(app.document.querySelectorAll("[data-view]").filter(view => !view.hidden).length, 1);
+  assert.equal(app.node("unlock").hidden, false);
 }
+
+
+// Reconnect directly on the retained Controls route, returning focus from the disappearing login form
+const reconnect = harness();
+reconnect.location.hash = 'controls'; reconnect.flush();
+assert.equal(reconnect.node('unlock').hidden, false);
+reconnect.document.dispatchEvent({type: 'deployops:workspace', detail: {name: 'Fixture', environments: {}, components: {}}});
+assert.equal(reconnect.location.hash, '#controls');
+assert.equal(reconnect.node('unlock').hidden, true);
+assert.equal(reconnect.document.activeElement, reconnect.node('view-title'));
 
 // Treat inherited object property names as unknown destinations rather than executable view entries
 for (const name of ["constructor", "__proto__", "missing-view"]) {
@@ -159,7 +170,7 @@ app.document.dispatchEvent({type: "deployops:releases", detail: [{status: "succe
 assert.equal(app.node("environment-count").textContent, "2");
 assert.equal(app.node("component-count").textContent, "3");
 assert.equal(app.node("release-count").textContent, "4");
-assert.equal(app.node("release-summary").textContent, "3 waiting, failed or uncertain");
+assert.equal(app.node("release-summary").textContent, "3 waiting, failed or uncertain among these newest 4 (up to 200). Browse Releases for all retained history.");
 assert.equal(app.node("session-label").textContent, "Fixture");
 assert.equal(app.node("unlock").hidden, true);
 

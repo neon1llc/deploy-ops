@@ -69,6 +69,10 @@ The console's **Workspace configuration** panel edits existing repositories, env
 
 **Validate configuration** shows the complete diff before **Save local configuration**. A save keeps the previous file in local state, refuses outstanding releases, and rejects stale file revisions. If another tab or editor changed the file, keep your draft before reloading. This detects observed conflicts and isn't a filesystem lock. Remote-controller consoles can prepare and validate drafts but can't save controller or workspace authority.
 
+Save reloads and locks the console. Reconnect directly on Controls to return to the same view, without
+a Home detour. The connection form is available on every locked server view; successful connection
+moves keyboard focus to that view's heading. Tokens remain in tab memory and are cleared on reload.
+
 The CLI edits a draft without writing the source file:
 
 ```bash
