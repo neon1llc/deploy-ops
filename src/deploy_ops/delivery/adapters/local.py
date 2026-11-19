@@ -41,10 +41,13 @@ def prepare(context: Context) -> dict:
         inside(context.deployments, destination)
         return static_prepared(context)
     # Render Compose once and reject host-level privileges before approval
+    from ..docker import verify_daemon
+    verify_daemon(context)
+    selected = context.docker_binding
     config = need(context.options, "file")
     file = inside(context.source, config)
     rendered = json.loads(context.command(
-        ["docker", "compose", "-f", str(file), "config", "--format", "json"], capture=True))
+        [selected['tools']['compose_executable']['path'], '-p', selected['project'], "-f", str(file), "config", "--format", "json"], capture=True))
     if not rendered.get("services"):
         raise Refused("Compose has no services", 422)
     for service in rendered["services"].values():
@@ -62,8 +65,9 @@ def prepare(context: Context) -> dict:
             if declaration.get('driver_opts') or declaration.get('external') or declaration.get('driver', 'local') != 'local':
                 raise Refused('Compose storage drivers, driver options and external volumes need an external reviewed workflow', 422)
     private_json(context.stage / "compose.json", rendered)
-    return {"preview": preview(context.name, "application_compose"),
-            "project": context.options.get("project", f"{context.environment}-{context.name}")}
+    reviewed = preview(context.name, "application_compose")
+    reviewed['changes'][0]['address'] = f"compose:{selected['project']}@{selected['daemon_id']}"
+    return {"preview": reviewed, "project": selected['project'], 'docker_binding': selected}
 
 
 # Activate only the reviewed local artifact and target
@@ -96,7 +100,11 @@ def apply(context: Context, prepared: dict) -> dict:
         private_json(destination / "current.json", {"release": context.release_id, "path": str(path),
                                                     "digest": prepared["site_digest"]})
         return {"path": str(path), "digest": prepared["site_digest"], "pointer": str(destination / "current.json")}
-    context.command(["docker", "compose", "-p", prepared["project"], "-f", str(context.stage / "compose.json"),
+    from ..docker import verify_daemon
+    if context.docker_binding != prepared.get('docker_binding'):
+        raise Refused('Reviewed Docker binding is unavailable; prepare fresh evidence', 422)
+    verify_daemon(context)
+    context.command([context.docker_binding['tools']['compose_executable']['path'], "-p", prepared["project"], "-f", str(context.stage / "compose.json"),
                      "up", "--detach", "--no-build", "--wait", "--wait-timeout", "120"])
     return {"project": prepared["project"]}
 

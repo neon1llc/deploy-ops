@@ -50,7 +50,12 @@ def test_compose_named_volume_admission(tmp_path, declaration):
     rendered = {'services': {'web': {'image': IMAGE,
                 'volumes': [{'type': 'volume', 'source': 'data', 'target': '/data'}]}},
                 'volumes': {'data': declaration}}
-    ctx = context(tmp_path, 'compose', 'local', {'file': 'compose.yaml'}, [rendered])
+    ctx = context(tmp_path, 'compose', 'local', {'file': 'compose.yaml'}, ['fixture-daemon', rendered])
+    ctx.docker_binding = {'project': 'staging-app', 'daemon_id': 'fixture-daemon', 'endpoint': 'unix:///fixture/socket',
+        'tools': {'docker_executable': {'path': '/fixture/docker', 'sha256': 'a' * 64},
+                  'compose_executable': {'path': '/fixture/compose', 'sha256': 'b' * 64}}}
+    # Command fixtures verify ordering/security admission only; they are not native daemon evidence.
+    ctx.process.replies = iter([json.dumps('fixture-daemon'), rendered])
     if declaration.get('driver_opts') or declaration.get('external') or declaration.get('driver', 'local') != 'local':
         with pytest.raises(Refused, match='external reviewed workflow'):
             local.prepare(ctx)
@@ -58,8 +63,9 @@ def test_compose_named_volume_admission(tmp_path, declaration):
     else:
         assert local.prepare(ctx)['project'] == 'staging-app'
         assert json.loads((ctx.stage / 'compose.json').read_text()) == rendered
-    assert len(ctx.process.calls) == 1
-    assert ctx.process.calls[0][1] == 'compose'
+    assert len(ctx.process.calls) == 2
+    assert ctx.process.calls[0][1] == 'info'
+    assert ctx.process.calls[1][1:3] == ['-p', 'staging-app']
 
 
 # Each runtime must verify the immutable image's resulting revision

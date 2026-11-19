@@ -8,6 +8,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 
@@ -228,3 +229,21 @@ def snapshot(repository: Repository, base: Path, destination: Path) -> dict:
 def private_directory(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(path, 0o700)
+
+
+# Reject writable shared tools before they can consume operator credentials
+def native_tool(value: str):
+    path = Path(value).resolve()
+    if not path.is_file() or not os.access(path, os.X_OK):
+        raise Refused("Registered native tool is not executable", 422)
+    for item in (path, *path.parents):
+        info = item.stat()
+        # macOS administrators already control the trusted host and Homebrew's shared Cellar
+        administrative_group = False
+        if sys.platform == "darwin":
+            import grp
+            administrative_group = grp.getgrgid(info.st_gid).gr_name in {"admin", "wheel"}
+        if (info.st_uid not in {0, os.getuid()} or info.st_mode & 0o002
+                or info.st_mode & 0o020 and not administrative_group):
+            raise Refused("Native tool or its directory has untrusted ownership", 403)
+    return str(path)

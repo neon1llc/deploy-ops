@@ -23,6 +23,7 @@ class Context:
     options: dict[str, Any]
     process: Process
     release_id: str
+    docker_binding: dict | None = None
 
 
     # Use the shared process supervisor and component timeout

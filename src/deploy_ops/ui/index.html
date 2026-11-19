@@ -518,6 +518,8 @@
               <details id="local-settings" data-setting="local build checks command arguments static directory compose file project artifact destination inheritance overrides">
                 <summary>Local build and deployment settings</summary>
                 <p>Edit existing directory/static/Compose components. Applying fields changes the draft only. Review and save before preparing a release. Output references are checked for availability during preparation.</p>
+                <button id="docker-readiness" type="button" class="secondary" aria-describedby="docker-readiness-status">Inspect Compose prerequisites</button>
+                <p id="docker-readiness-status" role="status" aria-live="polite">Compose prerequisite inspection reads explicit tool/socket metadata only. It cannot start Docker or verify daemon health.</p>
                 <button id="local-reload" type="button" class="secondary">Discard local field edits and reload from draft</button>
                 <label for="local-component">Component</label><select id="local-component"></select>
                 <label for="local-scope">Settings scope</label><select id="local-scope"><option value="build">Build arguments</option><option value="base">Component defaults</option><option value="environment">Environment override</option></select>

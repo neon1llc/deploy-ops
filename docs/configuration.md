@@ -109,7 +109,8 @@ deploy-ops --project deploy-ops.toml config add --section components --name cont
 
 Release preparation still delegates rendering to native `docker compose config` and checks the rendered
 services for the existing image and host-access restrictions. Container execution requires a separately
-reviewed release and a suitable Docker daemon. See Docker's [project-name rules](https://docs.docker.com/compose/how-tos/project-name/)
+reviewed release and an [explicit local Docker profile](local-docker.md) selecting suitable native tools,
+an owned Unix endpoint and its daemon identity. See Docker's [project-name rules](https://docs.docker.com/compose/how-tos/project-name/)
 and [native configuration rendering](https://docs.docker.com/reference/cli/docker/compose/config/).
 
 Paging uses a separate versioned configuration, so edits don't invalidate deployment approvals. Use `deploy-ops paging` or the console. See [paging](paging.md).

@@ -193,3 +193,20 @@ element("local-environment").onchange = localRender;
 element("local-edit-form").onsubmit = event => { event.preventDefault(); return localApply(); };
 element("local-reload").onclick = () => { localDrafts.clear(); localDirty.clear(); localBases.clear(); localConflicts.clear(); localChoices(); };
 document.addEventListener("deployops:configuration", localChoices);
+
+
+// Inspect only explicit operator profile metadata; never imply daemon or deployment health
+element("docker-readiness").onclick = async () => {
+  const button = element("docker-readiness"), status = element("docker-readiness-status");
+  const focused = document.activeElement === button;
+  button.disabled = true;
+  try {
+    const result = await api("/docker/readiness");
+    status.textContent = result.reason + (result.targets || []).map(row =>
+      " · " + row.environment + "/" + row.component + ": " + row.reason).join("");
+  } catch (error) { status.textContent = error.message; }
+  finally {
+    button.disabled = false;
+    if (focused && document.activeElement === document.body) button.focus();
+  }
+};

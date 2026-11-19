@@ -27,6 +27,9 @@ from .spec import load, options
 
 # Share read-only compatibility reasons with execution admission without claiming current authority
 def require_execution_contract(envelope: dict) -> None:
+    if envelope['adapter'] == 'compose' and (envelope.get('adapter_contract_version') != 4
+            or not envelope.get('prepared', {}).get('docker_binding')):
+        raise Refused('Legacy Compose evidence lacks a reviewed Docker target; preserve it and prepare fresh evidence', 422)
     if (envelope['adapter'] == 'static' and envelope['prepared'].get('activation') == 'separate'
             and envelope.get('adapter_contract_version') != 3):
         raise Refused('Separate activation requires a newly reviewed adapter contract 3')
@@ -240,13 +243,15 @@ class Engine:
         if hashlib.sha256(content).hexdigest() != release["nodes"][name]["artifact_digest"]:
             raise Refused("Reviewed deployment artifact changed")
         envelope = json.loads(content)
-        if envelope.get('schema_version') not in {1, 2} or envelope.get('adapter_contract_version', 1) not in {1, 2, 3}:
+        if envelope.get('schema_version') not in {1, 2} or envelope.get('adapter_contract_version', 1) not in {1, 2, 3, 4}:
             raise Refused("Unsupported prepared format. Inspect with the original runtime or prepare fresh evidence", 422)
         if envelope.get('adapter_contract_version', 1) == 2 and envelope.get('adapter') not in {'directory', 'static'}:
             raise Refused("Unsupported adapter contract. Inspect with the original runtime", 422)
         if envelope.get('adapter_contract_version') == 3 and (envelope.get('adapter') != 'static'
                 or envelope.get('prepared', {}).get('activation') != 'separate'):
             raise Refused('Unsupported separate-activation contract', 422)
+        if envelope.get('adapter_contract_version') == 4 and envelope.get('adapter') != 'compose':
+            raise Refused('Unsupported Docker-bound adapter contract', 422)
         if envelope.get('adapter') != release['nodes'][name]['adapter']:
             raise Refused("Prepared adapter differs from the retained release", 422)
         return envelope
@@ -278,6 +283,13 @@ class Engine:
         if any(not re.fullmatch(r"[0-9a-f]{32}", value) for value in receipts.values()):
             raise Refused("Infrastructure receipt IDs must be 32 lowercase hexadecimal characters", 422)
         graph = self.describe(environment, component, with_dependencies)
+        # Known local Docker prerequisites stop before capture or any dependency can execute
+        from .docker import binding
+        for selected in graph['components']:
+            if selected['adapter'] == 'compose':
+                if type(self.gate) is not LocalGate:
+                    raise Refused('Explicit Docker profiles require the existing local operator context', 403)
+                binding(self.path, self.spec, environment, selected['name'])
         preview_metadata = None
         if self.spec.environments[environment].preview:
             from .previews import validate_creation
@@ -470,8 +482,14 @@ class Engine:
         process = Process(folder / "home", lambda event, detail: self.ledger.event(
             release["id"], event, {"component": name, **detail}), credentials, heartbeat,
             lease["deadline"] if lease else None)
-        return Context(component, name, release["environment"], environment.provider, source,
-                       folder / "artifacts", deployment_root, resolved, process, release["id"])
+        context = Context(component, name, release["environment"], environment.provider, source,
+                          folder / "artifacts", deployment_root, resolved, process, release["id"])
+        if component.adapter == 'compose':
+            from .docker import binding, configure, revalidate
+            selected = (revalidate(self.path, self.spec, release['environment'], name, resolved, reviewed['prepared']['docker_binding'])
+                        if reviewed else binding(self.path, self.spec, release['environment'], name, resolved))
+            configure(context, selected)
+        return context
 
 
     # Verify the granted local identity before initializing provider CLI state
@@ -633,7 +651,8 @@ class Engine:
         else:
             prepared = adapter.prepare(context)
         # Bind source, artifact tree, options and provider preview into one immutable envelope
-        envelope = {"schema_version": 2, "adapter_contract_version": 3 if prepared.get('activation') == 'separate' else (2 if physical else 1),
+        envelope = {"schema_version": 2, "adapter_contract_version": 4 if component.adapter == 'compose' else
+                    3 if prepared.get('activation') == 'separate' else (2 if physical else 1),
                     "physical_target": physical,
                     "local_dependencies": node.get('local_dependencies', {}),
                     "config_digest": self.spec.digest, "adapter": context.component.adapter,
@@ -654,6 +673,10 @@ class Engine:
         if component.adapter == 'kubernetes':
             node['kubernetes_binding'] = {'connection': prepared['kubernetes_request']['connection'],
                                           'uid': prepared['kubernetes_request']['baseline']['uid']}
+        if component.adapter == 'compose':
+            selected = prepared['docker_binding']
+            node['docker_target'] = {key: selected[key] for key in ('project', 'endpoint', 'endpoint_owner_uid', 'daemon_id')}
+            node['docker_target'].update({key + '_sha256': value['sha256'] for key, value in selected['tools'].items()})
         if component.adapter in {"terraform", "opentofu"}:
             node.update(infrastructure_backend=prepared["backend"], output_readiness=prepared["output_readiness"])
         self.ledger.save(release, "component.prepared", {"component": name, "request_id": request["id"]})
@@ -676,6 +699,9 @@ class Engine:
         def check_local_inputs():
             if self.ledger.get(release['id'])['status'] in {'cancel_requested', 'cancelled'}:
                 raise Refused('Release cancellation requested before execution admission')
+            if node['adapter'] == 'compose':
+                from .docker import revalidate
+                revalidate(self.path, self.spec, release['environment'], name, envelope['options'], envelope['prepared']['docker_binding'])
             if node['adapter'] in {'directory', 'static'} and self.spec.environments[release['environment']].provider == 'local':
                 from .adapters.local import physical_target
                 binding = envelope.get('physical_target')

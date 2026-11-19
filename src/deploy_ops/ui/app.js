@@ -766,6 +766,12 @@ async function show(id) {
       ["Local target", node.physical_target?.path], ["Target owner", node.physical_target?.owner?.join("/")]]);
     if (node.kubernetes_binding) reviewEvidence(area, name + ":kubernetes", "Reviewed Kubernetes connection and object UID",
       node.kubernetes_binding, expanded);
+    if (node.docker_target) {
+      text(area, "p", "Docker identity was checked during preparation. This is not a current daemon-health or container-readiness check.");
+      reviewEvidence(area, name + ":docker", "Reviewed Docker endpoint, project and tool identity", node.docker_target, expanded);
+    } else if (node.adapter === "compose" && node.artifact_digest) {
+      text(area, "p", "This retained Compose record has no reviewed Docker binding. Preserve it for inspection and prepare fresh evidence before execution.");
+    }
     if (node.infrastructure_backend) reviewEvidence(area, name + ":backend", "Effective infrastructure backend",
       node.infrastructure_backend, expanded);
     if (node.output_readiness) reviewEvidence(area, name + ":output-readiness", "Selected output readiness before apply",

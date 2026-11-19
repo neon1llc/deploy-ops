@@ -403,8 +403,10 @@ def dispatch(args):
         from .delivery.demo import run
         return run(args.directory)
     if args.command == "doctor":
+        from .delivery.docker import readiness
         return {"python": sys.version.split()[0], "tools": {name: shutil.which(name) for name in
                 ("git", "docker", "tofu", "terraform", "aws", "az", "gcloud", "kubectl")},
+                "docker_readiness": readiness(args.project.resolve()),
                 "note": "Availability is not authentication or a successful live deployment"}
     if args.command == "schema":
         from .delivery.spec import Workspace
