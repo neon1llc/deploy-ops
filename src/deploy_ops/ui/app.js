@@ -43,7 +43,7 @@ const message = (text, error = false) => {
 
 // Keep confirmations and inspection notes inside a native dialog with browser-owned focus containment
 let activeDialog = null;
-function operatorDialog(description, initialValue = null) {
+function operatorDialog(description, initialValue = null, choices = null) {
   if (activeDialog) return Promise.resolve(null);
   const previousFocus = document.activeElement;
   const previousKey = previousFocus?.dataset?.key;
@@ -52,15 +52,21 @@ function operatorDialog(description, initialValue = null) {
   activeDialog = dialog;
   dialog.setAttribute("aria-labelledby", "operator-dialog-heading");
   const form = document.createElement("form"); form.method = "dialog"; dialog.append(form);
-  const heading = text(form, "h2", initialValue === null ? "Confirm action" : "Record inspection");
+  const heading = text(form, "h2", choices ? "Choose inspection result" : initialValue === null ? "Confirm action" : "Record inspection");
   heading.id = "operator-dialog-heading";
   const descriptionNode = text(form, "p", description); descriptionNode.id = "operator-dialog-description";
   dialog.setAttribute("aria-describedby", descriptionNode.id);
   let input = null;
   if (initialValue !== null) {
-    const label = text(form, "label", "Inspection note"); label.htmlFor = "operator-dialog-note";
-    input = document.createElement("textarea"); input.id = "operator-dialog-note";
-    input.rows = 4; input.minLength = 10; input.maxLength = 500; input.required = true; input.value = initialValue;
+    const label = text(form, "label", choices ? "Namespace inspection result" : "Inspection note");
+    label.htmlFor = choices ? "operator-dialog-choice" : "operator-dialog-note";
+    input = document.createElement(choices ? "select" : "textarea"); input.id = label.htmlFor;
+    if (choices) {
+      for (const choice of choices) {
+        const option = document.createElement("option"); option.value = choice.value; option.textContent = choice.label; input.append(option);
+      }
+    } else { input.rows = 4; input.minLength = 10; input.maxLength = 500; }
+    input.required = true; input.value = initialValue;
     input.oninput = () => input.setCustomValidity("");
     form.append(input);
   }
@@ -73,7 +79,9 @@ function operatorDialog(description, initialValue = null) {
   // Keep an invalid authored note inside the dialog so it can be corrected or cancelled
   form.addEventListener("submit", event => {
     if (event.submitter !== confirm || !input) return;
-    input.setCustomValidity(input.value.trim().length < 10 ? "Describe the inspection in at least 10 characters." : "");
+    input.setCustomValidity(choices
+      ? (choices.some(choice => choice.value === input.value) ? "" : "Choose the observed namespace state.")
+      : (input.value.trim().length < 10 ? "Describe the inspection in at least 10 characters." : ""));
     if (!input.reportValidity()) event.preventDefault();
   });
   document.body.append(dialog);
@@ -103,6 +111,15 @@ async function confirmAction(description) {
 // Cancelling or pressing Escape leaves inspection and recovery unsubmitted
 async function promptAction(description, initialValue = "") {
   return operatorDialog(description, initialValue);
+}
+
+
+// A bounded selection is separate from a descriptive note; cancellation never implies a choice
+async function cleanupInspectionChoice() {
+  return operatorDialog("Choose only the state you inspected. Neither choice executes cleanup or deletes retained data.", "remaining", [
+    {value: "remaining", label: "The namespace or files remain; prepare a new reviewed plan"},
+    {value: "removed", label: "I inspected and confirmed the entire owned namespace is absent"},
+  ]);
 }
 
 
@@ -648,6 +665,7 @@ async function show(id) {
       ["Local target", node.physical_target?.path], ["Target owner", node.physical_target?.owner?.join("/")]]);
     if (node.preview) reviewChanges(area, name, node.preview, expanded);
     if (node.adapter === "static" && node.artifact_digest && typeof artifactControls === "function") artifactControls(area, id, name, expanded);
+    if (node.adapter === "static" && node.artifact_digest && typeof signatureControls === "function") signatureControls(area, id, name, node.artifact_digest, expanded);
     for (const warning of node.warnings || []) text(area, "p", "Review: " + warning);
     if (["cloudformation", "cdk", "arm", "bicep", "ecs", "container-apps", "cloud-run"].includes(node.adapter) && (node.request_digest || node.status === "uncertain")) {
       area.append(button("Read provider status", async () => {
@@ -1411,10 +1429,10 @@ function renderPreview(root, data) {
     if (matching && recovery.available) root.append(button("Inspect and reconcile cleanup", async () => {
       const note = await promptAction("Stop any worker, inspect the owned preview namespace, and describe what remains:");
       if (!note) return;
-      const removed = await promptAction("Type removed only if you inspected and confirmed the entire owned namespace is absent. Leave blank to prepare a new plan for remaining files:", "");
-      if (removed === null) return;
-      if (removed !== "" && removed !== "removed") throw new Error("Use removed or leave the inspection choice blank.");
-      await act("reconcile", {note, confirm_removed: removed === "removed"}, "Cleanup inspection recorded. Original deployment outcome is unchanged.");
+      const choice = await cleanupInspectionChoice();
+      if (choice === null) return;
+      if (!["remaining", "removed"].includes(choice)) throw new Error("Choose the inspected namespace state.");
+      await act("reconcile", {note, confirm_removed: choice === "removed"}, "Cleanup inspection recorded. Original deployment outcome is unchanged.");
     }, "reconcile-cleanup"));
   }
 }

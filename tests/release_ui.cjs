@@ -60,6 +60,11 @@ class Node {
   reportValidity() { return !this.validationMessage; }
 
 
+  // Model explicit native dialog lifecycle separately from form validation
+  showModal() { this.open = true; }
+  close(value) { this.returnValue = value; this.open = false; this.dispatchEvent({type: "close"}); }
+
+
   // Register the real helper's event listeners
   addEventListener(type, callback) {
     if (!this.listeners.has(type)) this.listeners.set(type, []);
@@ -284,6 +289,57 @@ function control(key) {
     assert.equal(Boolean(control('reconcile-cleanup')), available);
     assert(nodes.get('detail').querySelectorAll('*').some(node => node.textContent === 'Observed cleanup ownership'));
   }
+  // Real dialog helpers keep descriptive-note validation and both bounded choices reachable
+  context.document.body.isConnected = true;
+  const settleDialogs = () => new Promise(resolve => setImmediate(resolve));
+  const activeModal = () => context.document.body.querySelectorAll("dialog").at(-1);
+  function submitModal(dialog, value) {
+    const input = [...dialog.querySelectorAll("textarea"), ...dialog.querySelectorAll("select")][0];
+    input.value = value; input.oninput();
+    const form = dialog.children[0];
+    const confirm = dialog.querySelectorAll("button").find(node => node.value === "confirm");
+    let prevented = false;
+    form.dispatchEvent({type: "submit", submitter: confirm, preventDefault() { prevented = true; }});
+    if (!prevented) dialog.close("confirm");
+    return {input, prevented};
+  }
+  for (const choice of ["remaining", "removed", null]) {
+    context.document.activeElement = context.document.body;
+    nodes.get('detail').replaceChildren();
+    vm.runInContext("renderPreview(element('detail'), fixture)", context);
+    calls.length = 0;
+    const flow = control("reconcile-cleanup").onclick();
+    await settleDialogs();
+    const noteDialog = activeModal();
+    assert.equal(noteDialog.querySelectorAll("textarea")[0].minLength, 10);
+    assert(!submitModal(noteDialog, "Inspected owned namespace and retained data").prevented);
+    await settleDialogs();
+    const choiceDialog = activeModal();
+    const selection = choiceDialog.querySelectorAll("select")[0];
+    assert.equal(selection.value, "remaining");
+    assert.equal(selection.required, true); assert.equal(selection.minLength, undefined);
+    assert.deepEqual(selection.children.map(option => option.value), ["remaining", "removed"]);
+    if (choice === null) choiceDialog.close("cancel");
+    else assert(!submitModal(choiceDialog, choice).prevented);
+    await flow;
+    const writes = calls.filter(call => call.method === "POST");
+    assert.equal(writes.length, choice === null ? 0 : 1);
+    if (choice !== null) {
+      assert.equal(writes[0].path, "/previews/release-fixture/reconcile");
+      assert.equal(writes[0].body.confirm_removed, choice === "removed");
+      assert.equal(writes[0].body.note, "Inspected owned namespace and retained data");
+    }
+  }
+  context.document.activeElement = context.document.body;
+  nodes.get('detail').replaceChildren(); vm.runInContext("renderPreview(element('detail'), fixture)", context);
+  calls.length = 0;
+  const invalidNoteFlow = control("reconcile-cleanup").onclick();
+  await settleDialogs();
+  const noteDialog = activeModal();
+  assert(submitModal(noteDialog, "short").prevented);
+  assert.equal(activeModal(), noteDialog); assert.equal(calls.length, 0);
+  noteDialog.close("cancel"); await invalidNoteFlow;
+  delete context.document.body.isConnected;
   context.fixture.cleanup_recovery.cleanup_id = 'earlier-cleanup';
   nodes.get('detail').replaceChildren();
   vm.runInContext("renderPreview(element('detail'), fixture)", context);

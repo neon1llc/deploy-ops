@@ -60,6 +60,11 @@ No cleanup override deletes retained data. This covers generated static files an
 
 ## Recover interrupted cleanup
 
+In the console, first record a descriptive inspection note, then choose whether the namespace/files
+remain or the entire owned namespace is absent. These are native selection choices, separate from the
+note's ten-character minimum. Cancel at either dialog submits no reconciliation. Choosing absence never
+bypasses the backend's ownership, retained-data or actual-absence checks and does not execute deletion.
+
 A stale plan, interruption, or uncertain completion stays visible. Stop the worker and inspect the namespace before recording a note:
 
 ```bash

@@ -1,5 +1,28 @@
 # Verification
 
+## Selected-file signatures and cleanup choices, 2026-11-05
+
+A private Cosign v3.1.4 executable matched the official GitHub asset digest and release checksums; this
+is an HTTPS/checksum bootstrap, not independent executable authentication. A native local-key modern
+bundle probe verified the official release and refused a different subject under a fresh HOME. No
+configured-proxy requests were observed; that is not OS-level network isolation. No keys were generated
+and no host trust, installation or cloud authority changed.
+
+The source integration then froze an official 99,023,586-byte signed release file beside an unsigned
+neighbor. It verified the signed file and refused the neighbor under the same published release key and
+artifact tree. The application stayed waiting, with release and audit unchanged. Neither result implied
+whole-artifact trust, transparency/time/revocation verification or release-policy admission. The source
+unit process fixtures separately cover unavailable/unsupported tools, scope and pins, changed artifacts,
+copied-byte integrity, CLI exits, invalid current TOML and authenticated API identities. Those process
+fixtures are not cryptographic proof. Executed DOM checks cover file search, named old results, exact
+requests, late key/path responses, retained newer drafts and independent report inspection.
+
+A review lead independently matched the existing cleanup prompt bug: blank and `removed` could not
+satisfy the descriptive dialog's ten-character minimum. The native selection fix passed the actual
+dialog helpers in DOM tests for remaining/absent/cancel, while short notes stayed blocked. Backend
+ownership/absence checks and deletion authority are unchanged. Current mounted signature/cleanup
+controls, keyboard/layout/AT and human acceptance remain unqualified after the earlier Edge detachment.
+
 ## Separate local blue-green operations, 2026-11-05
 
 The v0.24.0 source domain/API journey staged an independent static app without a foundation, measured

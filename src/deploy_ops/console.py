@@ -87,6 +87,25 @@ class RolloutInput(BaseModel):
     note: str = Field(default='', max_length=500)
 
 
+class SignatureInspectionInput(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    component: str = Field(min_length=1, max_length=48)
+    output_directory: str = Field(min_length=1, max_length=4096)
+
+
+class SignatureInput(SignatureInspectionInput):
+    selected_file: str = Field(min_length=1, max_length=2048)
+    key_file: str = Field(min_length=1, max_length=4096)
+    bundle_file: str = Field(min_length=1, max_length=4096)
+    expected_key_sha256: str | None = Field(default=None, pattern=r'^[0-9a-f]{64}$')
+    timeout_seconds: int = Field(default=60, ge=10, le=300)
+
+
+class KeyInput(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    key_file: str = Field(min_length=1, max_length=4096)
+
+
 # Share one engine behind authenticated loopback routes and worker coordination
 def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     if len(token) < 32:
@@ -229,7 +248,7 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     @app.get("/assets/{name}")
     @app.get("/{name}")
     def asset(name: str):
-        if name not in ("app.js", "shell.js", "operator.js", "local-settings.js", "paging.js", "isolated.js", "backups.js", "artifacts.js", "style.css", "appearance.mjs", "theme.mjs"):
+        if name not in ("app.js", "shell.js", "operator.js", "local-settings.js", "paging.js", "isolated.js", "backups.js", "artifacts.js", "signatures.js", "style.css", "appearance.mjs", "theme.mjs"):
             raise HTTPException(404)
         return FileResponse(assets / name)
 
@@ -316,6 +335,49 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     def artifact_options():
         from .delivery import artifacts
         return artifacts.options()
+
+
+    # Browser paths need an explicit local context and can never become remote key or bundle references
+    def signature_path(value):
+        if not (value.startswith('/') or value.startswith('~/')):
+            raise Refused('Choose an absolute local path or a path beginning with ~/', 422)
+        return Path(value)
+
+
+    @app.get('/api/signatures/options', dependencies=[Depends(operator)])
+    def signature_options():
+        from .delivery import signatures
+        return signatures.options()
+
+
+    @app.post('/api/signatures/key-info', dependencies=[Depends(operator)])
+    def signature_key(body: KeyInput):
+        from .delivery import signatures
+        return signatures.key_info(signature_path(body.key_file))
+
+
+    @app.get('/api/releases/{identifier}/signatures/files', dependencies=[Depends(operator)])
+    def signature_files(identifier: str, component: str, query: str = '', offset: int = 0, limit: int = 100):
+        from .delivery import signatures
+        return signatures.files(engine.state, identifier, component, query, offset, limit)
+
+
+    @app.post('/api/releases/{identifier}/signatures/verify', dependencies=[Depends(operator)])
+    def signature_verify(identifier: str, body: SignatureInput):
+        from .delivery import signatures
+        profile = signatures.Profile(expected_key_sha256=body.expected_key_sha256, timeout_seconds=body.timeout_seconds)
+        return signatures.verify(engine.state, identifier, body.component, body.selected_file,
+                                 signature_path(body.key_file), signature_path(body.bundle_file),
+                                 signature_path(body.output_directory), profile, engine.path.parent)
+
+
+    @app.post('/api/releases/{identifier}/signatures/inspect', dependencies=[Depends(operator)])
+    def signature_inspect(identifier: str, body: SignatureInspectionInput):
+        from .delivery import signatures
+        result = signatures.inspect(signature_path(body.output_directory))
+        if result['report']['release_id'] != identifier or result['report']['component'] != body.component:
+            raise Refused('This signature report belongs to another release or component', 409)
+        return result
 
 
     @app.post('/api/releases/{identifier}/artifacts/{action}', dependencies=[Depends(operator)])
