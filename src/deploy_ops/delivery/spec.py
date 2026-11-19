@@ -94,6 +94,8 @@ class Component(Record):
         for command in [*self.build.checks, self.build.command]:
             if command and any(not isinstance(part, str) or "\x00" in part for part in command):
                 raise ValueError("Commands must be argument lists, not shell fragments")
+        if any(not command or not command[0].strip() for command in self.build.checks) or (self.build.command and not self.build.command[0].strip()):
+            raise ValueError('Each command needs a nonempty executable; clear the whole command list to disable it')
         return self
 
 
@@ -128,9 +130,11 @@ class Workspace(Record):
             if set(environment.promote_from) - self.environments.keys() or name in environment.promote_from:
                 raise ValueError(f"Invalid promotion path for {name}")
             # Validate effective native options after environment inheritance
-            from .options import MODELS
+            from .options import LOCAL_MODELS, MODELS
             for component_name in self.components:
                 effective = self.component(component_name, name)
+                if effective.adapter in LOCAL_MODELS:
+                    self.local_options(component_name, name)
                 if effective.adapter in MODELS:
                     expected = "aws" if effective.adapter in {"cloudformation", "cdk"} else "azure"
                     if environment.provider != expected or effective.kind != "infrastructure":
@@ -138,6 +142,34 @@ class Workspace(Record):
                     MODELS[effective.adapter].model_validate(effective.options)
         self.order()
         return self
+
+
+    # Validate local authored intent without commands, provider discovery or invented dependency outputs
+    def local_options(self, name: str, environment_name: str):
+        from .options import LOCAL_MODELS
+        component = self.component(name, environment_name)
+        environment = self.environments[environment_name]
+        values = dict(component.options)
+        for key, value in values.items():
+            if not isinstance(value, str) or '${' not in value:
+                continue
+            reference = re.fullmatch(r'\$\{(env\.[^{}]+|outputs\.[^{}.]+\.[^{}.]+)\}', value)
+            if not reference:
+                raise ValueError('Use a complete environment or declared dependency output reference')
+            parts = reference[1].split('.')
+            if parts[0] == 'env':
+                variable = reference[1][4:]
+                if variable not in environment.variables:
+                    raise ValueError('Unknown environment variable reference')
+                values[key] = environment.variables[variable]
+            else:
+                if parts[1] not in component.needs:
+                    raise ValueError('Output references must name a declared dependency')
+                producer = self.component(parts[1], environment_name)
+                known = {'directory': {'path', 'name'}, 'static': {'path', 'digest', 'pointer'}}.get(producer.adapter, set(producer.outputs))
+                if known and parts[2] not in known:
+                    raise ValueError('Unknown declared dependency output reference')
+        LOCAL_MODELS[component.adapter].model_validate(values, strict=True)
 
 
     # Traverse each dependency once and reject cycles before preparing work

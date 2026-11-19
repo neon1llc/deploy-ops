@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from deploy_ops.cli import dispatch, parser
 from deploy_ops.console import create_app
-from deploy_ops.delivery.configuration import add, inspect, patch, source_hash
+from deploy_ops.delivery.configuration import add, edit, inspect, patch, source_hash
 from deploy_ops.delivery.engine import Engine
 from deploy_ops.delivery.scaffold import create
 from deploy_ops.errors import Refused
@@ -22,6 +22,54 @@ from deploy_ops.errors import Refused
 @pytest.fixture
 def workspace(tmp_path):
     return create(tmp_path / 'workspace')
+
+
+# Field edits preserve authored content and leave unchanged defaults absent
+@pytest.mark.parametrize('change', ['unknown', 'type', 'escape', 'dependency', 'output', 'variable', 'argv'])
+def test_advanced_local_validation_matches_pure_cli_and_api(workspace, monkeypatch, change):
+    import tomlkit
+    from deploy_ops.delivery.process import Process
+    from deploy_ops.delivery.spec import Workspace
+    from pydantic import ValidationError
+    document = tomlkit.parse(workspace.read_text())
+    options = document['components']['web']['options']
+    if change == 'unknown':
+        options['unrecognized'] = 'value'
+    elif change == 'type':
+        options['directory'] = True
+    elif change == 'escape':
+        options['directory'] = '../outside'
+    elif change == 'dependency':
+        options['destination'] = '${outputs.other.path}'
+    elif change == 'output':
+        options['destination'] = '${outputs.foundation.missing}'
+    elif change == 'variable':
+        options['destination'] = '${env.missing}'
+    else:
+        document['components']['web']['build']['checks'] = [[]]
+    source = tomlkit.dumps(document)
+    original = workspace.read_text()
+
+    # Pure validation has no source, process or provider execution dependency
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Command execution during pure validation')
+
+    monkeypatch.setattr(Process, 'run', forbidden)
+    with pytest.raises(ValidationError):
+        Workspace.model_validate(document.unwrap())
+    with pytest.raises(Refused):
+        inspect(source)
+    draft = workspace.parent / 'invalid-draft.toml'
+    draft.write_text(source)
+    with pytest.raises(Refused):
+        dispatch(parser().parse_args(['--project', str(workspace), 'config', 'validate', '--file', str(draft)]))
+    assert not (workspace.parent / '.deploy-ops').exists()
+    engine = Engine(workspace)
+    client = TestClient(create_app(engine, 't' * 40), base_url='http://127.0.0.1:8765')
+    response = client.post('/api/config/validate', json={'configuration': source},
+                           headers={'Authorization': 'Bearer ' + 't' * 40})
+    assert response.status_code == 422
+    assert workspace.read_text() == original
 
 
 # Field edits preserve authored content and leave unchanged defaults absent
@@ -102,6 +150,24 @@ def test_stale_tab_and_external_editor_cannot_overwrite_configuration(workspace)
     assert workspace.read_text() == external
 
 
+# Review explains strict historical gates without changing any release or approval
+def test_save_impact_preserves_historical_contract(workspace):
+    from deploy_ops.delivery.configuration import validate
+    from test_delivery import finish
+    engine = Engine(workspace)
+    release = finish(engine, engine.create('development'))
+    original = workspace.read_text()
+    changed = patch(original, 'components', 'web', {'timeout_seconds': 900})['toml']
+    review = validate(changed, original)
+    assert review['impact']['contract_changed']
+    assert review['impact']['saved_digest'] == release['config_digest']
+    assert review['impact']['draft_digest'] != release['config_digest']
+    assert len(review['impact']['effects']) == 4
+    assert not validate('# Comment only\n' + original, original)['impact']['contract_changed']
+    assert engine.ledger.get(release['id']) == release
+    assert workspace.read_text() == original
+
+
 # Concurrent release creation blocks a conflicting configuration save
 def test_release_creation_and_save_share_a_boundary(workspace, monkeypatch):
     engine = Engine(workspace)
@@ -141,9 +207,10 @@ def test_remote_console_draft_cannot_save_authority(workspace):
     assert workspace.read_text() == source
 
 
-# Effective provider fields write only the selected environment override
-def test_native_options_share_schema_and_preserve_inheritance(tmp_path):
-    source = '''# Keep the operator's annotation
+# Share a native authored contract without touching credentials or a provider
+@pytest.fixture
+def native_source():
+    return '''# Keep the operator's annotation
 name = "native"
 [repositories.infrastructure]
 path = "infrastructure"
@@ -161,6 +228,11 @@ region = "us-east-1"
 stack_name = "example"
 template = "main.json"
 '''
+
+
+# Effective provider fields write only the selected environment override
+def test_native_options_share_schema_and_preserve_inheritance(tmp_path, native_source):
+    source = native_source
     before = inspect(source)
     selected = before["option_forms"]["foundation/staging"]
     assert selected["values"]["region"] == "us-east-1"
@@ -178,6 +250,46 @@ template = "main.json"
         patch(source, "options", "foundation/staging", {"credentials_file": "/untrusted/key"})
     with pytest.raises(Refused):
         patch(source, "options", "foundation/staging", {"capabilities": ["CAPABILITY_AUTO_EXPAND"]})
+
+
+# Explicit equal pins survive inherited changes and reset only their chosen override
+def test_native_equal_pin_and_reset_share_cli_api(tmp_path, native_source, monkeypatch):
+    from deploy_ops.delivery.process import Process
+
+    # Draft operations cannot invoke native tools or persist the authored workspace
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Provider execution during a draft edit')
+
+    monkeypatch.setattr(Process, 'run', forbidden)
+    source = native_source + '\n[components.foundation.targets.staging]\n# Preserve sibling annotation\nstack_name = "staging-stack"\n'
+    path = tmp_path / 'deploy-ops.toml'
+    path.write_text(source)
+    pinned = dispatch(parser().parse_args(['--project', str(path), 'config', 'edit',
+        '--name', 'foundation/staging', '--scope', 'environment', '--values', '{"region":"us-east-1"}']))
+    assert not (tmp_path / '.deploy-ops').exists()
+    selected = pinned['option_forms']['foundation/staging']
+    assert selected['inheritance']['region']['override_authored']
+    assert pinned['configuration']['components']['foundation']['targets']['staging']['region'] == 'us-east-1'
+    assert '# Preserve sibling annotation' in pinned['toml']
+    changed = pinned['toml'].replace('region = "us-east-1"', 'region = "us-west-2"', 1)
+    assert inspect(changed)['option_forms']['foundation/staging']['values']['region'] == 'us-east-1'
+    engine = Engine(path)
+    client = TestClient(create_app(engine, 't' * 40), base_url='http://127.0.0.1:8765')
+    response = client.post('/api/config/reset', json={'configuration': changed, 'name': 'foundation/staging',
+        'scope': 'environment', 'field': 'region'}, headers={'Authorization': 'Bearer ' + 't' * 40})
+    assert response.status_code == 200
+    reset = response.json()
+    assert reset['option_forms']['foundation/staging']['values']['region'] == 'us-west-2'
+    assert not reset['option_forms']['foundation/staging']['inheritance']['region']['override_authored']
+    assert reset['configuration']['components']['foundation']['targets']['staging'] == {'stack_name': 'staging-stack'}
+    assert '# Preserve sibling annotation' in reset['toml']
+    assert path.read_text() == source
+    assert not engine.ledger.list()
+    assert edit(reset['toml'], 'foundation/staging', 'environment', {}, field='region')['toml'] == reset['toml']
+    with pytest.raises(Refused):
+        edit(source, 'foundation/staging', 'base', {'region': 'us-east-1'})
+    with pytest.raises(Refused):
+        edit(source, 'foundation/staging', 'environment', {'credentials_file': '/secret'})
 
 
 # The CLI validates and compares a draft without creating operator state

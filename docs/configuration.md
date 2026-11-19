@@ -99,3 +99,17 @@ require fresh preparation. Unknown formats stop before claim. Historical approva
 
 Configuration Save refuses pending, running or uncertain preview cleanup, including cleanup on a
 successful deployment. Inspect and reconcile that retirement obligation first. Save never executes it.
+
+Local directory/static adapter contract 2 binds the canonical physical mutation path and logical owner
+(project, environment and component). Different spellings and directory symlinks cannot assign a second
+component to the same directory marker or static activation pointer. These two markers remain separate,
+so an application can deploy into its foundation's tree. Preparation reserves ownership before builds;
+history retains that reservation even if the release later fails or is cancelled. There is no implicit
+ownership transfer. Nested independent state roots cannot share a target. Inspect retained ownership
+before renaming or replacing a component. This boundary coordinates cooperating local DeployOps writers;
+it does not protect against arbitrary filesystem changes by the same operating-system user.
+
+The bound path is rechecked before claim, including symlink changes after approval. Older prepared local
+artifacts remain readable, but require fresh preparation before execution under this runtime. Their
+approved bytes are not rewritten. Unknown adapter contracts are refused. Use the matching runtime for
+historical evidence; do not downgrade a writer over newer pending work.

@@ -4,9 +4,7 @@
 import difflib
 import hashlib
 import os
-import re
 import time
-from collections import defaultdict
 from contextlib import contextmanager
 import tomllib
 
@@ -14,7 +12,7 @@ import tomlkit
 from pydantic import ValidationError
 
 from ..errors import Refused
-from .spec import ADAPTERS, NAME, Build, Component, Environment, Repository, Workspace, options
+from .spec import ADAPTERS, NAME, Build, Component, Environment, Repository, Workspace
 from .options import LOCAL_MODELS, MODELS, form
 
 # Guided edits expose only fields owned by the workspace rather than controller authority
@@ -53,13 +51,19 @@ def inspect(source: str) -> dict:
 
     # Native option forms show inheritance after the selected environment is applied
     option_forms = {}
+    authored = tomllib.loads(source)
     for name in workspace.components:
         for environment in workspace.environments:
             component = workspace.component(name, environment)
             if component.adapter in MODELS:
+                base = authored['components'][name].get('options', {})
+                override = authored['components'][name].get('targets', {}).get(environment, {})
                 option_forms[name + "/" + environment] = {
                     **form(component.adapter, component.options), "component": name,
                     "environment": environment, "adapter": component.adapter,
+                    'inheritance': {key: {'override_authored': key in override,
+                        'source': 'environment override' if key in override else 'component' if key in base else 'adapter default'}
+                        for key in MODELS[component.adapter].model_fields},
                 }
     return {"configuration": workspace.model_dump(), "forms": forms, "option_forms": option_forms,
             "creation_forms": creation_forms(forms), "local_edit_forms": local_forms(source, workspace), "digest": workspace.digest,
@@ -97,33 +101,11 @@ def local_forms(source: str, workspace: Workspace) -> dict:
     return result
 
 
-# Validate edited local contracts and declared references without inventing output values
-def local_valid(workspace: Workspace, name: str):
-    for environment_name, environment in workspace.environments.items():
-        component = workspace.component(name, environment_name)
-        if component.adapter not in LOCAL_MODELS or environment.provider != "local":
-            continue
-        values = dict(component.options)
-        for key, value in values.items():
-            if not isinstance(value, str) or not value.startswith("${"):
-                continue
-            reference = re.fullmatch(r"\$\{(env\.[^{}]+|outputs\.[^{}.]+\.[^{}.]+)\}", value)
-            if not reference:
-                raise ValueError("Use a complete environment or declared dependency output reference")
-            parts = reference[1].split(".")
-            if parts[0] == "env":
-                variable = reference[1][4:]
-                if variable not in environment.variables:
-                    raise ValueError("Unknown environment variable reference")
-                values[key] = environment.variables[variable]
-            elif parts[1] not in component.needs:
-                raise ValueError("Output references must name a declared dependency")
-        LOCAL_MODELS[component.adapter].model_validate(values, strict=True)
-
-
 # Edit a specific supported scope while preserving authored pins and unrelated target metadata
 def edit(source: str, name: str, scope: str, values: dict, environment: str = "", field: str = "") -> dict:
     before = inspect(source)
+    if name in before['option_forms']:
+        return native_edit(source, before, name, scope, values, environment, field)
     contract = before["local_edit_forms"].get(name)
     if contract is None or scope not in {"build", "base", "environment"}:
         raise Refused("Choose an existing directory/static component and explicit edit scope", 422)
@@ -161,12 +143,32 @@ def edit(source: str, name: str, scope: str, values: dict, environment: str = ""
         if scope in {"build", "base"} and not target and group not in tomllib.loads(source)["components"][name]:
             del component[group]
         revised = tomlkit.dumps(document)
-        workspace = Workspace.model_validate(tomllib.loads(revised))
-        local_valid(workspace, name)
+        Workspace.model_validate(tomllib.loads(revised))
     except (ValueError, TypeError, ValidationError) as error:
         raise Refused(str(error), 422) from error
     return {**inspect(revised), "toml": revised, "diff": difference(source, revised)}
 
+
+# Native explicit pins and single-field inheritance resets share the same validated draft owner
+def native_edit(source: str, before: dict, name: str, scope: str, values: dict, environment: str, field: str) -> dict:
+    selected = before['option_forms'][name]
+    fields = selected['fields']
+    if scope != 'environment' or environment not in {'', selected['environment']}:
+        raise Refused('Choose the selected native environment scope', 422)
+    if not isinstance(values, dict) or set(values) - fields.keys() or (field and (field not in fields or values)) or (not field and not values):
+        raise Refused('Pin supported native fields or reset one environment override', 422)
+    document = tomlkit.parse(source)
+    component = document['components'][selected['component']]
+    if field:
+        target = component.get('targets', {}).get(selected['environment'], {})
+        if field in target:
+            del target[field]
+    else:
+        target = component.setdefault('targets', tomlkit.table()).setdefault(selected['environment'], tomlkit.table())
+        for key, value in values.items():
+            target[key] = value
+    revised = tomlkit.dumps(document)
+    return {**inspect(revised), 'toml': revised, 'diff': difference(source, revised)}
 
 
 # Derive compact creation fields from the same typed contracts used to validate additions
@@ -190,9 +192,6 @@ def creation_forms(forms: dict) -> dict:
 
 # Validate guided local settings without changing native cloud forms or executing code
 def local_addition(workspace: Workspace, name: str):
-    authored = workspace.components[name]
-    if authored.adapter in LOCAL_MODELS:
-        LOCAL_MODELS[authored.adapter].model_validate(authored.options, strict=True)
     for environment_name, environment in workspace.environments.items():
         component = workspace.component(name, environment_name)
         if component.adapter not in LOCAL_MODELS:
@@ -200,11 +199,7 @@ def local_addition(workspace: Workspace, name: str):
         expected = "infrastructure" if component.adapter == "directory" else "application"
         if environment.provider != "local" or component.kind != expected:
             raise ValueError("Guided directory/static components need a local environment and matching kind")
-        LOCAL_MODELS[component.adapter].model_validate(component.options, strict=True)
-        # Check known environment values and reference edges without claiming future output values
-        outputs = {dependency: defaultdict(lambda: "public-output") for dependency in component.needs}
-        resolved = options(component, environment, environment_name, outputs)
-        LOCAL_MODELS[component.adapter].model_validate(resolved, strict=True)
+
 
 
 # Add one named entry to a proposed document, leaving persistence and execution separate
@@ -282,8 +277,20 @@ def patch(source: str, section: str, name: str, values: dict) -> dict:
 # Validate a proposed contract and expose both draft and saved source identities
 def validate(source: str, current: str) -> dict:
     result = inspect(source)
+    saved = inspect(current)
+    changed = saved["digest"] != result["digest"]
     return {key: result[key] for key in ("digest", "order", "source_hash")} | {
         "status": "valid", "saved_source_hash": source_hash(current), "diff": difference(current, source),
+        "impact": {"contract_changed": changed, "saved_digest": saved["digest"], "draft_digest": result["digest"],
+            "effects": [
+                "Promotion and rollback from the saved contract will require fresh releases.",
+                "Local dependency outputs from the saved contract will no longer be reusable.",
+                "Provider inspection and preview retirement require their original contract. Finish retirement before Save.",
+                "Retained releases, approvals and audit remain unchanged; Save executes no deployment.",
+            ] if changed else ["The deployment contract is unchanged; existing digest gates remain in effect."],
+            "recovery": "Save keeps the exact prior TOML as previous-workspace.toml in the configured local state. "
+                        "A later Save replaces that copy. Keep it separately before further edits if needed. "
+                        "Restoring it is another reviewed, hash-guarded Save; approvals are never rewritten."},
     }
 
 

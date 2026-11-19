@@ -473,7 +473,8 @@ async function show(id) {
       text(area, "p", "Observed public outputs, not a live drift or health check. Expiry and revocation are checked by the controller.");
       reviewEvidence(area, name + ":receipts", "Infrastructure receipt details", node.infrastructure_receipts, expanded);
     }
-    reviewFacts(area, [["Adapter", node.adapter], ["Source revision", node.source?.revision]]);
+    reviewFacts(area, [["Adapter", node.adapter], ["Source revision", node.source?.revision],
+      ["Local target", node.physical_target?.path], ["Target owner", node.physical_target?.owner?.join("/")]]);
     if (node.preview) reviewChanges(area, name, node.preview, expanded);
     for (const warning of node.warnings || []) text(area, "p", "Review: " + warning);
     if (["cloudformation", "cdk", "arm", "bicep", "ecs", "container-apps"].includes(node.adapter) && (node.request_digest || node.status === "uncertain")) {
@@ -653,12 +654,28 @@ element("delegation").onsubmit = (event) => { event.preventDefault(); safe(async
 element("refresh").onclick = () => safe(refresh);
 setInterval(() => { if (token) safe(refresh); }, 4000);
 
+// Mark save-impact text stale whenever its reviewed TOML changes
+function invalidateConfigReview() {
+  if (reviewedConfiguration !== element("config").value) {
+    reviewedConfiguration = null;
+    element("config-impact").textContent = "Validate the current draft to review its save impact.";
+  }
+}
+element("config").addEventListener("input", invalidateConfigReview);
+document.addEventListener("deployops:configuration", invalidateConfigReview);
+
+
 // Configuration is operator-owned. Saving cannot grant cloud authority or alter the remote controller
 element("validate-config").onclick = () => safe(async () => {
   const source = element("config").value;
   const result = await api("/config/validate", "POST", { configuration: source });
   if (element("config").value !== source) throw new Error("Draft changed while validating. Validate again.");
   element("config-diff").textContent = result.diff || "No changes."; reviewedConfiguration = source;
+  const impact = element("config-impact"); impact.replaceChildren();
+  text(impact, "p", result.impact.contract_changed ? "Saving changes the deployment contract." : "The deployment contract is unchanged.");
+  for (const effect of result.impact.effects) text(impact, "p", effect);
+  text(impact, "p", "Saved contract: " + result.impact.saved_digest);
+  text(impact, "p", result.impact.recovery);
   message("Valid workspace. Dependency order: " + result.order.join(" → ") + ". Digest: " + result.digest);
 });
 element("save-config").onclick = () => safe(async () => {
@@ -769,6 +786,37 @@ element("config-add-form").onsubmit = (event) => {
 };
 
 
+// Pin or inherit one native field while retaining unrelated edits and keyboard position
+async function nativeOptionEdit(name, key, reset) {
+  const source = element("config").value;
+  if (source !== formSource) throw new Error("TOML draft changed. Load forms before editing overrides.");
+  const draft = formDrafts.get(formKey());
+  const advancedOpen = element("config-fields").querySelector("details")?.open;
+  let focusTarget = null;
+  const body = {configuration: source, name, scope: "environment",
+    values: reset ? {} : {[key]: structuredClone(draft[key])}, field: reset ? key : ""};
+  element("config-controls").disabled = true;
+  element("load-forms").disabled = true;
+  try {
+    const result = await api("/config/" + (reset ? "reset" : "edit"), "POST", body);
+    if (element("config").value !== source) throw new Error("Draft changed while editing. Your text was preserved; reload forms.");
+    element("config").value = result.toml; formSource = result.toml; formContract = result;
+    draft[key] = structuredClone(result.option_forms[name].values[key]);
+    if (element("config-section").value === "options" && element("config-name").value === name) {
+      fillOptionFields(name);
+      element("config-fields").querySelector("details").open = advancedOpen;
+      focusTarget = element("option-" + key);
+    }
+    element("config-diff").textContent = result.diff || "No changes.";
+    element("config-status").textContent = "Environment override updated in the draft. Review the diff before saving; nothing executed.";
+    document.dispatchEvent(new CustomEvent("deployops:configuration", {detail: formContract}));
+  } finally {
+    element("config-controls").disabled = false; element("load-forms").disabled = false;
+    focusTarget?.focus();
+  }
+}
+
+
 // Render typed provider inputs without making cloud authority editable in the browser
 function fillOptionFields(name) {
   const root = element("config-fields"); root.replaceChildren();
@@ -781,6 +829,16 @@ function fillOptionFields(name) {
   for (const [key, field] of Object.entries(contract.fields)) {
     const required = contract.required.includes(key);
     const parent = required ? root : advanced;
+    const inheritance = contract.inheritance?.[key];
+    if (inheritance) {
+      text(parent, "p", field.title + " · " + inheritance.source + ". Used by the next prepared release after Save.");
+      const controls = document.createElement("div"); controls.className = "controls"; parent.append(controls);
+      const pin = text(controls, "button", "Pin " + field.title + " for " + contract.environment);
+      pin.type = "button"; pin.onclick = () => safe(() => nativeOptionEdit(name, key, false));
+      const inherit = text(controls, "button", "Use inherited " + field.title);
+      inherit.type = "button"; inherit.disabled = !inheritance.override_authored;
+      inherit.onclick = () => safe(() => nativeOptionEdit(name, key, true));
+    }
     if (field.type === "object") {
       const group = document.createElement("fieldset"); group.id = "option-" + key; group.tabIndex = -1;
       text(group, "legend", field.title); parent.append(group);

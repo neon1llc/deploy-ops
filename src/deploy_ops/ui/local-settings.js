@@ -7,6 +7,8 @@
 // Retain each component and scope independently from the authored TOML draft
 const localDrafts = new Map();
 const localDirty = new Map();
+const localBases = new Map();
+const localConflicts = new Map();
 let localBusy = false;
 const localKey = () => [element("local-component").value, element("local-scope").value, element("local-environment").value].join("/");
 
@@ -44,12 +46,34 @@ function localRender() {
   element("local-environment-label").hidden = scope !== "environment";
   const metadata = contract.environments[environment] || {};
   if (!localDirty.has(localKey())) localDirty.set(localKey(), new Set());
+  const fresh = scope === "build" ? {checks: structuredClone(contract.build.checks), command: structuredClone(contract.build.command)}
+    : Object.fromEntries(Object.entries(contract.fields).map(([key, field]) => [key, scope === "environment"
+      ? metadata[key]?.effective ?? field.default ?? "" : contract.base[key] ?? field.default ?? ""]));
   let draft = localDrafts.get(localKey());
   if (!draft) {
-    draft = scope === "build" ? {checks: structuredClone(contract.build.checks), command: structuredClone(contract.build.command)}
-      : Object.fromEntries(Object.entries(contract.fields).map(([key, field]) => [key, scope === "environment"
-        ? metadata[key]?.effective ?? field.default ?? "" : contract.base[key] ?? field.default ?? ""]));
-    localDrafts.set(localKey(), draft);
+    draft = structuredClone(fresh); localDrafts.set(localKey(), draft);
+    localBases.set(localKey(), structuredClone(fresh));
+  }
+  const base = localBases.get(localKey()), conflicts = new Set();
+  const equal = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+  // Rebase untouched fields; keep both versions of a changed field until an explicit decision
+  for (const key of Object.keys(fresh)) {
+    if (equal(draft[key], base[key]) && !localDirty.get(localKey()).has(key)) draft[key] = structuredClone(fresh[key]);
+    if (!equal(fresh[key], base[key]) && !equal(draft[key], fresh[key])) conflicts.add(key);
+    else base[key] = structuredClone(fresh[key]);
+  }
+  localConflicts.set(localKey(), conflicts);
+  for (const key of conflicts) {
+    const label = contract.fields[key]?.title || key;
+    text(root, "p", label + " changed in the TOML draft while your field edit was retained. Current: " + JSON.stringify(fresh[key]) + ". Your edit: " + JSON.stringify(draft[key]));
+    for (const keep of [true, false]) {
+      const button = text(root, "button", (keep ? "Keep my " : "Use current ") + label.toLowerCase()); button.type = "button";
+      button.onclick = () => {
+        base[key] = structuredClone(fresh[key]);
+        if (!keep) { draft[key] = structuredClone(fresh[key]); localDirty.get(localKey()).delete(key); }
+        localRender(); (element("local-field-" + key) || element("local-apply")).focus();
+      };
+    }
   }
   if (scope === "build") {
     text(root, "p", "Checks source: " + (contract.build_sources?.checks || "component") + " · command source: " + (contract.build_sources?.command || "component"));
@@ -99,6 +123,7 @@ async function localApply(field = "", pin = "") {
     if (source !== formSource) throw new Error("TOML changed. Load forms from the current draft before applying local fields.");
     const scope = element("local-scope").value, name = element("local-component").value;
     const draft = localDrafts.get(key);
+    if (localConflicts.get(key)?.size) throw new Error("Resolve the changed field choices before applying this retained draft.");
     const values = field ? {} : scope !== "environment" ? draft : pin ? {[pin]: draft[pin]}
       : Object.fromEntries([...localDirty.get(key)].map(key => [key, draft[key]]));
     if (!field && !Object.keys(values).length) throw new Error("Change a field or choose Pin to author an explicit override.");
@@ -117,6 +142,7 @@ async function localApply(field = "", pin = "") {
     localBusy = false; element("local-edit-fields").disabled = false;
     for (const id of ["local-component", "local-scope", "local-environment", "local-reload"]) element(id).disabled = false;
     localRender();
+    (element("local-field-" + (field || pin)) || element("local-apply")).focus();
   }
 }
 
@@ -149,5 +175,5 @@ function localSetting(entry) {
 for (const id of ["local-component", "local-scope"]) element(id).onchange = localChoices;
 element("local-environment").onchange = localRender;
 element("local-edit-form").onsubmit = event => { event.preventDefault(); return localApply(); };
-element("local-reload").onclick = () => { localDrafts.clear(); localDirty.clear(); localChoices(); };
+element("local-reload").onclick = () => { localDrafts.clear(); localDirty.clear(); localBases.clear(); localConflicts.clear(); localChoices(); };
 document.addEventListener("deployops:configuration", localChoices);

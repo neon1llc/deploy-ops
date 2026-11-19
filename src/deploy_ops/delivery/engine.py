@@ -181,8 +181,10 @@ class Engine:
         if hashlib.sha256(content).hexdigest() != release["nodes"][name]["artifact_digest"]:
             raise Refused("Reviewed deployment artifact changed")
         envelope = json.loads(content)
-        if envelope.get('schema_version') not in {1, 2} or envelope.get('adapter_contract_version', 1) != 1:
+        if envelope.get('schema_version') not in {1, 2} or envelope.get('adapter_contract_version', 1) not in {1, 2}:
             raise Refused("Unsupported prepared format. Inspect with the original runtime or prepare fresh evidence", 422)
+        if envelope.get('adapter_contract_version', 1) == 2 and envelope.get('adapter') not in {'directory', 'static'}:
+            raise Refused("Unsupported adapter contract. Inspect with the original runtime", 422)
         if envelope.get('adapter') != release['nodes'][name]['adapter']:
             raise Refused("Prepared adapter differs from the retained release", 422)
         return envelope
@@ -430,6 +432,51 @@ class Engine:
             context.options["image"] = build.image + "@" + digest
 
 
+    # Refuse a distinct logical writer even when its spelling resolves to the same owned path
+    def _check_local_target(self, release: dict, name: str, binding: dict):
+        from .adapters.local import physical_target
+        # Separate ledgers cannot coordinate writers into nested deployment state
+        if any(parent != self.state and (parent / 'state.db').is_file()
+               for parent in Path(binding['path']).parents):
+            raise Refused('A physical local target cannot cross another delivery state root', 422)
+        with self.ledger.store.connect() as connection:
+            records = [json.loads(row[0]) for row in connection.execute('SELECT data FROM releases')]
+        for previous in records:
+            for component, node in previous['nodes'].items():
+                owner = [previous['project'], previous['environment'], component]
+                if owner == binding['owner'] or node['adapter'] not in {'directory', 'static'}:
+                    continue
+                retained = node.get('physical_target')
+                if retained is None and node.get('artifact_digest'):
+                    try:
+                        envelope = self._reviewed_envelope(previous, component)
+                        path = physical_target(self.deployment_root(previous), previous['environment'], component,
+                                               node['adapter'], envelope['prepared'])
+                        retained = {'path': path, 'owner': owner}
+                    except (OSError, ValueError, KeyError, TypeError, Refused):
+                        raise Refused('Retained local target evidence is unavailable for release ' + previous['id']
+                                      + '. Inspect it before assigning another local writer') from None
+                if retained and retained['path'] == binding['path']:
+                    raise Refused('Another component owns this physical local target: ' + '/'.join(owner), 422)
+
+
+    # Reserve target ownership in existing release evidence before source builds or native preparation
+    def _bind_local_target(self, release: dict, name: str, context: Context) -> dict | None:
+        from .adapters.local import physical_target
+        from .configuration import boundary
+        if context.provider != 'local':
+            return None
+        path = physical_target(context.deployments, context.environment, name, context.component.adapter, context.options)
+        if path is None:
+            return None
+        binding = {'path': path, 'owner': [release['project'], release['environment'], name]}
+        with boundary(self):
+            self._check_local_target(release, name, binding)
+            release['nodes'][name]['physical_target'] = binding
+            self.ledger.save(release, 'component.target.bound', {'component': name, 'target': binding})
+        return binding
+
+
     # Freeze provider evidence before submitting the exact approval request
     def _prepare(self, release: dict, name: str):
         node = release["nodes"][name]
@@ -461,6 +508,12 @@ class Engine:
             raise Refused("The registered workspace contract changed")
         credentials = self.gate.credentials(authority)
         context = self._context(release, name, credentials)
+        try:
+            physical = self._bind_local_target(release, name, context)
+        except Refused:
+            # This refusal occurs before any build, login or adapter preparation
+            node['status'] = 'queued'
+            raise
         self._build(context, release)
         receipts = node.get("infrastructure_receipts", {})
         if receipts:
@@ -480,7 +533,8 @@ class Engine:
         else:
             prepared = adapter.prepare(context)
         # Bind source, artifact tree, options and provider preview into one immutable envelope
-        envelope = {"schema_version": 2, "adapter_contract_version": 1,
+        envelope = {"schema_version": 2, "adapter_contract_version": 2 if physical else 1,
+                    "physical_target": physical,
                     "local_dependencies": node.get('local_dependencies', {}),
                     "config_digest": self.spec.digest, "adapter": context.component.adapter,
                     "source_digest": digest_tree(context.stage.parent / "source"),
@@ -516,6 +570,16 @@ class Engine:
         def check_local_inputs():
             if self.ledger.get(release['id'])['status'] in {'cancel_requested', 'cancelled'}:
                 raise Refused('Release cancellation requested before execution admission')
+            if node['adapter'] in {'directory', 'static'} and self.spec.environments[release['environment']].provider == 'local':
+                from .adapters.local import physical_target
+                binding = envelope.get('physical_target')
+                if envelope.get('adapter_contract_version', 1) < 2 or not binding:
+                    raise Refused('Legacy local targets lack reviewed ownership. Preserve this release and prepare fresh evidence')
+                actual = physical_target(self.deployment_root(release), release['environment'], name,
+                                         node['adapter'], envelope['prepared'])
+                if actual != binding['path'] or binding['owner'] != [release['project'], release['environment'], name]:
+                    raise Refused('Reviewed physical local target changed. Prepare fresh evidence')
+                self._check_local_target(release, name, binding)
             for dependency, frozen in envelope.get('local_dependencies', {}).items():
                 current = self.ledger.latest_outputs(release['environment'], dependency, self.spec.digest)
                 if not current or current['receipt'] != frozen['release_id'] or fingerprint(current['outputs']) != frozen['outputs_digest']:

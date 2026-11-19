@@ -12,6 +12,16 @@ from ..files import digest_tree, inside
 from .base import Context, need, preview
 
 
+# Identify the exact local mutation while allowing dependency-owned markers in the same tree
+def physical_target(root: Path, environment: str, name: str, adapter: str, values: dict) -> str | None:
+    if adapter == 'directory':
+        return str(inside(root, f"{environment}/{need(values, 'name')}") / 'resource.json')
+    if adapter == 'static':
+        destination = values.get('destination', str(root / environment / name))
+        return str(inside(root, destination) / 'current.json')
+    return None
+
+
 # Freeze static files or rendered Compose inputs before approval
 def prepare(context: Context) -> dict:
     adapter = context.component.adapter
