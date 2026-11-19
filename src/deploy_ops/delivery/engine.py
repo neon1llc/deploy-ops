@@ -554,6 +554,8 @@ class Engine:
         node.update(status="prepared", request_id=request["id"], request_digest=request["digest"],
                     artifact_digest=proposal.artifact_digest, preview=prepared["preview"],
                     warnings=prepared.get("warnings", []))
+        if component.adapter in {"terraform", "opentofu"}:
+            node.update(infrastructure_backend=prepared["backend"], output_readiness=prepared["output_readiness"])
         self.ledger.save(release, "component.prepared", {"component": name, "request_id": request["id"]})
 
 
@@ -565,6 +567,9 @@ class Engine:
         if (envelope['adapter'] == 'static' and envelope['prepared'].get('activation') == 'separate'
                 and envelope.get('adapter_contract_version') != 3):
             raise Refused('Separate activation requires a newly reviewed adapter contract 3')
+        if envelope["adapter"] in {"terraform", "opentofu"}:
+            from .adapters.iac import require_contract
+            require_contract(envelope["prepared"], envelope["adapter"])
         if envelope["adapter"] in {"cloudformation", "cdk"}:
             from .adapters.cloudformation import require_destroy_contract
             require_destroy_contract(envelope["prepared"])

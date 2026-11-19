@@ -1,5 +1,16 @@
 # Verification
 
+## Generic IaC readiness, 2026-11-05
+
+Real Terraform1.16.0 using built-in terraform_data and private local state refused a known complex
+selected output before apply, applied a valid saved plan and validated its previously unknown public
+scalar output, and refused a changed initialized backend before apply. The alternate state file was
+not created. Local source overrides and backend selectors are not silently adopted; old generic
+prepared work refuses before runner claim/native use. Remote backend shapes are fixture checks, not
+remote storage, cloud identity, restore or provider qualification. DOM checks expose backend and output
+uncertainty as review evidence. Current mounted browser/keyboard/layout/AT and human acceptance remain
+unqualified. No cloud batch, existing grant, host credentials or publication changed.
+
 ## Complete approval effects, 2026-11-05
 
 A real Terraform 1.16.0 local saved plan used the built-in `terraform_data` resource to produce import

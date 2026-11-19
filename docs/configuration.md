@@ -29,7 +29,7 @@ Only complete `${env.name}` and `${outputs.component.key}` values are expanded, 
 | `directory` | `name` | Writes only under local deployment state |
 | `static` | `directory`, optional `destination` | Versioned files and atomic active pointer, no public hosting service created |
 | `compose` | `file`, optional `project` | Existing digest-pinned images only, no build, privileged mode, or host bind mounts |
-| `opentofu`, `terraform` | `remote_state=true`, or local `local_state=true` | Repo must define the remote backend. Commit provider lock file |
+| `opentofu`, `terraform` | Exactly one of `remote_state=true` or local `local_state=true` | Actual default-workspace backend is reviewed: exact owned local path or supported s3/gcs/azurerm. Commit provider lock file |
 | `cloudformation` | `account_id`, `region`, `stack_name`, `template` | Preview creates a remote change set; execute that exact reviewed identifier |
 | `cdk` | `account_id`, `region`, `stack_name`, `assembly`, `stack_artifact` | Consume a frozen assembly; never synthesize application code with writer credentials |
 | `arm`, `bicep` | `subscription_id`, `tenant_id`, `resource_group`, `template` | Frozen local JSON, incremental deployment only; Bicep requires compiler metadata |
@@ -113,3 +113,17 @@ The bound path is rechecked before claim, including symlink changes after approv
 artifacts remain readable, but require fresh preparation before execution under this runtime. Their
 approved bytes are not rewritten. Unknown adapter contracts are refused. Use the matching runtime for
 historical evidence; do not downgrade a writer over newer pending work.
+
+Generic IaC preparation uses `init -reconfigure`, which reinitializes without migrating a cached backend.
+Local state fixes its owned destination and refuses source override files or `backend_config` selectors.
+Remote state must actually initialize a supported remote backend; a declaration alone is insufficient.
+The prepared review binds native metadata, public destination fields, default workspace and a digest of
+the complete effective configuration. Apply repeats initialization and checks the same binding before
+native apply. This is metadata binding, not proof of cloud ownership, backend access isolation or
+restorable remote state. Alternate native workspaces/backends require a separately supported route.
+
+Selected generic IaC outputs are checked in the saved plan. Known missing, sensitive, non-scalar, null,
+fractional-number or oversized values refuse before approval/apply. Unknown values stay explicitly
+`unknown_until_apply` and are checked afterward using the same small public scalar rules. Preparation
+does not claim those outputs already exist. The release detail exposes effective backend and output
+readiness evidence behind native disclosures. See [migration](migration.md) for older prepared work.

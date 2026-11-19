@@ -664,6 +664,10 @@ async function show(id) {
     }
     reviewFacts(area, [["Adapter", node.adapter], ["Source revision", node.source?.revision],
       ["Local target", node.physical_target?.path], ["Target owner", node.physical_target?.owner?.join("/")]]);
+    if (node.infrastructure_backend) reviewEvidence(area, name + ":backend", "Effective infrastructure backend",
+      node.infrastructure_backend, expanded);
+    if (node.output_readiness) reviewEvidence(area, name + ":output-readiness", "Selected output readiness before apply",
+      node.output_readiness, expanded);
     if (node.preview) reviewChanges(area, name, node.preview, expanded);
     if (node.adapter === "static" && node.artifact_digest && typeof artifactControls === "function") artifactControls(area, id, name, expanded);
     if (node.adapter === "static" && node.artifact_digest && typeof signatureControls === "function") signatureControls(area, id, name, node.artifact_digest, expanded);

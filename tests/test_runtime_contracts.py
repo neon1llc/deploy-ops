@@ -106,8 +106,12 @@ def test_provider_rollout_never_writes_after_stale_revision(tmp_path):
 def test_saved_iac_plan_is_the_applied_artifact(tmp_path, adapter, binary):
     ctx = context(tmp_path, adapter, "local", {"local_state": True}, [
         "", "", "", {"format_version": "1.2", "planned_values": {}, "resource_changes": []}, {"terraform_version": "1.9.0"},
-        {"terraform_version": "1.9.0"}, "", "", {},
+        {"terraform_version": "1.9.0"}, "", {"planned_values": {}}, "", {},
     ])
+    (tmp_path / ".terraform").mkdir()
+    (tmp_path / ".terraform" / "terraform.tfstate").write_text(json.dumps({"version": 3,
+        "backend": {"type": "local", "config": {"path": str((ctx.deployments / ctx.environment / ctx.name / "terraform.tfstate").resolve()), "workspace_dir": None}}}))
+    (ctx.stage / "infrastructure.plan").write_bytes(b"saved fixture plan")
     (tmp_path / ".terraform.lock.hcl").write_text("# Contract fixture only\n")
     prepared = iac.prepare(ctx)
     iac.apply(ctx, prepared)
