@@ -58,7 +58,7 @@ The local path runs end to end on a clean machine. Cloud support is partial.
 | Local | Build, deploy, app-only release, promotion, and HTTP check run in the demo and in CI. Rollback has local tests. Docker Compose and a kind Kubernetes cluster were also checked | Windows |
 | AWS | Live CloudFormation create, update, and owned deletion of a private S3 bucket, and live ECS delivery to an existing Fargate service, including an app-only image update | Public HTTP check, image publication, a live CDK stack, and live Terraform or OpenTofu apply |
 | Azure | Live Bicep and ARM provisioning and a live Container Apps image update with revision health and logs | Ingress HTTP check and DeployOps-driven deletion of ARM resources |
-| GCP | One bounded, nonproduction Cloud Run candidate and traffic update with readback and a same-image no-op. The isolated GCP recipe passes fixtures and offline validation only | Application HTTP, external ingress, image publication, and any live isolated GCP delivery |
+| GCP | Cloud Run candidate and traffic operations and the isolated GCP recipe pass command fixtures and offline validation. [Verification](docs/verification.md) records one bounded, nonproduction Cloud Run run that has not been reproduced independently | Any qualified live deployment, application HTTP, external ingress, and image publication |
 
 The [support matrix](docs/support-matrix.md) lists exact versions, regions, and limits. An identity preflight alone doesn't qualify a deployment. "What has run" is Verified evidence under neon1's [release levels](https://github.com/neon1llc/neon1-corpus/blob/main/corpus/standards/versioning.md#release-levels). Nothing is Qualified until it has real use and a tested recovery.
 
