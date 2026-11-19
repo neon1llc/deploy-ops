@@ -5,7 +5,6 @@ import copy
 import hashlib
 import json
 import math
-import os
 import re
 import time
 
@@ -45,14 +44,7 @@ def ecs_record(context: Context, record: dict) -> None:
 # Sync operation intent before provider calls whose response may disappear
 def durable_record(path, record: dict) -> None:
     record['recorded_at'] = int(time.time())
-    private_json(path, record)
-    with path.open("rb") as handle:
-        os.fsync(handle.fileno())
-    descriptor = os.open(path.parent, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    private_json(path, record, durable=True)
 
 
 # Disable native retries because task registration has no idempotency token

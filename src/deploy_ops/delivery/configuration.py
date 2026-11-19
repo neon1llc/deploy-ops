@@ -3,15 +3,24 @@
 
 import difflib
 import hashlib
+import json
 import os
+import re
+import tempfile
 import time
+import uuid
 from contextlib import contextmanager
+from pathlib import Path
 import tomllib
 
 import tomlkit
 from pydantic import ValidationError
 
 from ..errors import Refused
+from ..client import private_json, sync_directory
+from ..store import Store
+from .files import read_regular
+from .ledger import Ledger
 from .spec import ADAPTERS, NAME, Build, Component, Environment, Repository, Workspace
 from .options import LOCAL_MODELS, MODELS, form
 
@@ -26,6 +35,11 @@ FIELDS = {
 # Bind conflict detection to the exact authored TOML bytes
 def source_hash(source: str) -> str:
     return hashlib.sha256(source.encode()).hexdigest()
+
+
+# Preserve UTF-8 source bytes, including authored line endings, across all configuration entry points
+def read_source(path) -> str:
+    return read_regular(path).decode('utf-8')
 
 
 # Show the operator the saved-to-draft change without writing it
@@ -288,25 +302,176 @@ def validate(source: str, current: str) -> dict:
                 "Provider inspection and preview retirement require their original contract. Finish retirement before Save.",
                 "Retained releases, approvals and audit remain unchanged; Save executes no deployment.",
             ] if changed else ["The deployment contract is unchanged; existing digest gates remain in effect."],
-            "recovery": "Save keeps the exact prior TOML as previous-workspace.toml in the configured local state. "
-                        "A later Save replaces that copy. Keep it separately before further edits if needed. "
-                        "Restoring it is another reviewed, hash-guarded Save; approvals are never rewritten."},
+            "recovery": "Save keeps the exact prior TOML as previous-workspace.toml and retains per-Save before/draft copies in local state. "
+                        "An interrupted Save requires explicit reconciliation that keeps the current file. "
+                        "Restoring a retained version is another reviewed, hash-guarded Save; approvals are never rewritten."},
     }
 
 
-# Exclude configuration saves and release preparation across local CLI and console processes
+# Exclude workspace writers across CLI and console without constructing execution authority
 @contextmanager
-def boundary(engine):
+def workspace_lock(state):
     import fcntl
-    descriptor = os.open(engine.state / "workspace.lock", os.O_CREAT | os.O_RDWR, 0o600)
+    descriptor = os.open(state / "workspace.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise Refused("Workspace configuration or release preparation is active; retry after it finishes") from None
-        yield
+        yield descriptor
     finally:
         os.close(descriptor)
+
+
+# Require explicit interruption reconciliation before another Save, release or retirement preparation
+def require_saved(project, state):
+    intent = state / 'workspace-save.json'
+    if intent.exists() or intent.is_symlink():
+        raise Refused('An interrupted configuration Save needs inspection and reconciliation before preparing work')
+    pending = project.with_suffix('.pending')
+    if pending.exists() or pending.is_symlink():
+        raise Refused('A pending configuration file already exists. Inspect it first')
+
+
+# Share the same guard with all cooperative configuration and release writers
+@contextmanager
+def boundary(engine):
+    with workspace_lock(engine.state) as descriptor:
+        require_saved(engine.path, engine.state)
+        yield descriptor
+
+
+# Keep exact recovery bytes before touching an existing authored file
+def _new_text(path, source):
+    descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with os.fdopen(descriptor, 'w', encoding='utf-8', newline='') as stream:
+        stream.write(source)
+        stream.flush()
+        os.fsync(stream.fileno())
+    sync_directory(path.parent)
+
+
+# Replace the compatibility backup without following a pre-existing link or publishing partial bytes
+def _backup(path, source):
+    descriptor, name = tempfile.mkstemp(dir=path.parent, prefix='.workspace-backup-')
+    try:
+        with os.fdopen(descriptor, 'w', encoding='utf-8', newline='') as stream:
+            stream.write(source)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(name, path)
+        sync_directory(path.parent)
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+# Inspect exact before/draft/current identities and the existing audit without loading a workspace
+def save_recovery(project, state, *, locked=False):
+    project, state = project.resolve(), state.resolve()
+    store = Ledger.open_existing(state).store
+    path = state / 'workspace-save.json'
+    if not path.exists() and not path.is_symlink():
+        pending = project.with_suffix('.pending')
+        return {'available': False, 'status': 'unmanaged_pending' if pending.exists() or pending.is_symlink() else 'none',
+                'reason': 'No retained Save intent. Preserve any legacy pending draft and inspect it before removing or renaming it.'}
+    try:
+        intent = json.loads(read_regular(path, 64 * 1024).decode('utf-8'))
+        fields = {'version', 'id', 'project_path', 'state_path', 'before_hash', 'after_hash', 'old_digest',
+                  'new_digest', 'created_at', 'lock_device', 'lock_inode'}
+        if (set(intent) != fields or intent['version'] != 1 or not re.fullmatch(r'[0-9a-f]{32}', intent['id'])
+                or any(not re.fullmatch(r'[0-9a-f]{64}', intent[key]) for key in ('before_hash', 'after_hash', 'old_digest', 'new_digest'))
+                or any(type(intent[key]) is not int for key in ('created_at', 'lock_device', 'lock_inode'))):
+            raise ValueError('format')
+        if intent['project_path'] != str(project) or intent['state_path'] != str(state):
+            return {'available': False, 'status': 'relocated', 'reason': 'Save intent belongs to its original workspace and state location. Retain this copy for inspection.'}
+        copies = state / 'workspace-saves' / intent['id']
+        if copies.parent.is_symlink() or copies.is_symlink():
+            raise ValueError('links')
+        before = read_regular(copies / 'before.toml').decode('utf-8')
+        after = read_regular(copies / 'draft.toml').decode('utf-8')
+        if source_hash(before) != intent['before_hash'] or source_hash(after) != intent['after_hash']:
+            raise ValueError('copies')
+        current_hash = source_hash(read_regular(project).decode('utf-8'))
+        pending = project.with_suffix('.pending')
+        pending_present = pending.exists() or pending.is_symlink()
+        if pending_present and source_hash(read_regular(pending).decode('utf-8')) != intent['after_hash']:
+            return {'available': False, 'status': 'pending_changed', 'reason': 'The pending file is no longer this Save draft. Preserve all files; no current source or unrelated draft was replaced.'}
+
+        # A lock-file replacement cannot manufacture proof that the original Save stopped
+        import fcntl
+        descriptor = os.open(state / 'workspace.lock', os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            metadata = os.fstat(descriptor)
+            if (metadata.st_dev, metadata.st_ino) != (intent['lock_device'], intent['lock_inode']):
+                raise ValueError('lock identity')
+            if not locked:
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    return {'available': False, 'status': 'active', 'reason': 'A workspace writer is active. Wait for it to stop before reconciling Save.'}
+        finally:
+            os.close(descriptor)
+
+        with store.connect() as connection:
+            events = [json.loads(row[0]) for row in connection.execute(
+                "SELECT payload FROM audit WHERE json_extract(payload,'$.detail.operation_id')=? ORDER BY sequence", (intent['id'],))]
+        updated = any(event['event'] == 'workspace.updated' and event['detail'].get('source_hash') == intent['after_hash'] for event in events)
+        reconciliations = [event for event in events if event['event'] == 'workspace.save_reconciled']
+        reconciled_hash = reconciliations[-1]['detail']['observed_source_hash'] if reconciliations else None
+        phase = ('same_content' if current_hash == intent['before_hash'] == intent['after_hash'] else
+                 'before_replace' if current_hash == intent['before_hash'] else
+                 'after_replace' if current_hash == intent['after_hash'] else 'external_change')
+        return {'available': True, 'status': phase, 'operation_id': intent['id'], 'source_hash': current_hash,
+                'before_hash': intent['before_hash'], 'draft_hash': intent['after_hash'],
+                'audit': 'committed' if updated else 'not_recorded',
+                'reconciliation': 'recorded' if reconciliations else 'not_recorded', 'reconciled_source_hash': reconciled_hash,
+                'recovery_directory': str(copies), 'pending_owned': pending_present,
+                'reason': 'Keep the exact current file and record the interrupted Save outcome. Before/draft copies remain available; no configuration, approval or deployment will be replayed.'}
+    except (OSError, ValueError, TypeError, KeyError, Refused):
+        return {'available': False, 'status': 'unverified', 'reason': 'Save intent, recovery copies or ownership cannot be verified. Preserve all files; no repair or overwrite was attempted.'}
+
+
+# Reconcile an observed current file, without restoring over external edits or inventing an old audit commit
+def reconcile_save(project, state, operation_id, expected_hash, note):
+    project, state = project.resolve(), state.resolve()
+    if not re.fullmatch(r'[0-9a-f]{32}', operation_id) or not re.fullmatch(r'[0-9a-f]{64}', expected_hash) or not 10 <= len(note.strip()) <= 500:
+        raise Refused('Choose an exact Save operation, current source hash and inspection note of 10–500 characters', 422)
+    retained = Ledger.open_existing(state).store
+    retained.verify()
+    with workspace_lock(state):
+        path = state / 'workspace-save.json'
+        if not path.exists() and not path.is_symlink():
+            with retained.connect() as connection:
+                prior = connection.execute("SELECT payload FROM audit WHERE json_extract(payload,'$.event')='workspace.save_reconciled' "
+                    "AND json_extract(payload,'$.detail.operation_id')=? ORDER BY sequence DESC LIMIT 1", (operation_id,)).fetchone()
+            if prior:
+                return {'status': 'reconciled', 'operation_id': operation_id, 'configuration_changed': False,
+                        'source_hash': json.loads(prior[0])['detail']['observed_source_hash'], 'repeat': True}
+            raise Refused('No matching retained Save intent exists')
+        observed = save_recovery(project, state, locked=True)
+        if not observed.get('available') or observed['operation_id'] != operation_id or observed['source_hash'] != expected_hash:
+            raise Refused('Save evidence or current file changed. Inspect recovery again; no file was replaced')
+        store = Store.open_existing(state / 'state.db', writable=True)
+        repeated = observed['reconciled_source_hash'] == expected_hash
+        with store.transaction() as connection:
+            active = connection.execute("SELECT 1 FROM releases WHERE status NOT IN ('succeeded','failed','cancelled') LIMIT 1").fetchone()
+            if active:
+                raise Refused('Finish outstanding releases before reconciling a configuration Save')
+            if not repeated:
+                store.event(connection, int(time.time()), 'local-operator', 'workspace.save_reconciled', str(project),
+                    {'operation_id': operation_id, 'observed_source_hash': expected_hash, 'phase': observed['status'],
+                     'original_audit': observed['audit'], 'note': note.strip(), 'configuration_changed': False})
+
+        # The audited observation commits first; repeated cleanup cannot invent another workspace update
+        if observed['pending_owned']:
+            if source_hash(read_regular(project.with_suffix('.pending')).decode('utf-8')) != observed['draft_hash']:
+                raise Refused('Pending draft changed during reconciliation; preserve it and inspect again')
+            project.with_suffix('.pending').unlink()
+            sync_directory(project.parent)
+        path.unlink()
+        sync_directory(state)
+        return {'status': 'reconciled', 'operation_id': operation_id, 'source_hash': expected_hash,
+                'configuration_changed': False, 'recovery_directory': observed['recovery_directory'], 'repeat': repeated}
 
 
 # Save the reviewed draft only while the local workspace has no outstanding delivery work
@@ -314,8 +479,8 @@ def save(engine, source: str, expected_hash: str, worker_active: bool = False) -
     proposed = inspect(source)
     if engine.gate.__class__.__name__ != "LocalGate":
         raise Refused("Only local operators may save a local workspace here", 403)
-    with boundary(engine):
-        current = engine.path.read_text()
+    with boundary(engine) as lock_descriptor:
+        current = read_source(engine.path)
         if expected_hash != source_hash(current):
             raise Refused("The workspace changed since it was loaded. Preserve your draft and reload before saving")
         current_digest = inspect(current)["digest"]
@@ -330,26 +495,45 @@ def save(engine, source: str, expected_hash: str, worker_active: bool = False) -
             if worker_active or active or cleanup:
                 raise Refused("Finish, cancel, or reconcile outstanding releases and preview cleanup before changing configuration")
 
-            # Refuse an earlier interrupted write before changing the recovery copy
+            # Flush both authored versions and bind intent before touching the compatibility backup
             pending = engine.path.with_suffix(".pending")
-            try:
-                descriptor = os.open(pending, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            except FileExistsError:
-                raise Refused("A pending configuration file already exists. Inspect it first") from None
-            with os.fdopen(descriptor, "w") as stream:
-                stream.write(source)
-            if source_hash(engine.path.read_text()) != expected_hash:
-                pending.unlink()
-                raise Refused("The workspace changed during saving. Preserve your draft and reload before saving")
+            _new_text(pending, source)
+            operation_id = uuid.uuid4().hex
+            copies_root = engine.state / 'workspace-saves'
+            if copies_root.is_symlink():
+                raise Refused('Save recovery directory must not be a symbolic link')
+            copies_root.mkdir(mode=0o700, exist_ok=True)
+            copies = copies_root / operation_id
+            copies.mkdir(mode=0o700)
+            sync_directory(copies_root)
+            _new_text(copies / 'before.toml', current)
+            _new_text(copies / 'draft.toml', source)
+            metadata = os.fstat(lock_descriptor)
+            intent = {'version': 1, 'id': operation_id, 'project_path': str(engine.path), 'state_path': str(engine.state),
+                      'before_hash': expected_hash, 'after_hash': source_hash(source), 'old_digest': current_digest,
+                      'new_digest': proposed['digest'], 'created_at': int(time.time()),
+                      'lock_device': metadata.st_dev, 'lock_inode': metadata.st_ino}
+            private_json(engine.state / 'workspace-save.json', intent, durable=True)
+            if source_hash(read_source(engine.path)) != expected_hash:
+                raise Refused("The workspace changed during saving. Preserve your draft and inspect Save recovery")
 
-            # Preserve authored content before atomically replacing the workspace
+            # Recheck external edits immediately before replacement; the advisory lock governs cooperative writers
             backup = engine.state / "previous-workspace.toml"
-            backup_descriptor = os.open(backup, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
-            with os.fdopen(backup_descriptor, "w") as stream:
-                os.fchmod(stream.fileno(), 0o600)
-                stream.write(current)
+            _backup(backup, current)
+            if source_hash(read_regular(engine.path).decode('utf-8')) != expected_hash:
+                raise Refused('The workspace changed before replacement. Its current edits were kept; inspect Save recovery')
             os.replace(pending, engine.path)
+            sync_directory(engine.path.parent)
             engine.ledger.store.event(connection, int(time.time()), "local-operator", "workspace.updated",
                                       proposed["configuration"]["name"],
-                                      {"old_digest": current_digest, "new_digest": proposed["digest"]})
-    return {"digest": proposed["digest"], "source_hash": proposed["source_hash"], "status": "saved", "reload": True}
+                                      {"old_digest": current_digest, "new_digest": proposed["digest"],
+                                       'operation_id': operation_id, 'previous_source_hash': expected_hash,
+                                       'source_hash': source_hash(source)})
+
+        # A committed audit is distinct from replaced file bytes; an interruption here remains reconcilable
+        if source_hash(read_regular(engine.path).decode('utf-8')) != source_hash(source):
+            raise Refused('The workspace changed after Save committed. Keep the current edits and inspect Save recovery')
+        (engine.state / 'workspace-save.json').unlink()
+        sync_directory(engine.state)
+    return {"digest": proposed["digest"], "source_hash": proposed["source_hash"], "status": "saved", "reload": True,
+            'operation_id': operation_id, 'recovery_directory': str(copies)}

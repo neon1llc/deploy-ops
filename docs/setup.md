@@ -46,6 +46,7 @@ The UI and API bind to `127.0.0.1`. Don't reverse-proxy this operator interface 
 ## Review and save configuration from the CLI
 
 Use a separate draft file so your saved workspace stays untouched until review.
+If Save is interrupted, use [Save recovery](save-recovery.md) before preparing more work.
 
 ```bash
 cp deploy-ops.toml draft.toml

@@ -71,3 +71,14 @@ approved envelopes, controller manifests or authority. New native journal writes
 observation timestamps; old records without them remain readable and report time unavailable.
 The JSON reader rejects unsupported versions and does not turn an imported summary into runtime state.
 Keep the original state and matching runtime for recovery. The inspection artifact is not a backup.
+
+## Interrupted configuration Save
+
+New Saves retain a version 1 local intent and private per-operation before/draft copies, outside
+approved deployment artifacts. `workspace.updated` adds exact source hashes and a Save operation ID;
+old audit records and request digests remain unchanged. Reconciliation appends a distinct observation
+and keeps current content. No database schema migration or automatic historical backfill occurs.
+Retained readers still default to read-only; the explicit existing-state audit writer never creates
+or initializes a database. Legacy pending files without verified intent require manual inspection.
+Finish or reconcile new pending Saves with this matching runtime; an older writer does not enforce
+the new guard. See [Save recovery](save-recovery.md) for current-file, ownership and relocation limits.

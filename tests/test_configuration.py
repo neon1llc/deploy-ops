@@ -332,7 +332,9 @@ def test_cli_save_requires_source_identity_and_rejects_a_stale_retry(workspace, 
     engine = Engine(workspace)
     events = [json.loads(row['payload']) for row in engine.ledger.store.audit()]
     event = next(row for row in events if row['event'] == 'workspace.updated')
-    assert event['detail'] == {'old_digest': inspect(source)['digest'], 'new_digest': result['digest']}
+    assert event['detail'] == {'old_digest': inspect(source)['digest'], 'new_digest': result['digest'],
+                               'operation_id': result['operation_id'], 'previous_source_hash': source_hash(source),
+                               'source_hash': result['source_hash']}
     with pytest.raises(Refused, match='changed since'):
         dispatch(parser().parse_args(arguments))
     assert backup.read_text() == source

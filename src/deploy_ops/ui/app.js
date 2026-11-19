@@ -649,6 +649,31 @@ async function show(id) {
     (replacement || element("detail-heading")).focus({preventScroll: true});
   }
 }
+// Show the backend's Save observation without replacing any unsaved configuration draft
+async function inspectSaveRecovery() {
+  const data = await api('/config/recovery');
+  const root = element('save-recovery'); root.replaceChildren();
+  text(root, 'p', data.reason);
+  if (!data.available) return;
+  reviewFacts(root, [['Observed phase', data.status], ['Original audit', data.audit], ['Current source hash', data.source_hash],
+    ['Before source hash', data.before_hash], ['Draft source hash', data.draft_hash], ['Recovery copies', data.recovery_directory]]);
+  root.append(button('Keep current file and reconcile Save', async () => {
+    const note = await promptAction('Keep the exact current workspace file and record this interrupted Save observation. Before/draft copies remain available. No configuration or deployment is replayed. Describe your inspection:');
+    if (!note) return;
+    const result = await api('/config/reconcile', 'POST', {operation_id: data.operation_id, source_hash: data.source_hash, note});
+    await inspectSaveRecovery();
+    message(result.configuration_valid ? 'Current file kept and Save reconciled. Preserve any drafts, then reload this console to load the saved workspace.'
+      : 'Current file kept and Save reconciled. Its configuration is invalid; retain your drafts and correct the file before restarting.');
+    if (result.reload) {
+      const reload = button('Reload console', async () => {
+        if (await confirmAction('Reload the console? Preserve unsaved drafts first. This clears the session token and current form drafts.')) location.reload();
+      }, 'reload-after-save');
+      root.append(reload); reload.focus();
+    } else element('inspect-save').focus();
+  }, 'reconcile-save'));
+}
+
+
 // Unlock from memory without persisting the operator token
 element("login").onsubmit = (event) => { event.preventDefault(); safe(async () => {
   token = element("token").value; element("token").value = "";
@@ -671,6 +696,7 @@ element("login").onsubmit = (event) => { event.preventDefault(); safe(async () =
   configurePreviewFields();
   element("component").replaceChildren(new Option("All components", ""));
   for (const name of Object.keys(data.configuration.components)) element("component").append(new Option(name, name));
+  await inspectSaveRecovery();
   message("Unlocked. Tokens are cleared when this tab reloads." + (data.cloud_access ? " Cloud access: " + data.cloud_access : "")); await refresh();
 }); };
 
@@ -744,6 +770,7 @@ element("save-config").onclick = () => safe(async () => {
   await api("/config/save", "POST", { configuration: element("config").value, source_hash: savedSourceHash });
   token = ""; location.reload();
 });
+element('inspect-save').onclick = () => safe(inspectSaveRecovery);
 
 
 // Keep drafts separate for every settings group and entry
