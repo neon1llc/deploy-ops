@@ -94,6 +94,22 @@ class Ledger:
         return release
 
 
+    # Merge only cache metadata into the current release without replacing primary state or outputs
+    def cache_observation(self, release_id: str, observations: dict, *, record_event: bool = False):
+        with self.store.transaction() as connection:
+            row = connection.execute('SELECT data FROM releases WHERE id=?', (release_id,)).fetchone()
+            if row is None:
+                raise Refused('Release not found', 404)
+            current = json.loads(row[0])
+            for name, observation in observations.items():
+                if name not in current['nodes']:
+                    raise Refused('Cache observation component is unavailable', 409)
+                current['nodes'][name]['private_cache_cleanup'] = observation
+            connection.execute('UPDATE releases SET data=? WHERE id=?', (canonical(current), release_id))
+            if record_event:
+                self._event(connection, release_id, 'private_cache.observed', {'components': observations})
+
+
     # Queue transport work only after recording the durable event
     def _event(self, connection, release_id: str, name: str, detail: dict):
         now = int(time.time())

@@ -774,17 +774,24 @@ async function show(id) {
     if (node.adapter === "static" && node.artifact_digest && typeof artifactControls === "function") artifactControls(area, id, name, expanded);
     if (node.adapter === "static" && node.artifact_digest && typeof signatureControls === "function") signatureControls(area, id, name, node.artifact_digest, expanded);
     for (const warning of node.warnings || []) text(area, "p", "Review: " + warning);
+    if (node.private_cache_cleanup) {
+      const cleanup = node.private_cache_cleanup;
+      if (cleanup.warning) text(area, "p", cleanup.warning).className = "isolated-warning";
+      reviewEvidence(area, name + ":private-cache", "Temporary private cache cleanup", cleanup, expanded);
+    }
     if (["cloudformation", "cdk", "arm", "bicep", "ecs", "container-apps", "cloud-run", "kubernetes"].includes(node.adapter) && (node.request_digest || node.status === "uncertain")) {
       area.append(button("Read provider status", async () => {
         const observed = await api("/releases/" + id + "/provider/inspect", "POST", {component: name});
-        message(observed.reason || ("Provider readback: " + (observed.status || observed.stack_status || observed.operation || "recorded") + ". No deployment was replayed."));
+        message((observed.reason || ("Provider readback: " + (observed.status || observed.stack_status || observed.operation || "recorded") + ". No deployment was replayed.")) +
+          (observed.private_cache_cleanup?.warning ? " " + observed.private_cache_cleanup.warning : ""));
         await refresh();
       }, "provider-" + name));
       if (["cloudformation", "cdk"].includes(node.adapter) && release.status === "waiting") {
         area.append(button("Discard unexecuted change set", async () => {
           if (!await confirmAction("Delete this release's unexecuted change set and cancel the release? Existing deployed resources remain.")) return;
-          await api("/releases/" + id + "/provider/discard", "POST", {component: name});
-          message("Change set discarded. Inspect any retained stack record in provider status."); await refresh();
+          const observed = await api("/releases/" + id + "/provider/discard", "POST", {component: name});
+          message("Change set discarded. Inspect any retained stack record in provider status." +
+            (observed.private_cache_cleanup?.warning ? " " + observed.private_cache_cleanup.warning : "")); await refresh();
         }, "discard-" + name));
       }
     }

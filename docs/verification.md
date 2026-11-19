@@ -1,5 +1,27 @@
 # Verification
 
+## Private-cache primary-state correction, 2026-11-05
+
+Independent native-owner scheduling on the first cache candidate completed a waiting release before
+readback acquired its lock. Whole-release cache writes then lost that confirmed success and outputs.
+Readback now reloads and revalidates component/configuration/operation under actual ownership, and
+both pending and final cache writes merge only cache metadata through the existing ledger transaction.
+Focused cases preserve completed state/outputs during inspection, refuse newly ineligible discard
+before its leaf, and isolate both metadata write modes from primary state. Earlier candidate evidence
+remains separate; sequential cleanup success alone did not cover this interleaving.
+
+## Separate private cache cleanup outcomes, 2026-11-05
+
+The sealed earlier installed Engine reproduced a harmless owned marker surviving a narrow unlink
+denial after waiting and successful local stages, with no cleanup observation and released locks.
+Current full Engine/LocalGate/SQLite cases preserve primary waiting/success/uncertainty and readback,
+record separate category failure, continue the other cache check and retain safe reopened metadata.
+They also cover unavailable observation recording, native link/nonregular-path refusal, existing
+active-worker exclusion, ordinary quiet removal and later explicit pending observation. Cache values
+and exception sentinels stay out of public results/events. One fixture initially expected failed
+preparation; the existing conservative primary result is correctly uncertain and remains so. These
+are local synthetic-cache cases, not actual credential retention, secure erasure or provider tests.
+
 ## Waiting worker admission correction, 2026-11-05
 
 Independent installed scheduling showed that a markerless record loaded before the worker lock

@@ -2,6 +2,7 @@
 
 
 import hashlib
+from contextlib import ExitStack
 import io
 import os
 import shutil
@@ -19,6 +20,53 @@ IGNORED = {".git", ".deploy-ops", ".terraform", ".venv", "venv", "node_modules",
 
 # Bound ordinary retained reads independently of source snapshot limits
 MAX_READ_BYTES = 2 * 1024 * 1024
+
+
+# Create a private runtime home without adopting unknown or repairing replaced existing entries
+def private_cache_directory(root: Path, path: Path, recorded: bool, *, create: bool = True) -> None:
+    path = checked_path(root, path)
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        if create:
+            path.mkdir(mode=0o700)
+        return
+    if not recorded or not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_mode & 0o077:
+        raise Refused('Existing private cache ownership is unavailable. Preserve it and inspect through the original local operator; no adoption or permission repair was attempted', 409)
+
+
+# Remove only the selected release cache through no-follow directory descriptors
+def remove_private_cache(state: Path, identifier: str, component: str, category: str) -> str:
+    if category not in {'home', 'build-home'} or any(
+            not value or value in {'.', '..'} or Path(value).name != value
+            for value in (identifier, component)):
+        return 'unverified'
+    if not shutil.rmtree.avoids_symlink_attacks:
+        return 'unverified'
+    try:
+        with ExitStack() as handles:
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            descriptor = os.open(state, flags)
+            handles.callback(os.close, descriptor)
+            for part in ('releases', identifier, component):
+                descriptor = os.open(part, flags, dir_fd=descriptor)
+                handles.callback(os.close, descriptor)
+            metadata = os.stat(category, dir_fd=descriptor, follow_symlinks=False)
+            if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_mode & 0o077:
+                return 'unverified'
+            try:
+                shutil.rmtree(category, dir_fd=descriptor)
+            except OSError:
+                return 'failed'
+            try:
+                os.stat(category, dir_fd=descriptor, follow_symlinks=False)
+            except FileNotFoundError:
+                return 'removed'
+            return 'unverified'
+    except FileNotFoundError:
+        return 'absent'
+    except (OSError, AttributeError, NotImplementedError):
+        return 'unverified'
 
 
 # Make operator-selected filesystem locations explicit while supporting native home shorthand
