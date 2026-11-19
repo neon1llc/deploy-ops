@@ -672,17 +672,23 @@ class Engine:
     # Persist each component transition and stop at review or uncertainty
     def advance(self, release_id: str) -> dict:
         from .configuration import require_saved
-        require_saved(self.path, self.state)
-        release = self.ledger.get(release_id)
-        if release["config_digest"] != self.spec.digest:
-            raise Refused("Workspace changed. Create a new release instead of resuming")
-        if release["status"] in ("succeeded", "failed", "cancelled", "uncertain"):
-            raise Refused("Terminal or interrupted releases cannot resume")
-        if release['status'] in {'running', 'cancel_requested'} or any(
-                node['status'] in {'running', 'preparing', 'uncertain'} for node in release['nodes'].values()):
-            raise Refused("Interrupted work must be inspected through recovery; starting another worker cannot prove the original stopped")
         scope = "release:" + release_id
-        self.ledger.lock(scope, release_id, kind='worker')
+        self.ledger.lock(scope, release_id)
+        try:
+            # Load and admit this worker's release only after exclusive ownership is established
+            require_saved(self.path, self.state)
+            release = self.ledger.get(release_id)
+            if release["config_digest"] != self.spec.digest:
+                raise Refused("Workspace changed. Create a new release instead of resuming")
+            if release["status"] in ("succeeded", "failed", "cancelled", "uncertain"):
+                raise Refused("Terminal or interrupted releases cannot resume")
+            if release['status'] in {'running', 'cancel_requested'} or any(
+                    node['status'] in {'running', 'preparing', 'uncertain'} for node in release['nodes'].values()):
+                raise Refused("Interrupted work must be inspected through recovery; starting another worker cannot prove the original stopped")
+            self.ledger.start_worker(scope, release_id, 'worker')
+        except BaseException:
+            self.ledger.unlock(scope, release_id)
+            raise
         current_name = None
         try:
             for name in release["order"]:

@@ -136,3 +136,47 @@ def test_saved_waiting_transition_survives_lost_return(engine, monkeypatch):
     restarted = Engine(engine.path)
     assert restarted.advance(release['id'])['status'] == 'waiting'
     assert waiting(restarted, release['id']) == original
+
+
+# A worker acquiring ownership after another legacy migration must reload the committed identity
+def test_markerless_waiting_identity_reloaded_under_worker_ownership(engine, monkeypatch):
+    release = engine.advance(engine.create('development', 'foundation')['id'])
+    identifier = release['id']
+    release['nodes']['foundation'].pop('waiting_request')
+    engine.ledger.save(release)
+    a, b = Engine(engine.path), Engine(engine.path)
+    acquire = a.ledger.lock
+    middle = []
+
+    # B completes a real serialized advance before A actually acquires the same native lock
+    def before_lock(scope, owner, kind=None):
+        b.advance(identifier)
+        middle.append(waiting(engine, identifier))
+        acquire(scope, owner, kind)
+
+    monkeypatch.setattr(a.ledger, 'lock', before_lock)
+    assert a.advance(identifier)['status'] == 'waiting'
+    assert [len(items) for items in middle[0]] == [2, 2, 2]
+    assert waiting(engine, identifier) == middle[0]
+
+
+# A cancellation that settles before lock acquisition cannot be overwritten by an older waiting copy
+def test_cancelled_release_revalidated_under_worker_ownership(engine, monkeypatch):
+    from deploy_ops.errors import Refused
+    release = engine.advance(engine.create('development', 'foundation')['id'])
+    identifier = release['id']
+    a, b = Engine(engine.path), Engine(engine.path)
+    acquire = a.ledger.lock
+
+    # Preserve normal lock and terminal guards rather than suppressing a contention refusal
+    def before_lock(scope, owner, kind=None):
+        b.cancel(identifier)
+        acquire(scope, owner, kind)
+
+    monkeypatch.setattr(a.ledger, 'lock', before_lock)
+    with pytest.raises(Refused, match='Terminal or interrupted'):
+        a.advance(identifier)
+    assert engine.ledger.get(identifier)['status'] == 'cancelled'
+    assert [len(items) for items in waiting(engine, identifier)] == [1, 1, 1]
+    with engine.ledger.store.connect() as connection:
+        assert connection.execute('SELECT count(*) FROM release_locks').fetchone()[0] == 0
