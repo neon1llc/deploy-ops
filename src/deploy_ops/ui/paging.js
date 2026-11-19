@@ -195,7 +195,7 @@ async function pagingRefresh() {
       if (binding.provider === "better-stack" && !binding.remote_id && action !== "retry") continue;
       if (action === "retry" && !["unknown", "failed"].includes(binding.state)) continue;
       const control = button((action === "readback" ? "Read remote status" : action) + " at " + binding.destination, async () => pagingRun(async () => {
-        if (action === "retry" && !window.confirm("Retry the selected operation? A lost response can mean it already succeeded, and another trigger may create a duplicate page.")) return;
+        if (action === "retry" && !await confirmAction("Retry the selected operation? A lost response can mean it already succeeded, and another trigger may create a duplicate page.")) return;
         await api("/paging/" + action, "POST", {binding: binding.id, version: binding.version, allow_duplicate: action === "retry"});
         element("paging-status").textContent = action === "readback" ? "Remote status checked. Send history, local incident and deployment state are unchanged." :
           "Selected destination action queued. Local incident and deployment state are unchanged.";
