@@ -80,3 +80,22 @@ deploy-ops --project deploy-ops.toml config patch --section components --name we
 The JSON result has the updated `toml`, a unified `diff`, validated fields, and the contract digest. Save the draft through the console or your editor. Check configuration output for repository paths and options before publishing it.
 
 Paging uses a separate versioned configuration, so edits don't invalidate deployment approvals. Use `deploy-ops paging` or the console. See [paging](paging.md).
+
+## Retained history and reviewed inputs
+
+`deploy-ops --state PATH status` and `events RELEASE` inspect an existing private store without loading
+current workspace or cloud grants. A missing path reports uninitialized state and creates nothing.
+Unsupported database formats and incomplete WAL copies are refused. Reading history does not restore
+execution authority or repair a store.
+
+Each release captures a repository once, then gives its components copies of that same snapshot.
+Committed capture uses the selected Git revision. Current-files capture ignores that revision and refuses
+if included files change while copying. It never commits or stashes the original workspace.
+
+New prepared format 2 binds local producer release IDs and output digests. A later producer claim makes
+older outputs ineligible until fresh successful evidence exists. Consumer preparation and claim recheck
+the exact frozen inputs. Legacy format 1 remains readable, but local dependencies without frozen lineage
+require fresh preparation. Unknown formats stop before claim. Historical approval bytes remain unchanged.
+
+Configuration Save refuses pending, running or uncertain preview cleanup, including cleanup on a
+successful deployment. Inspect and reconcile that retirement obligation first. Save never executes it.

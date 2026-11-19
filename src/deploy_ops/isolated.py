@@ -234,6 +234,8 @@ class IsolatedRoute:
             targets[app_target] = self.target("delivery")
         self.controller = Controller(Settings(targets=targets, database=str(self.state / "state.db"),
                                      execution_seconds=900), Store(str(self.state / "state.db")))
+        from .delivery.ledger import Ledger
+        self.ledger = Ledger(self.controller.store)
 
     # Return only public recipe and controller records without operator file references
     def status(self):
@@ -242,8 +244,10 @@ class IsolatedRoute:
             self.current()
         except Refused as error:
             available, reason = False, str(error)
-        requests = [item for item in self.controller.list_requests()
-                    if item["manifest"]["target"] in {self.plan_target, self.apply_target}]
+        targets = [self.plan_target, self.apply_target]
+        active = self.controller.active_requests(targets)
+        active_ids = {item['id'] for item in active}
+        requests = active + [item for item in self.controller.list_requests(targets=targets) if item['id'] not in active_ids]
         with self.controller.store.connect() as connection:
             rows = connection.execute("SELECT payload FROM audit ORDER BY sequence DESC LIMIT 200").fetchall()
         errors = {}
@@ -293,7 +297,12 @@ class IsolatedRoute:
             raise Refused("Reconciliation digest differs from the retained request")
         if not 10 <= len(note) <= 500:
             raise Refused("Record an inspection note between 10 and 500 characters", 422)
-        return self.controller.resolve(request_id, Resolution(outcome="failed", note=note), "local-operator")
+        scope = 'isolated:' + request_id
+        self.ledger.recovery_lock(scope, request_id)
+        try:
+            return self.controller.resolve(request_id, Resolution(outcome="failed", note=note), "local-operator")
+        finally:
+            self.ledger.unlock(scope, request_id)
 
     # Preserve safe worker refusal evidence in the existing audit owner
     def failed(self, request_id, error):
@@ -366,8 +375,13 @@ class IsolatedRoute:
 
     # Bind the operator decision to the exact displayed request digest
     def approve(self, request_id: str, digest: str):
-        self.current()
-        return self.controller.decide(request_id, Decision(digest=digest, decision="approve"), "local-operator")
+        return self.decide(request_id, Decision(digest=digest, decision='approve'))
+
+    # Fresh authority checks current registration; withdrawing unstarted authority remains available
+    def decide(self, request_id: str, decision: Decision):
+        if decision.decision == 'approve':
+            self.current()
+        return self.controller.decide(request_id, decision, 'local-operator')
 
     # Build a fixed guest packet only from the current operator-owned recipe
     def packet(self, stage: str, deadline: int):
@@ -381,6 +395,15 @@ class IsolatedRoute:
 
     # Claim one exact approval and supervise the chosen planning or apply identity
     def execute(self, request_id: str):
+        scope = 'isolated:' + request_id
+        self.ledger.lock(scope, request_id)
+        try:
+            return self._execute(request_id)
+        finally:
+            self.ledger.unlock(scope, request_id)
+
+    # Execute only while the existing ledger records this worker's ownership
+    def _execute(self, request_id: str):
         self.current()
         request = self.controller.get(request_id)
         target = request["manifest"]["target"]
@@ -474,8 +497,7 @@ class IsolatedGate(LocalGate):
 
     # Recheck grant expiry and edits before accepting an application approval
     def approve(self, request_id, digest, decision="approve"):
-        self.route.current()
-        return self.controller.decide(request_id, Decision(digest=digest, decision=decision), "local-operator")
+        return self.route.decide(request_id, Decision(digest=digest, decision=decision))
 
     # Reuse the controller's expiry, generation and unresolved-state receipt checks
     def receipt(self, target, receipt_id):

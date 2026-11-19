@@ -48,10 +48,30 @@ def environment(home: Path, credentials: dict[str, str] | None = None) -> dict[s
 
 # Remove known secrets and common credential assignments from displayed output
 def redact(text: str, secrets: list[str]) -> str:
-    for secret in sorted((item for item in secrets if len(item) >= 8), key=len, reverse=True):
-        text = text.replace(secret, "[redacted]")
-    text = re.sub(r"(?i)(token|password|secret|authorization)(\s*[:=]\s*)[^\s,]+", r"\1\2[redacted]", text)
-    return text
+    ranges = []
+    for secret in set(item for item in secrets if len(item) >= 8):
+        start = 0
+        while (position := text.find(secret, start)) >= 0:
+            end = position + len(secret)
+            # Collapse dense self-overlap while retaining matches from every registered value
+            if ranges and ranges[-1][0] <= position <= ranges[-1][1]:
+                ranges[-1] = (ranges[-1][0], max(ranges[-1][1], end))
+            else:
+                ranges.append((position, end))
+            start = position + 1
+    for match in re.finditer(r"(?i)(token|password|secret|authorization)(\s*[:=]\s*)([^\s,]+)", text):
+        ranges.append(match.span(3))
+    merged = []
+    for start, end in sorted(ranges):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    parts, previous = [], 0
+    for start, end in merged:
+        parts.extend((text[previous:start], '[redacted]'))
+        previous = end
+    return ''.join(parts) + text[previous:]
 
 
 # Supervise bounded native commands with authority heartbeats
@@ -114,7 +134,8 @@ class Process:
                     label = metadata.get("operation", metadata["tool"])
                     raise Refused(f"{label} failed with exit code {process.returncode}")
                 if not capture and text:
-                    self.emit("command.output", {"text": redact(text[-4000:], self.secrets)})
+                    # Keep complete masking context before selecting the bounded display tail
+                    self.emit("command.output", {"text": redact(text, self.secrets)[-4000:]})
                 self.emit("command.finished", {**metadata, "elapsed_ms": round((time.monotonic() - started) * 1000)})
                 return text
             except Exception:

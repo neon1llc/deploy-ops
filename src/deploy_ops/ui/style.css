@@ -17,7 +17,8 @@ button, input, select, textarea { font: inherit; }
 
 /* Native dialogs contain focus while keeping confirmation text readable at narrow widths */
 dialog { color: var(--text, #17211a); background: var(--panel, #fbfcfb); border: 1px solid var(--line, #c5d1c8); border-radius: var(--radius, 10px); padding: var(--space); width: min(560px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow: auto; }
-dialog::backdrop { background: rgb(0 0 0 / 55%); }
+dialog:modal { overscroll-behavior: contain; }
+dialog::backdrop { background: rgb(0 0 0 / 55%); overflow: hidden; overscroll-behavior: contain; }
 dialog textarea { width: 100%; margin-bottom: 16px; }
 button, a, input, select, textarea, summary { -webkit-tap-highlight-color: transparent; }
 

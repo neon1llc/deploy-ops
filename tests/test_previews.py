@@ -361,6 +361,59 @@ def test_cli_and_console_share_preview_contract(preview_engine):
     assert cleaned['cleanup']['status'] == 'retired'
 
 
+# Optional cleanup read failure preserves authenticated retained deployment evidence
+@pytest.mark.parametrize('interrupted', [False, True])
+def test_outstanding_cleanup_blocks_workspace_save(preview_engine, monkeypatch, interrupted):
+    from deploy_ops.delivery.configuration import save, source_hash
+    engine = preview_engine
+    release = deploy(engine)
+    prepared = approve(engine, release)
+    if interrupted:
+        from deploy_ops.delivery import previews
+
+        # A refused removal leaves a real uncertain retirement obligation
+        def refuse_removal(*args):
+            raise Refused('Removal interrupted before completion')
+
+        monkeypatch.setattr(previews, '_unlink', refuse_removal)
+        with pytest.raises(Refused):
+            execute_cleanup(engine, release['id'])
+        assert engine.ledger.get(release['id'])['cleanup']['status'] == 'uncertain'
+    source = engine.path.read_text()
+    replacement = source + '\n# Reviewed workspace note\n'
+    with pytest.raises(Refused, match='preview cleanup'):
+        save(Engine(engine.path), replacement, source_hash(source))
+    assert engine.path.read_text() == source
+    assert not (engine.state / 'previous-workspace.toml').exists()
+    assert not engine.path.with_suffix('.pending').exists()
+    assert engine.ledger.get(release['id'])['cleanup']['request_id'] == prepared['cleanup']['request_id']
+
+
+# Optional cleanup read failure preserves authenticated retained deployment evidence
+def test_cleanup_read_failure_keeps_release_detail(preview_engine, monkeypatch):
+    from fastapi.testclient import TestClient
+    from deploy_ops.console import create_app
+    engine = preview_engine
+    release = finish(engine, engine.create('development', preview_owner='ops'))
+    prepare_cleanup(engine, release['id'])
+
+    # Simulate an unavailable authority observation without changing retained state
+    def unavailable(request_id):
+        raise RuntimeError('private-cleanup-error-sentinel')
+
+    monkeypatch.setattr(engine.gate, 'status', unavailable)
+    client = TestClient(create_app(engine, 'x' * 32), base_url='http://127.0.0.1:8765')
+    response = client.get('/api/releases/' + release['id'], headers={'Authorization': 'Bearer ' + 'x' * 32})
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail['release']['status'] == 'succeeded'
+    assert detail['release']['cleanup']['request_id']
+    assert detail['events']
+    assert detail['cleanup_request']['status'] == 'unavailable'
+    assert detail['cleanup_request']['digest'] is None
+    assert 'private-cleanup-error-sentinel' not in response.text
+
+
 # Cleanup review preserves serving until actual retirement; clock expiry refuses only new reads
 def test_serving_preview_cleanup_and_expiry(preview_engine, monkeypatch):
     import httpx

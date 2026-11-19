@@ -14,6 +14,7 @@ from .. import __version__
 from ..client import private_json
 from ..config import fingerprint
 from ..errors import Refused
+from .configuration import boundary
 from ..models import Proposal
 from .gate import LocalGate, target_name
 from .observation import checked_path, read_regular, reviewed, tree_digest
@@ -191,30 +192,31 @@ def prepare_cleanup(engine, release_id):
     scope = "release:" + release_id
     engine.ledger.lock(scope, release_id)
     try:
-        release = engine.ledger.get(release_id)
-        _eligible(engine, release)
-        previous = release.get("cleanup", {})
-        if previous.get("status") not in (None, "reconciled"):
-            raise Refused("Inspect the existing cleanup operation before preparing another")
-        plan = inventory(engine, release)
-        operation = uuid.uuid4().hex
-        path = engine.state / "cleanup" / operation / "prepared.json"
-        private_json(path, plan)
-        artifact_digest = hashlib.sha256(_bytes(plan)).hexdigest()
-        # The same target/controller owns deletion; opt-in preview targets always require manual authority
-        component = release["order"][-1]
-        proposal = Proposal(target=target_name(engine.spec.name, release["environment"], component),
-                            engine="delivery", artifact_digest=artifact_digest, tool_version=__version__,
-                            preview={"config_digest": engine.spec.digest, "preview": {
-                                "changes": [{"address": release_id, "resource_type": "local_preview", "action": "delete"}],
-                                "findings": [], "manual_only": True}})
-        source = {**release, "id": operation, "source_digest": fingerprint(plan)}
-        release["cleanup"] = {"id": operation, "status": "preparing", "artifact_digest": artifact_digest,
-                              "source": source["source_digest"], "plan": plan}
-        engine.ledger.save(release, "preview.cleanup.preparing", {"operation": operation})
-        request = engine.gate.submit(proposal, source)
-        release["cleanup"].update(status="waiting", request_id=request["id"], request_digest=request["digest"])
-        return engine.ledger.save(release, "preview.cleanup.prepared", {"operation": operation})
+        with boundary(engine):
+            release = engine.ledger.get(release_id)
+            _eligible(engine, release)
+            previous = release.get("cleanup", {})
+            if previous.get("status") not in (None, "reconciled"):
+                raise Refused("Inspect the existing cleanup operation before preparing another")
+            plan = inventory(engine, release)
+            operation = uuid.uuid4().hex
+            path = engine.state / "cleanup" / operation / "prepared.json"
+            private_json(path, plan)
+            artifact_digest = hashlib.sha256(_bytes(plan)).hexdigest()
+            # The same target/controller owns deletion; opt-in preview targets always require manual authority
+            component = release["order"][-1]
+            proposal = Proposal(target=target_name(engine.spec.name, release["environment"], component),
+                                engine="delivery", artifact_digest=artifact_digest, tool_version=__version__,
+                                preview={"config_digest": engine.spec.digest, "preview": {
+                                    "changes": [{"address": release_id, "resource_type": "local_preview", "action": "delete"}],
+                                    "findings": [], "manual_only": True}})
+            source = {**release, "id": operation, "source_digest": fingerprint(plan)}
+            release["cleanup"] = {"id": operation, "status": "preparing", "artifact_digest": artifact_digest,
+                                  "source": source["source_digest"], "plan": plan}
+            engine.ledger.save(release, "preview.cleanup.preparing", {"operation": operation})
+            request = engine.gate.submit(proposal, source)
+            release["cleanup"].update(status="waiting", request_id=request["id"], request_digest=request["digest"])
+            return engine.ledger.save(release, "preview.cleanup.prepared", {"operation": operation})
     finally:
         engine.ledger.unlock(scope, release_id)
 
@@ -273,53 +275,54 @@ def execute_cleanup(engine, release_id):
     scope = "release:" + release_id
     engine.ledger.lock(scope, release_id)
     try:
-        release = engine.ledger.get(release_id)
-        _eligible(engine, release)
-        cleanup = release.get("cleanup", {})
-        if cleanup.get("status") != "waiting":
-            raise Refused("Prepare and approve a fresh cleanup first")
-        path = checked_path(engine.state, engine.state / "cleanup" / cleanup["id"] / "prepared.json")
-        content = read_regular(path, 4_000_000)
-        if hashlib.sha256(content).hexdigest() != cleanup["artifact_digest"]:
-            raise Refused("Reviewed cleanup artifact changed")
-        plan = json.loads(content)
-        request = engine.gate.status(cleanup["request_id"])
-        source = {**release, "id": cleanup["id"], "source_digest": cleanup["source"]}
-        # Persist cleanup ownership before performing any deletion
-        lease = engine.gate.claim(request, source)
-        cleanup.update(status="running", worker_pid=os.getpid())
-        release["preview_retiring"] = True
-        engine.ledger.save(release, "preview.cleanup.running", {"operation": cleanup["id"]})
-        deleted = []
-        try:
-            # Recompute the entire inventory after claiming authority to catch changes since review
-            if inventory(engine, release) != plan:
-                raise Refused("Preview changed after cleanup preparation")
-            root = namespace(engine, release)
-            for entry in plan["delete"]:
-                engine.gate.heartbeat(lease)
-                _unlink(root, entry["path"], entry["digest"])
-                deleted.append(entry["path"])
-            for relative in plan["remove_directories"]:
-                engine.gate.heartbeat(lease)
-                _rmdir(root, relative)
-            # Keep an ownership tombstone even when all generated content is gone, so interrupted
-            # completion can be inspected and replanned without adopting an unmarked directory
-            result = engine.gate.complete(lease, "succeeded")
-            if result["status"] != "succeeded":
-                raise Refused("Cleanup authority outcome needs reconciliation")
-            cleanup.update(status="retired-retained" if plan["retain"] else "retired", deleted=deleted,
-                           completed_at=int(time.time()))
-            return engine.ledger.save(release, "preview.retired", {"operation": cleanup["id"], "retained": plan["retain"]})
-        except Exception as error:
-            reason = str(error) if isinstance(error, Refused) else type(error).__name__
-            cleanup.update(status="uncertain", deleted=deleted, reason=reason)
-            engine.ledger.save(release, "preview.cleanup.uncertain", {"operation": cleanup["id"], "deleted": deleted, "reason": reason})
+        with boundary(engine):
+            release = engine.ledger.get(release_id)
+            _eligible(engine, release)
+            cleanup = release.get("cleanup", {})
+            if cleanup.get("status") != "waiting":
+                raise Refused("Prepare and approve a fresh cleanup first")
+            path = checked_path(engine.state, engine.state / "cleanup" / cleanup["id"] / "prepared.json")
+            content = read_regular(path, 4_000_000)
+            if hashlib.sha256(content).hexdigest() != cleanup["artifact_digest"]:
+                raise Refused("Reviewed cleanup artifact changed")
+            plan = json.loads(content)
+            request = engine.gate.status(cleanup["request_id"])
+            source = {**release, "id": cleanup["id"], "source_digest": cleanup["source"]}
+            # Persist cleanup ownership before performing any deletion
+            lease = engine.gate.claim(request, source)
+            cleanup.update(status="running", worker_pid=os.getpid())
+            release["preview_retiring"] = True
+            engine.ledger.save(release, "preview.cleanup.running", {"operation": cleanup["id"]})
+            deleted = []
             try:
-                engine.gate.complete(lease, "aborted")
-            except Exception:
-                pass
-            raise Refused("Cleanup is uncertain. Inspect remaining files and reconcile before preparing another plan") from None
+                # Recompute the entire inventory after claiming authority to catch changes since review
+                if inventory(engine, release) != plan:
+                    raise Refused("Preview changed after cleanup preparation")
+                root = namespace(engine, release)
+                for entry in plan["delete"]:
+                    engine.gate.heartbeat(lease)
+                    _unlink(root, entry["path"], entry["digest"])
+                    deleted.append(entry["path"])
+                for relative in plan["remove_directories"]:
+                    engine.gate.heartbeat(lease)
+                    _rmdir(root, relative)
+                # Keep an ownership tombstone even when all generated content is gone, so interrupted
+                # completion can be inspected and replanned without adopting an unmarked directory
+                result = engine.gate.complete(lease, "succeeded")
+                if result["status"] != "succeeded":
+                    raise Refused("Cleanup authority outcome needs reconciliation")
+                cleanup.update(status="retired-retained" if plan["retain"] else "retired", deleted=deleted,
+                               completed_at=int(time.time()))
+                return engine.ledger.save(release, "preview.retired", {"operation": cleanup["id"], "retained": plan["retain"]})
+            except Exception as error:
+                reason = str(error) if isinstance(error, Refused) else type(error).__name__
+                cleanup.update(status="uncertain", deleted=deleted, reason=reason)
+                engine.ledger.save(release, "preview.cleanup.uncertain", {"operation": cleanup["id"], "deleted": deleted, "reason": reason})
+                try:
+                    engine.gate.complete(lease, "aborted")
+                except Exception:
+                    pass
+                raise Refused("Cleanup is uncertain. Inspect remaining files and reconcile before preparing another plan") from None
     finally:
         engine.ledger.unlock(scope, release_id)
 
@@ -331,31 +334,32 @@ def reconcile_cleanup(engine, release_id, note, confirm_removed=False):
     scope = "release:" + release_id
     engine.ledger.recovery_lock(scope, release_id)
     try:
-        release = engine.ledger.get(release_id)
-        _eligible(engine, release)
-        cleanup = release.get("cleanup", {})
-        if cleanup.get("status") not in {"preparing", "waiting", "running", "uncertain"}:
-            raise Refused("Only pending or interrupted cleanup needs reconciliation")
-        if confirm_removed:
-            root = checked_path(engine.state, engine.state / "previews" / release_id)
-            if root.exists() or cleanup["plan"]["retain"]:
-                raise Refused("Confirm removal only after inspecting an absent namespace with no retained data")
-        if not cleanup.get("request_id"):
-            # A crash after submit but before saving the returned ID must not leave an approvable orphan
-            with engine.ledger.store.connect() as connection:
-                for row in connection.execute("SELECT data FROM requests"):
-                    candidate = json.loads(row[0])
-                    manifest = candidate["manifest"]
-                    if manifest["source"]["run_id"] == cleanup["id"] and manifest["artifact_digest"] == cleanup["artifact_digest"]:
-                        cleanup["request_id"], cleanup["request_digest"] = candidate["id"], candidate["digest"]
-                        break
-        if cleanup.get("request_id"):
-            request = engine.gate.status(cleanup["request_id"])
-            if request["status"] in {"running", "uncertain"}:
-                engine.gate.recover(request["id"], note)
-            elif request["status"] in {"pending", "approved"}:
-                engine.gate.approve(request["id"], request["digest"], "reject")
-        cleanup.update(status="retired-inspected" if confirm_removed else "reconciled", note=note)
-        return engine.ledger.save(release, "preview.cleanup.reconciled", {"operation": cleanup["id"], "note": note})
+        with boundary(engine):
+            release = engine.ledger.get(release_id)
+            _eligible(engine, release)
+            cleanup = release.get("cleanup", {})
+            if cleanup.get("status") not in {"preparing", "waiting", "running", "uncertain"}:
+                raise Refused("Only pending or interrupted cleanup needs reconciliation")
+            if confirm_removed:
+                root = checked_path(engine.state, engine.state / "previews" / release_id)
+                if root.exists() or cleanup["plan"]["retain"]:
+                    raise Refused("Confirm removal only after inspecting an absent namespace with no retained data")
+            if not cleanup.get("request_id"):
+                # A crash after submit but before saving the returned ID must not leave an approvable orphan
+                with engine.ledger.store.connect() as connection:
+                    for row in connection.execute("SELECT data FROM requests"):
+                        candidate = json.loads(row[0])
+                        manifest = candidate["manifest"]
+                        if manifest["source"]["run_id"] == cleanup["id"] and manifest["artifact_digest"] == cleanup["artifact_digest"]:
+                            cleanup["request_id"], cleanup["request_digest"] = candidate["id"], candidate["digest"]
+                            break
+            if cleanup.get("request_id"):
+                request = engine.gate.status(cleanup["request_id"])
+                if request["status"] in {"running", "uncertain"}:
+                    engine.gate.recover(request["id"], note)
+                elif request["status"] in {"pending", "approved"}:
+                    engine.gate.approve(request["id"], request["digest"], "reject")
+            cleanup.update(status="retired-inspected" if confirm_removed else "reconciled", note=note)
+            return engine.ledger.save(release, "preview.cleanup.reconciled", {"operation": cleanup["id"], "note": note})
     finally:
         engine.ledger.unlock(scope, release_id)

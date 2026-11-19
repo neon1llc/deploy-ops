@@ -69,7 +69,8 @@ def parser():
         command.add_argument("--component")
         command.add_argument("--only", action="store_true", help="Reuse recorded dependency outputs instead of redeploying them")
         if name == "run":
-            command.add_argument("--agent", default="")
+            command.add_argument("--caller-label", dest="agent", default="", help="Self-reported caller label")
+            command.add_argument("--agent", dest="agent", help=argparse.SUPPRESS)
             command.add_argument("--image", help="Immutable image in the component's configured image_repository")
             command.add_argument("--receipts", type=json.loads, default={}, help='Exact infrastructure receipt IDs as JSON: {"foundation":"ID"}')
             command.add_argument("--wait-seconds", type=int, default=0)
@@ -289,6 +290,16 @@ def dispatch(args):
         from .delivery.engine import Engine
         from .delivery.operator import Operator
         return Operator(Engine(args.project, args.state, args.controller)).call(args.action, args.identifier, args.values)
+
+    # Retained history is readable without loading workspace, credentials or execution owners
+    if args.command in {"status", "events"}:
+        from .delivery.ledger import Ledger
+        state = (args.state or args.project.resolve().parent / '.deploy-ops').resolve()
+        ledger = Ledger.open_existing(state)
+        if args.command == "events":
+            ledger.get(args.release)
+            return ledger.events(args.release)
+        return ledger.get(args.release) if args.release else ledger.list()
 
     # Stateful actions share the same workspace and ledger owner
     from .delivery.engine import Engine

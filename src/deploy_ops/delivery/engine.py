@@ -14,7 +14,7 @@ from .. import __version__
 from ..client import file_digest, private_json
 from ..config import fingerprint
 from ..errors import Refused
-from ..models import Agent, Proposal
+from ..models import Caller, Proposal
 from ..store import Store
 from .adapters import REGISTRY
 from .adapters.base import Context
@@ -180,7 +180,12 @@ class Engine:
         content = reader(path) if reader else path.read_bytes()
         if hashlib.sha256(content).hexdigest() != release["nodes"][name]["artifact_digest"]:
             raise Refused("Reviewed deployment artifact changed")
-        return json.loads(content)
+        envelope = json.loads(content)
+        if envelope.get('schema_version') not in {1, 2} or envelope.get('adapter_contract_version', 1) != 1:
+            raise Refused("Unsupported prepared format. Inspect with the original runtime or prepare fresh evidence", 422)
+        if envelope.get('adapter') != release['nodes'][name]['adapter']:
+            raise Refused("Prepared adapter differs from the retained release", 422)
+        return envelope
 
 
     # Freeze selected repositories and bind release inputs before preparing changes
@@ -242,7 +247,7 @@ class Engine:
         release_id = uuid.uuid4().hex
         root = self.state / "releases" / release_id
         private_directory(root)
-        nodes, snapshots = {}, {}
+        nodes, snapshots, repositories = {}, {}, {}
         for node in graph["components"]:
             name = node["name"]
             configured = self.spec.component(name, environment)
@@ -257,13 +262,19 @@ class Engine:
                 shutil.copytree(original / "source", source, ignore=shutil.ignore_patterns(".terraform"))
                 source_record = origin["nodes"][name]["source"]
             else:
-                source_record = snapshot(self.spec.repositories[configured.repository], self.path.parent, source)
+                # Capture each selected repository once so components cannot observe different moving refs
+                if configured.repository not in repositories:
+                    captured = root / 'repositories' / configured.repository
+                    source_record = snapshot(self.spec.repositories[configured.repository], self.path.parent, captured)
+                    repositories[configured.repository] = (captured, source_record)
+                captured, source_record = repositories[configured.repository]
+                shutil.copytree(captured, source)
             snapshots[name] = source_record
             nodes[name] = {"status": "queued", "adapter": configured.adapter, "source": source_record, "outputs": {}}
         release = {"id": release_id, "project": self.spec.name, "environment": environment,
                    "config_digest": self.spec.digest, "source_digest": fingerprint(snapshots),
                    "created_at": int(time.time()), "status": "queued", "order": list(nodes), "nodes": nodes,
-                   "agent": agent, "origin_release": promote, "rollback": rollback, "artifact_inputs": artifact_inputs,
+                   "caller_label": agent, "origin_release": promote, "rollback": rollback, "artifact_inputs": artifact_inputs,
                    "receipt_inputs": receipts}
         if preview_metadata:
             from .previews import initialize
@@ -277,7 +288,7 @@ class Engine:
 
 
     # Resolve component dependencies and keep process authority scoped to this release
-    def _context(self, release: dict, name: str, credentials: dict, lease=None) -> Context:
+    def _context(self, release: dict, name: str, credentials: dict, lease=None, reviewed=None) -> Context:
         component = self.spec.component(name, release["environment"])
         environment = self.spec.environments[release["environment"]]
         folder = self.state / "releases" / release["id"] / name
@@ -287,44 +298,57 @@ class Engine:
         private_directory(folder / "artifacts")
         private_directory(folder / "home")
         private_directory(folder / "build-home")
-        outputs = {key: value["outputs"] for key, value in release["nodes"].items() if value["status"] == "succeeded"}
-        if self.gate.supports_receipts:
-            target = target_name(self.spec.name, release["environment"], name)
-            bindings = self.gate.context(target).get("receipt_dependencies", {})
-            inputs = release.get("receipt_inputs", {})
-            if set(bindings) != set(inputs) or set(bindings) != set(component.needs):
-                raise Refused("Provide exactly the infrastructure receipts registered for this application", 422)
-            for dependency, receipt_id in inputs.items():
-                receipt = self.gate.receipt(target, receipt_id)
-                outputs[dependency] = {**receipt["outputs"], "region": receipt["region"]}
-                release["nodes"][name].setdefault("infrastructure_receipts", {})[dependency] = receipt
-        # Reuse completed outputs only under this same environment and workspace contract
-        for dependency in component.needs:
-            if dependency in outputs:
-                continue
-            if release.get("preview"):
-                raise Refused("Preview dependencies must be deployed in the same isolated release", 422)
-            receipt = self.ledger.latest_outputs(release["environment"], dependency, self.spec.digest)
-            if not receipt:
-                raise Refused(f"Deploy dependency {dependency} first, or include dependencies", 422)
-            outputs[dependency] = receipt["outputs"]
-            release["nodes"][name].setdefault("dependency_receipts", {})[dependency] = receipt["receipt"]
-        deployment_root = self.deployment_root(release)
+        if reviewed is not None:
+            # Execution consumes the exact frozen resolution without rewriting producer provenance
+            resolved = reviewed['options']
+            deployment_root = self.deployment_root(release)
+        else:
+            outputs = {key: value["outputs"] for key, value in release["nodes"].items() if value["status"] == "succeeded"}
+            if self.gate.supports_receipts:
+                target = target_name(self.spec.name, release["environment"], name)
+                bindings = self.gate.context(target).get("receipt_dependencies", {})
+                inputs = release.get("receipt_inputs", {})
+                if set(bindings) != set(inputs) or set(bindings) != set(component.needs):
+                    raise Refused("Provide exactly the infrastructure receipts registered for this application", 422)
+                for dependency, receipt_id in inputs.items():
+                    receipt = self.gate.receipt(target, receipt_id)
+                    outputs[dependency] = {**receipt["outputs"], "region": receipt["region"]}
+                    release["nodes"][name].setdefault("infrastructure_receipts", {})[dependency] = receipt
+            # Reuse completed outputs only under this same environment and workspace contract
+            local_dependencies = {}
+            for dependency in component.needs:
+                if dependency in outputs:
+                    if dependency not in release['nodes'][name].get('infrastructure_receipts', {}):
+                        local_dependencies[dependency] = {'release_id': release['id'], 'outputs_digest': fingerprint(outputs[dependency])}
+                    continue
+                if release.get("preview"):
+                    raise Refused("Preview dependencies must be deployed in the same isolated release", 422)
+                receipt = self.ledger.latest_outputs(release["environment"], dependency, self.spec.digest)
+                if not receipt:
+                    raise Refused(f"Deploy dependency {dependency} first, or include dependencies", 422)
+                outputs[dependency] = receipt["outputs"]
+                release["nodes"][name].setdefault("dependency_receipts", {})[dependency] = receipt["receipt"]
+                local_dependencies[dependency] = {'release_id': receipt['receipt'], 'outputs_digest': fingerprint(receipt['outputs'])}
+            if not lease:
+                release['nodes'][name]['local_dependencies'] = local_dependencies
+            deployment_root = self.deployment_root(release)
+            # Resolve public references before applying the release-specific artifact input
+            resolved = options(component, environment, release["environment"], outputs)
+            resolved.update(release.get("artifact_inputs", {}).get(name, {}))
+            if release.get("artifact_inputs", {}).get(name, {}).get("image"):
+                repository = resolved.get("image_repository", "")
+                if not re.fullmatch(re.escape(repository) + r"@sha256:[0-9a-f]{64}", resolved["image"]):
+                    raise Refused("Image does not match the verified infrastructure registry", 422)
+
+        # Preview lifetime and ownership remain current checks even when inputs are frozen
         if release.get("preview"):
             from .previews import active
             active(self, release)
-        # Resolve public references before applying the release-specific artifact input
-        resolved = options(component, environment, release["environment"], outputs)
-        resolved.update(release.get("artifact_inputs", {}).get(name, {}))
-        if release.get("artifact_inputs", {}).get(name, {}).get("image"):
-            repository = resolved.get("image_repository", "")
-            if not re.fullmatch(re.escape(repository) + r"@sha256:[0-9a-f]{64}", resolved["image"]):
-                raise Refused("Image does not match the verified infrastructure registry", 422)
 
         # Recheck cancellation and current authority before each native command
         def heartbeat():
             current = self.ledger.get(release["id"])
-            if current["status"] == "cancel_requested":
+            if current["status"] in {"cancel_requested", "cancelled"}:
                 raise Refused("Release cancellation requested. Inspect any in-flight provider operation")
             if lease:
                 self.gate.heartbeat(lease)
@@ -419,9 +443,18 @@ class Engine:
                 raise Refused("Use the separate planning/execution gate workflow for cloud IaC and custom commands")
             if not release.get("origin_release") and (component.build.checks or component.build.command or component.build.image):
                 raise Refused("Build in a separate unprivileged CI job, then supply an immutable image digest")
+        # Known missing local inputs stop before builds or effect-capable native preparation
+        if not self.gate.supports_receipts:
+            for dependency in component.needs:
+                if release['nodes'].get(dependency, {}).get('status') != 'succeeded' and not self.ledger.latest_outputs(
+                        release['environment'], dependency, self.spec.digest):
+                    raise Refused(f"Deploy dependency {dependency} first, or include dependencies", 422)
         node["status"] = "preparing"
         release["status"] = "running"
         self.ledger.save(release, "component.preparing", {"component": name})
+        if release['status'] in {'cancel_requested', 'cancelled'}:
+            node['status'] = 'cancelled'
+            return
         target = target_name(self.spec.name, release["environment"], name)
         authority = self.gate.context(target)
         if authority["config_digest"] != self.spec.digest:
@@ -447,7 +480,9 @@ class Engine:
         else:
             prepared = adapter.prepare(context)
         # Bind source, artifact tree, options and provider preview into one immutable envelope
-        envelope = {"schema_version": 1, "config_digest": self.spec.digest, "adapter": context.component.adapter,
+        envelope = {"schema_version": 2, "adapter_contract_version": 1,
+                    "local_dependencies": node.get('local_dependencies', {}),
+                    "config_digest": self.spec.digest, "adapter": context.component.adapter,
                     "source_digest": digest_tree(context.stage.parent / "source"),
                     "artifact_tree": digest_tree(context.stage), "options": context.options,
                     "prepared": prepared, "infrastructure_receipts": receipts}
@@ -456,7 +491,7 @@ class Engine:
         proposal = Proposal(target=target, engine="delivery", artifact_digest=file_digest(path),
                             preview={"config_digest": self.spec.digest, "preview": prepared["preview"]},
                             tool_version=__version__, estimated_monthly_delta_cents=context.component.estimated_monthly_delta_cents,
-                            agent=Agent(label=release["agent"]),
+                            caller=Caller(label=release.get("caller_label", release.get("agent", ""))),
                             receipts={key: {"id": value["id"], "digest": value["digest"]} for key, value in receipts.items()})
         request = self.gate.submit(proposal, release)
         node.update(status="prepared", request_id=request["id"], request_digest=request["digest"],
@@ -474,16 +509,29 @@ class Engine:
             raise Refused("Reviewed source or workspace changed")
         if digest_tree(folder / "artifacts") != envelope["artifact_tree"]:
             raise Refused("Prepared files changed after approval")
+        # Claim only the exact local producer generations bound into the reviewed envelope
+        if envelope['schema_version'] == 1 and self.spec.component(name, release['environment']).needs and not envelope.get('infrastructure_receipts'):
+            raise Refused("Legacy local dependencies lack frozen lineage. Preserve this release and prepare fresh evidence")
+        # The controller invokes this same check under its claim transaction
+        def check_local_inputs():
+            if self.ledger.get(release['id'])['status'] in {'cancel_requested', 'cancelled'}:
+                raise Refused('Release cancellation requested before execution admission')
+            for dependency, frozen in envelope.get('local_dependencies', {}).items():
+                current = self.ledger.latest_outputs(release['environment'], dependency, self.spec.digest)
+                if not current or current['receipt'] != frozen['release_id'] or fingerprint(current['outputs']) != frozen['outputs_digest']:
+                    raise Refused("Reviewed local dependency changed or is unresolved. Prepare fresh evidence")
+
+        check_local_inputs()
         # Consume approval only after the retained source and artifact checks pass
-        lease = self.gate.claim(request, release)
+        lease = (self.gate.claim(request, release, local_input_check=check_local_inputs)
+                 if isinstance(self.gate, LocalGate) else self.gate.claim(request, release))
         node["status"] = "running"
         release["status"] = "running"
         self.ledger.save(release, "component.running", {"component": name})
         outcome = "aborted"
         try:
             credentials = self.gate.credentials(lease)
-            context = self._context(release, name, credentials, lease)
-            context.options = envelope["options"]
+            context = self._context(release, name, credentials, lease, reviewed=envelope)
             self._login(context, credentials)
             outputs = REGISTRY[context.component.adapter].apply(context, envelope["prepared"])
             self.gate.heartbeat(lease)
@@ -514,13 +562,14 @@ class Engine:
                 node = release["nodes"][name]
                 if node["status"] == "succeeded":
                     continue
-                if self.ledger.get(release_id)["status"] == "cancel_requested":
-                    release["status"] = "cancelled"
-                    return self.ledger.save(release, "release.cancelled")
+                if self.ledger.get(release_id)["status"] in {"cancel_requested", "cancelled"}:
+                    return self._settle_stop(release)
                 if node["status"] in ("running", "preparing"):
                     raise Refused("Interrupted work must be reconciled before a new release")
                 if node["status"] == "queued":
                     self._prepare(release, name)
+                if self.ledger.get(release_id)['status'] in {'cancel_requested', 'cancelled'}:
+                    return self._settle_stop(release)
                 request = self.gate.status(node["request_id"])
                 if request["status"] == "pending":
                     # Re-observing one exact pending request is not another decision-needed transition
@@ -534,10 +583,14 @@ class Engine:
                 if request["status"] != "approved":
                     raise Refused("Deployment request is " + request["status"])
                 self._apply(release, name, request)
+                if self.ledger.get(release_id)['status'] in {'cancel_requested', 'cancelled'}:
+                    return self._settle_stop(release)
             release["status"] = "succeeded"
             return self.ledger.save(release, "release.succeeded")
         except Exception as error:
             node = release["nodes"].get(current_name, {})
+            if self.ledger.get(release_id)['status'] in {'cancel_requested', 'cancelled'} and node.get('status') in {'queued', 'prepared', 'waiting', 'succeeded'}:
+                return self._settle_stop(release)
             uncertain = node.get("status") in ("running", "uncertain", "preparing")
             node["status"] = "uncertain" if uncertain else "failed"
             release["status"] = node["status"]
@@ -560,6 +613,19 @@ class Engine:
 
 
     # Withdraw unclaimed approval while preserving running-operation uncertainty
+    def _settle_stop(self, release: dict):
+        for node in release['nodes'].values():
+            if node.get('request_id') and node['status'] in {'prepared', 'waiting'}:
+                request = self.gate.status(node['request_id'])
+                if request['status'] in {'pending', 'approved'}:
+                    self.gate.approve(request['id'], request['digest'], 'reject')
+                elif request['status'] in {'running', 'uncertain', 'succeeded'}:
+                    raise Refused('Inspect the accepted controller operation before settling cancellation')
+        release['status'] = 'cancelled'
+        return self.ledger.save(release, 'release.cancelled')
+
+
+    # Withdraw unclaimed approval while preserving running-operation uncertainty
     def cancel(self, release_id: str):
         release = self.ledger.get(release_id)
         if release["status"] in ("uncertain", "succeeded", "failed", "cancelled"):
@@ -568,7 +634,7 @@ class Engine:
             release["status"] = "cancel_requested"
         else:
             for node in release["nodes"].values():
-                if node.get("request_id") and node["status"] == "waiting":
+                if node.get("request_id") and node["status"] in {"prepared", "waiting"}:
                     # A separately inspected controller failure already withdrew execution authority
                     request = self.gate.status(node["request_id"])
                     if request["status"] in {"pending", "approved"}:
@@ -589,15 +655,26 @@ class Engine:
         self.ledger.recovery_lock(scope, release_id)
         try:
             release = self.ledger.get(release_id)
+            if release.get("reconciliation") and release["status"] == "failed":
+                return release
             if release["status"] not in ("running", "uncertain", "cancel_requested"):
                 raise Refused("Recovery needs an interrupted release", 422)
+            outcomes = {}
             for node in release["nodes"].values():
                 if node["status"] == "preparing":
                     node["status"] = "failed"
                 if node["status"] in ("running", "uncertain") and node.get("request_id"):
-                    self.gate.recover(node["request_id"], note)
-                    node["status"] = "failed"
-            release.update(status="failed", reason=note)
-            return self.ledger.save(release, "release.reconciled", {"note": note})
+                    request = self.gate.status(node["request_id"])
+                    if request["status"] in {"running", "uncertain"}:
+                        request = self.gate.recover(node["request_id"], note)
+                    if request["status"] not in {"succeeded", "failed", "cancelled"}:
+                        raise Refused("Controller decision is not terminal; inspect its exact request before recovery")
+                    # Completion authority is retained even when adapter outputs never reached this journal
+                    node["controller_outcome"] = request["status"]
+                    node["status"] = "unverified" if request["status"] == "succeeded" else "failed"
+                    outcomes[node["request_id"]] = request["status"]
+            release.update(status="failed", reason=note, reconciliation={"controller_outcomes": outcomes,
+                           "outputs_verified": False, "mutation_replayed": False})
+            return self.ledger.save(release, "release.reconciled", {"note": note, "controller_outcomes": outcomes})
         finally:
             self.ledger.unlock(scope, release_id)

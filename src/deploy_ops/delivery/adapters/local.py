@@ -46,6 +46,13 @@ def prepare(context: Context) -> dict:
             raise Refused("Privileged and host-namespace Compose services need an external reviewed workflow", 422)
         if any(volume.get("type") == "bind" for volume in service.get("volumes", []) if isinstance(volume, dict)):
             raise Refused("Host bind mounts are outside the built-in Compose adapter", 422)
+        # A named volume can hide host mounts or another storage driver behind its declaration
+        for volume in service.get('volumes', []):
+            if not isinstance(volume, dict) or volume.get('type') != 'volume' or not volume.get('source'):
+                continue
+            declaration = (rendered.get('volumes') or {}).get(volume['source']) or {}
+            if declaration.get('driver_opts') or declaration.get('external') or declaration.get('driver', 'local') != 'local':
+                raise Refused('Compose storage drivers, driver options and external volumes need an external reviewed workflow', 422)
     private_json(context.stage / "compose.json", rendered)
     return {"preview": preview(context.name, "application_compose"),
             "project": context.options.get("project", f"{context.environment}-{context.name}")}

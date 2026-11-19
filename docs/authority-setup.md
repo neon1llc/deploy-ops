@@ -1,5 +1,20 @@
 # Setup
 
+## Request compatibility
+
+New requests use version 2 with optional self-reported `caller.label` and `caller.run` values. Verified
+`source.actor` and `source.actor_id` remain the authenticated identity. Caller labels grant no authority.
+The CLI exposes `--caller-label`. Legacy option spellings remain accepted for compatibility.
+
+Upgrade the controller, client and Slack consumer together before writing version 2 requests. Older
+controllers reject the new fields. Version 1 requests remain supported through the legacy `agent`
+contract, including its historical metadata. Existing manifests, digests, approvals and audit records are
+never rewritten into the new format. A changed request needs its own exact approval.
+
+`deploy-ops gate audit --out PATH` verifies the exact exported rows before privately replacing the output
+file. Its returned count, chain head, format and file hash describe that saved extent. Later appends do
+not invalidate a valid prefix. Fetch or validation failure preserves the previous completed file.
+
 Start with a disposable development account or project. Keep your human administrator identity separate from the controller and from the deployment roles.
 
 ## 1. Run the local demo
@@ -19,7 +34,7 @@ deploy-ops gate serve --config config/controller.toml
 
 Replace the sample repository IDs, workflow pin, cloud identities, and Slack settings before using a real workflow. `config-check` validates shape, not account access.
 
-Keep the live configuration outside repositories agents can edit, with file and database permissions limited to the controller operator. The operator token authorizes approvals and delegation, so keep it out of agent environments, repository secrets, chat, and cloud roles.
+Keep the live configuration outside repositories proposing callers can edit, with file and database permissions limited to the controller operator. The operator token authorizes approvals and delegation, so keep it out of build or caller environments, repository secrets, chat, and cloud roles.
 
 The service listens on `127.0.0.1:8787`. For remote Actions jobs and Slack, expose it through a TLS reverse proxy and add only that hostname to `allowed_hosts`. Set request limits and log retention at the proxy, and don't log request bodies or authorization headers.
 
@@ -78,7 +93,7 @@ The sample target disables delegation. Enable it only after checking the writer 
 
 The default policy also requires a monthly cost estimate. The reference workflow doesn't invent one, so it waits for a human unless your trusted workflow supplies Infracost JSON through `deploy-ops gate plan --cost-file PATH` or you turn the requirement off.
 
-An estimate isn't a spending cap, and resource count limits don't cap task counts, runtime, egress, or usage-based charges. Keep role restrictions, quotas, monitoring, and billing alerts outside the agent's control.
+An estimate isn't a spending cap, and resource count limits don't cap task counts, runtime, egress, or usage-based charges. Keep role restrictions, quotas, monitoring, and billing alerts outside the caller's control.
 
 ```bash
 export DEPLOY_OPS_URL=https://deploy-ops.example.com

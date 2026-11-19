@@ -2,7 +2,7 @@
 
 ## Intended outcome
 
-A developer or identified agent deploys infrastructure and an application from separate repositories. The application can be released again without redeploying its infrastructure. Environments may use different cloud runtimes, with reviewed artifacts, bounded authority, and traceable outcomes.
+A developer or authenticated automation deploys infrastructure and an application from separate repositories. The application can be released again without redeploying its infrastructure. Environments may use different cloud runtimes, with reviewed artifacts, bounded authority, and traceable outcomes.
 
 ## Demonstrated local journey
 

@@ -22,7 +22,7 @@ preview guarantees, health checks, and cleanup behavior. A template is promoted 
 only after an integration test has established its complete path.
 
 Represent an existing entitlement as an operator-supplied reference. Do not scrape marketplace login
-sessions or ask an AI agent to accept terms. Subscription, role creation, payment, quota changes, and
+sessions or automatically accept terms. Subscription, role creation, payment, quota changes, and
 production access remain explicit human decisions. Even a free software listing can deploy billable resources.
 
 ## Current implementation

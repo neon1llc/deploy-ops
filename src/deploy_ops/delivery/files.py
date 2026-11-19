@@ -32,7 +32,8 @@ def digest_tree(root: Path, *, source_exclusions: bool = False) -> str:
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root)
         # Exclusions apply only before copying a working tree, never to reviewed evidence
-        if source_exclusions and any(part in IGNORED for part in relative.parts):
+        if source_exclusions and any(part in IGNORED or part == '.env' or part.startswith('.env.')
+                                     or part.endswith(('.pem', '.key')) for part in relative.parts):
             continue
         if path.is_symlink():
             raise Refused("Source snapshots cannot contain symbolic links", 422)
@@ -81,9 +82,11 @@ def snapshot(repository: Repository, base: Path, destination: Path) -> dict:
                 target.chmod(0o700 if member.mode & 0o111 else 0o600)
     elif repository.allow_uncommitted:
         revision = "working-tree"
-        digest_tree(source, source_exclusions=True)
+        before = digest_tree(source, source_exclusions=True)
         shutil.copytree(source, destination, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns(*IGNORED, ".env", ".env.*", "*.pem", "*.key"))
+        if before != digest_tree(source, source_exclusions=True) or before != digest_tree(destination):
+            raise Refused("Current local files changed during capture. Retry after edits finish", 409)
     else:
         raise Refused("Initialize Git or explicitly enable local working-tree snapshots", 422)
     return {"revision": revision, "digest": digest_tree(destination)}

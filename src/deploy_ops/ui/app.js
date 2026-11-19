@@ -8,6 +8,7 @@ let token = "";
 let selected = null;
 let workspaceConfiguration = null;
 let detailKey = "";
+let detailGeneration = 0;
 let releaseKey = "";
 let acting = false;
 
@@ -45,6 +46,8 @@ let activeDialog = null;
 function operatorDialog(description, initialValue = null) {
   if (activeDialog) return Promise.resolve(null);
   const previousFocus = document.activeElement;
+  const previousKey = previousFocus?.dataset?.key;
+  const previousRelease = selected;
   const dialog = document.createElement("dialog");
   activeDialog = dialog;
   dialog.setAttribute("aria-labelledby", "operator-dialog-heading");
@@ -57,20 +60,33 @@ function operatorDialog(description, initialValue = null) {
   if (initialValue !== null) {
     const label = text(form, "label", "Inspection note"); label.htmlFor = "operator-dialog-note";
     input = document.createElement("textarea"); input.id = "operator-dialog-note";
-    input.rows = 4; input.maxLength = 500; input.value = initialValue;
+    input.rows = 4; input.minLength = 10; input.maxLength = 500; input.required = true; input.value = initialValue;
+    input.oninput = () => input.setCustomValidity("");
     form.append(input);
   }
   const controls = document.createElement("div"); controls.className = "controls"; form.append(controls);
   const cancel = text(controls, "button", "Cancel"); cancel.type = "submit"; cancel.value = "cancel";
+  cancel.formNoValidate = true;
   cancel.className = "secondary"; cancel.autofocus = true;
   const confirm = text(controls, "button", initialValue === null ? "Confirm" : "Continue");
   confirm.type = "submit"; confirm.value = "confirm";
+  // Keep an invalid authored note inside the dialog so it can be corrected or cancelled
+  form.addEventListener("submit", event => {
+    if (event.submitter !== confirm || !input) return;
+    input.setCustomValidity(input.value.trim().length < 10 ? "Describe the inspection in at least 10 characters." : "");
+    if (!input.reportValidity()) event.preventDefault();
+  });
   document.body.append(dialog);
   return new Promise(resolve => {
     dialog.addEventListener("close", () => {
       const result = dialog.returnValue === "confirm" ? (input ? input.value : true) : null;
       dialog.remove(); activeDialog = null;
-      if (previousFocus?.isConnected) previousFocus.focus({preventScroll: true});
+      // Native focus return handles intact invokers; refreshed controls need a logical fallback
+      if (!previousFocus?.isConnected) {
+        const replacement = selected === previousRelease && previousKey
+          ? [...element("detail").querySelectorAll("[data-key]")].find(node => node.dataset.key === previousKey) : null;
+        (replacement || element("view-title")).focus({preventScroll: true});
+      }
       resolve(result);
     }, {once: true});
     dialog.showModal();
@@ -431,8 +447,9 @@ function renderServing(area, release, name, sessions) {
 // Explain reviewed evidence and expose actions valid for the current release
 async function show(id) {
   selected = id;
+  const generation = ++detailGeneration;
   const data = await api("/releases/" + id);
-  if (selected !== id || !token) return;
+  if (selected !== id || generation !== detailGeneration || !token) return;
   const key = JSON.stringify(data);
   if (key === detailKey) return;
   detailKey = key;

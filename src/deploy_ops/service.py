@@ -147,10 +147,17 @@ class Controller:
             "artifact_digest": proposal.artifact_digest,
             "preview_digest": fingerprint(proposal.preview), "preview": preview.model_dump(),
             "tool_version": proposal.tool_version, "lock_digest": proposal.lock_digest,
-            "source": source.model_dump(), "agent": proposal.agent.model_dump(),
+            "source": source.model_dump(),
             "estimated_monthly_delta_cents": proposal.estimated_monthly_delta_cents,
             "policy_digest": target.digest,
         }
+        # Preserve version 1 digest bytes; new requests use a marked neutral caller contract
+        if proposal.schema_version == 1:
+            from .models import Agent
+            manifest["agent"] = (proposal.agent or Agent()).model_dump()
+        else:
+            from .models import Caller
+            manifest.update(schema_version=2, caller=(proposal.caller or Caller()).model_dump())
         if target.local_isolated_iac and proposal.engine == "manifest":
             if (not proposal.isolated_packet
                     or fingerprint(proposal.isolated_packet.model_dump()) != target.identity["packet_digest"]
@@ -224,11 +231,28 @@ class Controller:
         return result
 
     # Return bounded history with current expiry interpretation
-    def list_requests(self, limit: int = 100) -> list[dict]:
+    def list_requests(self, limit: int = 100, targets: list[str] | None = None) -> list[dict]:
+        if not 1 <= limit <= 1000:
+            raise Refused("Choose a history limit between 1 and 1000", 422)
+        selected = list(self.settings.targets) if targets is None else targets
+        if not selected:
+            return []
         with self.store.connect() as connection:
-            rows = connection.execute("SELECT id FROM requests ORDER BY rowid DESC LIMIT ?", (limit,))
+            rows = connection.execute("SELECT id FROM requests WHERE target IN (" + ','.join('?' for _ in selected)
+                                      + ") ORDER BY rowid DESC LIMIT ?", (*selected, limit))
             ids = [row[0] for row in rows]
         return [self.get(request_id) for request_id in ids]
+
+    # Discover scoped unresolved work independently of bounded historical pages
+    def active_requests(self, targets: list[str] | None = None) -> list[dict]:
+        selected = list(self.settings.targets) if targets is None else targets
+        if not selected:
+            return []
+        with self.store.connect() as connection:
+            rows = connection.execute("SELECT id FROM requests WHERE target IN (" + ','.join('?' for _ in selected)
+                + ") AND status IN ('pending','approved','running','uncertain') ORDER BY rowid DESC", selected)
+            ids = [row[0] for row in rows]
+        return [request for identifier in ids if (request := self.get(identifier))['status'] != 'expired']
 
     # Use the earliest request or approval expiry
     @staticmethod
@@ -343,7 +367,7 @@ class Controller:
         return {"paused": paused}
 
     # Atomically bind one execution and consume its delegation allowance
-    def claim(self, request_id: str, claim: Claim, source: Source) -> dict:
+    def claim(self, request_id: str, claim: Claim, source: Source, local_input_check=None) -> dict:
         with self.store.transaction() as connection:
             request = self.store.request(connection, request_id)
             target = self._current(request)
@@ -366,7 +390,10 @@ class Controller:
                 (request["manifest"]["target"],),
             ).fetchone()
             if busy:
-                raise Refused("Target already has a running or unresolved execution")
+                raise Refused("Target already has a running or unresolved execution: request " + busy["id"])
+            # A local consumer rechecks frozen producers while this same store excludes all writers
+            if local_input_check:
+                local_input_check()
             if request["approval"]["kind"] == "delegation":
                 grant = self.store.delegation(connection, request["approval"]["id"])
                 if not fits_delegation(target, request["manifest"], grant, now):

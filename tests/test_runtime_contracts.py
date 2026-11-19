@@ -42,6 +42,27 @@ def context(tmp_path, adapter, provider, options, replies):
 
 
 # Each runtime must verify the immutable image's resulting revision
+@pytest.mark.parametrize('declaration', [{}, {'driver': 'local'},
+    {'driver': 'local', 'driver_opts': {'type': 'none', 'o': 'bind', 'device': '/synthetic-host-path'}},
+    {'external': True}, {'driver': 'external-storage-plugin'}])
+def test_compose_named_volume_admission(tmp_path, declaration):
+    from deploy_ops.delivery.adapters import local
+    rendered = {'services': {'web': {'image': IMAGE,
+                'volumes': [{'type': 'volume', 'source': 'data', 'target': '/data'}]}},
+                'volumes': {'data': declaration}}
+    ctx = context(tmp_path, 'compose', 'local', {'file': 'compose.yaml'}, [rendered])
+    if declaration.get('driver_opts') or declaration.get('external') or declaration.get('driver', 'local') != 'local':
+        with pytest.raises(Refused, match='external reviewed workflow'):
+            local.prepare(ctx)
+        assert not (ctx.stage / 'compose.json').exists()
+    else:
+        assert local.prepare(ctx)['project'] == 'staging-app'
+        assert json.loads((ctx.stage / 'compose.json').read_text()) == rendered
+    assert len(ctx.process.calls) == 1
+    assert ctx.process.calls[0][1] == 'compose'
+
+
+# Each runtime must verify the immutable image's resulting revision
 @pytest.mark.parametrize("adapter,provider,options,replies", [
     ("ecs", "aws", {"region": "us-east-1", "cluster": "cluster", "service": "app", "container": "web"}, [
         {"services": [{"taskDefinition": "old", "deploymentController": {"type": "ECS"}}]},
