@@ -221,7 +221,8 @@ function control(key) {
   }
 
   // Expired, missing or mismatched observations never expose an execution shortcut
-  for (const request of [{status: "expired", digest: "exact-fixture"},
+  for (const request of [{status: "approved", digest: "exact-fixture", execution_blocker: "Fresh complete effects required"},
+    {status: "expired", digest: "exact-fixture"},
     {status: "approved", digest: "changed-fixture"},
     {status: "approved", digest: "exact-fixture", timing: {provisional_remaining_seconds: 29, minimum_claim_seconds: 30}}, {status: "unavailable", digest: null}]) {
     context.fixture.request_statuses.web = request;

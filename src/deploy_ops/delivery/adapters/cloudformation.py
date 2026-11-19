@@ -339,18 +339,75 @@ def prepare_destroy(context: Context, current: dict | None, scope: dict) -> dict
         raw = call(context, "get-template", "--stack-name", current["StackId"], "--template-stage", "Original")["TemplateBody"]
         value = template(raw) if isinstance(raw, str) else raw
     resources = value.get("Resources", {})
-    retained = [name for name, item in resources.items() if item.get("DeletionPolicy") in {"Retain", "Snapshot", "RetainExceptOnCreate"}]
-    preview = {"changes": [{"address": item["LogicalResourceId"], "resource_type": item["ResourceType"],
-                            "action": "read" if item["LogicalResourceId"] in retained else "delete"} for item in inventory],
-               "findings": [],
-               "manual_only": True}
+    preview, retained, snapshots = deletion_effects(current["StackId"], resources, inventory)
     private_json(context.stage / "cloudformation-delete-inventory.json", inventory)
-    return {"operation": "destroy", "scope": scope, "stack_id": current["StackId"],
+    warnings = []
+    if retained:
+        warnings.append("Live retention requested; resources may remain billable: " + ", ".join(retained))
+    if snapshots:
+        warnings.append("Snapshot creation then original resource deletion requested: " + ", ".join(snapshots)
+                        + ". Snapshot identities, restore usefulness and ongoing cost are not independently verified.")
+    return {"operation": "destroy", "destroy_contract_version": 2, "scope": scope, "stack_id": current["StackId"],
             "baseline_digest": state_digest(current), "inventory_digest": fingerprint(inventory),
             "delete_template_digest": fingerprint(value), "review_shell": review_shell,
-            "owner": ownership["owner"], "retained": retained, "preview": preview,
-            "warnings": ["Retained resources or snapshots remain billable: " + ", ".join(retained)] if retained else [],
+            "owner": ownership["owner"], "retained": retained, "snapshots_requested": snapshots,
+            "preview": preview, "warnings": warnings,
             "token": "deploy-ops-delete-" + fingerprint([context.release_id, context.name])[:40]}
+
+
+# Model stack removal separately from each native resource fate; never infer nested effects
+def deletion_effects(stack_id: str, resources: dict, inventory: list) -> tuple[dict, list, list]:
+    from ...models import Preview
+    snapshot_types = {"AWS::DocDB::DBCluster", "AWS::EC2::Volume", "AWS::ElastiCache::CacheCluster",
+                      "AWS::ElastiCache::ReplicationGroup", "AWS::Neptune::DBCluster", "AWS::RDS::DBCluster",
+                      "AWS::RDS::DBInstance", "AWS::Redshift::Cluster"}
+    changes = [{"address": stack_id, "resource_type": "AWS::CloudFormation::Stack", "action": "delete"}]
+    retained, snapshots, seen = [], [], set()
+    if not isinstance(resources, dict) or not isinstance(inventory, list):
+        raise Refused("Deletion requires a supported resource inventory and template", 422)
+    for item in inventory:
+        if not isinstance(item, dict) or not isinstance(item.get("LogicalResourceId"), str):
+            raise Refused("Deletion inventory contains an unsupported resource identity", 422)
+        name, kind = item["LogicalResourceId"], item.get("ResourceType")
+        resource = resources.get(name)
+        if (name in seen or not isinstance(resource, dict)
+                or resource.get("Type") != kind or item.get("ResourceStatus") in {"DELETE_COMPLETE", "DELETE_SKIPPED"}):
+            raise Refused("Deletion inventory does not match the current template; reconcile before preparing", 422)
+        seen.add(name)
+        policy = resource.get("DeletionPolicy")
+        if "DeletionPolicy" not in resource:
+            properties = resource.get("Properties", {})
+            if not isinstance(properties, dict):
+                raise Refused("Cannot determine the native deletion default", 422)
+            cluster = properties.get("DBClusterIdentifier")
+            if kind == "AWS::RDS::DBInstance" and "DBClusterIdentifier" in properties and not isinstance(cluster, str):
+                raise Refused("Resolve the RDS cluster membership before reviewing its default deletion policy", 422)
+            policy = "Snapshot" if kind == "AWS::RDS::DBCluster" or (
+                kind == "AWS::RDS::DBInstance" and "DBClusterIdentifier" not in properties) else "Delete"
+        if not isinstance(policy, str) or policy not in {"Delete", "Retain", "RetainExceptOnCreate", "Snapshot"}:
+            raise Refused("Dynamic or unsupported DeletionPolicy needs an explicit reviewed native fate", 422)
+        if policy in {"Retain", "RetainExceptOnCreate"}:
+            retained.append(name)
+            actions = ["read"]
+        else:
+            if kind == "AWS::CloudFormation::Stack":
+                raise Refused("Nested stack deletion needs a recursive resource review; retain it or use its native owner", 422)
+            actions = ["delete"]
+            if policy == "Snapshot":
+                if kind not in snapshot_types:
+                    raise Refused("Snapshot deletion policy is unsupported for this resource type", 422)
+                snapshots.append(name)
+                actions.append("snapshot")
+        changes.extend({"address": name, "resource_type": kind, "action": action} for action in actions)
+        if len(changes) > 2000:
+            raise Refused("Combined deletion effects exceed the review bound", 422)
+    return Preview(changes=changes, findings=[], manual_only=True).model_dump(), retained, snapshots
+
+
+# Preserve old inspection bytes while refusing new execution of incomplete deletion reviews
+def require_destroy_contract(prepared: dict) -> None:
+    if prepared.get("operation") == "destroy" and prepared.get("destroy_contract_version") != 2:
+        raise Refused("Legacy stack deletion approval omits complete effects. Preserve history and prepare fresh evidence")
 
 
 # Return selected public outputs only after the expected stack operation completes
@@ -382,6 +439,7 @@ def inspect(context: Context, prepared: dict) -> dict:
 
 # Validate state before any approved provider or asset write
 def validate_approved(context: Context, prepared: dict) -> dict:
+    require_destroy_contract(prepared)
     if tool_version(context) != prepared["tool_version"]:
         raise Refused("AWS CLI version changed after approval")
     if identity(context) != prepared["scope"]:
@@ -439,7 +497,9 @@ def apply(context: Context, prepared: dict) -> dict:
             record(context, status="succeeded")
             if prepared["operation"] == "destroy":
                 return {"stack_id": prepared["stack_id"], "status": expected,
-                        "retained_resources": ", ".join(prepared["retained"])}
+                        "retained_resources": ", ".join(prepared["retained"]),
+                        "snapshots_requested": ", ".join(prepared["snapshots_requested"]),
+                        "retention_observation": "Requested fates only; retained resources and snapshot identities, usefulness and cost not independently verified"}
             return outputs(context, stack(context, prepared["stack_id"]))
         if status.endswith("FAILED") or status in {"ROLLBACK_COMPLETE", "UPDATE_ROLLBACK_COMPLETE"}:
             record(context, status="failed")

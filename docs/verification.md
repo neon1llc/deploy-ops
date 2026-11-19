@@ -1,5 +1,20 @@
 # Verification
 
+## Complete approval effects, 2026-11-05
+
+A real Terraform 1.16.0 local saved plan used the built-in `terraform_data` resource to produce import
+plus update and move plus replacement. Normalization preserved all four effect rows. Only the local
+baseline was applied; the migration plan was not applied and no cloud provider or credentials were used.
+Controller cases cover independent action denials, pure held migration approval, legacy claim refusal
+without row/audit changes, malformed metadata and the combined effect bound.
+
+CloudFormation fixtures cover stack removal even for empty or retained-only stacks, live retention,
+explicit and native-default RDS snapshots, independent snapshot grant limits, unsupported/dynamic fates
+and legacy refusal before runner claim or native adapter access. These are native-shaped fixtures,
+not live snapshot creation, restored snapshot usefulness or billable-capacity qualification. DOM checks
+show compatibility blockers and withhold execution shortcuts. Current mounted browser/AT/human
+acceptance remains unqualified after the Edge detachment. No grant, cloud batch or publication changed.
+
 ## Selected-file signatures and cleanup choices, 2026-11-05
 
 A private Cosign v3.1.4 executable matched the official GitHub asset digest and release checksums; this

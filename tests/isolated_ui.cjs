@@ -158,5 +158,11 @@ context.api = async (...args) => {calls.push(args); return context.fixture;};
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(calls.filter(call => call[1] === 'POST').map(call => [call[0], call[2].digest]),
     [['/isolated/requests/' + pending.id + '/approve', pending.digest]]);
+  // Legacy mutation evidence stays visible with its reason but has no approval/execution shortcut
+  context.fixture.requests[0].status = 'approved';
+  context.fixture.requests[0].execution_blocker = 'Legacy migration needs a fresh plan';
+  vm.runInContext('isolatedRender()', context);
+  assert(element('isolated-requests').querySelectorAll('*').some(node => node.textContent === 'Legacy migration needs a fresh plan'));
+  assert.equal(find('b'.repeat(32) + ':execute'), undefined);
   console.log('PASS: disclosure focus, textarea selection/draft, evidence scroll, environment change on receipt prefill, no automatic mutation, nonrepeating outcome announcement');
 })().catch(error => { console.error(error); process.exitCode = 1; });

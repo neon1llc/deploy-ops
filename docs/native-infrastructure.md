@@ -12,6 +12,24 @@ DeployOps supports bounded CloudFormation, AWS CDK, ARM, and Bicep paths alongsi
 
 See the [configuration reference](configuration.md) for fields. Credentials and access grants stay outside the forms. Unsupported combinations fail before execution.
 
+
+## Terraform/OpenTofu migration effects
+
+Import and move describe state changes independently of native infrastructure actions. A saved plan
+that imports and updates one resource shows both `update` and `import`; a move with replacement shows
+both `replace` and `move`. Both migration annotations are retained if present. Pure migrations omit a
+redundant no-op row. Every effect must satisfy the target policy and resource scope; local grants and delegations count
+effect rows toward their limits. Allowing import or move alone cannot authorize update, deletion or replacement. Default migration and
+destructive-action denials remain unchanged. No import IDs or attribute values enter the normalized
+manifest. Combined effects above the existing 2,000-row bound refuse, rather than truncate.
+
+New migration manifests retain caller schema 2 and add `native_effects_version = 2`. The current writer
+refuses execution of earlier migration approvals, which may have lost native actions, and projects a
+fresh-plan blocker without rewriting their bytes or audit. Submit a fresh saved plan and approve its
+full effect set. Historical nonmigration requests keep their existing contract. This change does not
+add state migration execution, rename addresses, broaden grants or reapply an old plan. The native
+format describes annotations separately from actions in [Terraform JSON format](https://developer.hashicorp.com/terraform/internals/json-format).
+
 ## CloudFormation
 
 Use AWS CLI v2 and set `account_id`, `region`, `stack_name`, and a repository-relative `template`. YAML templates need PyYAML. Inline templates are limited to 51,200 bytes. Public `parameters`, `tags`, a `role_arn`, and IAM `capabilities` are optional, and the adapter never adds capabilities to make a rejected deployment pass.
@@ -22,7 +40,9 @@ Approval binds the change-set ID, frozen template, parameters, target, tool vers
 
 Macros, transforms, custom resources, and nested stacks are unsupported. Don't put secrets in parameters or select secret-bearing outputs. Automatic checks can't prove an arbitrary output is public.
 
-To destroy a stack, set `operation = "destroy"` and prepare a new reviewed release. It needs retained DeployOps creation evidence and the matching ownership tag and stack ID, and binds the current inventory, template, and state. It never disables termination protection or forces deletion. `DeletionPolicy` retention and snapshots stay and can keep incurring charges. Pre-existing stacks can't be destroyed.
+To destroy a stack, set `operation = "destroy"` and prepare a new reviewed release. It needs retained DeployOps creation evidence and the matching ownership tag and stack ID, and binds the current inventory, template, and state. It never disables termination protection or forces deletion. Every destruction review includes deleting the `AWS::CloudFormation::Stack` object, even for an empty review shell or entirely retained resources. That type and `delete` must be in the local grant. `Retain` and `RetainExceptOnCreate` keep the live resource. `Snapshot` deletes the original resource and adds a separate `snapshot` effect under its native resource type. Snapshot authority is explicit and never added to an existing grant. Each effect uses one change row, so a snapshot resource plus its stack takes three rows. Deletion stays manual-only. Retained resources and snapshots can keep incurring charges. Pre-existing stacks can't be destroyed.
+
+DB clusters and DB instances without `DBClusterIdentifier` default to Snapshot, and an explicit supported Delete overrides that. Unsupported or dynamic deletion policies, unresolved RDS membership, mismatched inventories, and nested stack deletion refuse a new review. Retaining a nested stack doesn't review its internal resources. Stack `DELETE_COMPLETE` confirms only the stack operation. Outputs show the requested retention and snapshot creation, and leave their identities, restore usefulness, and ongoing cost unverified. Historical prepared deletion reports stay readable, but new execution needs destroy contract 2. See [migration](migration.md).
 
 ## AWS CDK
 

@@ -63,14 +63,25 @@ def normalize(engine: Engine, cloud: Cloud, raw: dict) -> Preview:
             action = ACTIONS.get(tuple(detail["actions"]))
             if action is None:
                 raise ValueError("Unknown change action")
-            if detail.get("importing"):
-                action = "import"
-            elif resource.get("previous_address"):
-                action = "move"
+            migrations = []
+            if "importing" in detail:
+                if not isinstance(detail["importing"], dict) or not detail["importing"]:
+                    raise ValueError("Invalid import metadata")
+                migrations.append("import")
+            if "previous_address" in resource:
+                previous = resource["previous_address"]
+                if not isinstance(previous, str) or not 0 < len(previous) <= 512:
+                    raise ValueError("Invalid previous address")
+                migrations.append("move")
             kind = resource["type"]
             if not kind.startswith(PREFIXES[cloud]):
                 findings.append("Plan includes a resource outside the selected cloud")
-            changes.append(Change(address=resource["address"], resource_type=kind, action=action))
+            # A state migration never replaces the native infrastructure effect.
+            actions = ([action] if action != "no-op" or not migrations else []) + migrations
+            if len(changes) + len(actions) > 2000:
+                raise ValueError("Combined effects exceed the review bound")
+            changes.extend(Change(address=resource["address"], resource_type=kind, action=item)
+                           for item in actions)
         except (AttributeError, KeyError, TypeError, ValueError) as error:
             raise Refused("Resource changes contain an unsupported shape or action", 422) from error
     if _contains_provisioner(raw.get("configuration", {})):
@@ -86,6 +97,15 @@ def normalize(engine: Engine, cloud: Cloud, raw: dict) -> Preview:
         raise Refused("Invalid output_changes", 422)
     output_changed = any(value.get("actions") != ["no-op"] for value in output_changes.values())
     return Preview(changes=changes, findings=sorted(set(findings)), manual_only=output_changed or unknown)
+
+
+# Keep legacy evidence readable without treating its lossy migration labels as fresh authority
+def execution_blocker(manifest: dict) -> str | None:
+    if manifest["engine"] in {"terraform", "opentofu"} and any(
+            item["action"] in {"import", "move"} for item in manifest["preview"]["changes"]):
+        if manifest.get("native_effects_version") != 2:
+            return "Legacy migration approval may omit native effects. Preserve history and submit a fresh plan"
+    return None
 
 
 # Reject invalid currencies and non-finite estimates before rounding

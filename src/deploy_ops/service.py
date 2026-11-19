@@ -12,7 +12,7 @@ from collections.abc import Callable
 from .config import Settings, Target, fingerprint
 from .errors import Refused
 from .models import Claim, Completion, Decision, DelegationSpec, Proposal, Resolution, Source
-from .plans import normalize
+from .plans import execution_blocker, normalize
 from .policy import changed_resources, fits_delegation, hard_denial
 from .store import Store
 
@@ -67,6 +67,10 @@ class Controller:
         result = copy.deepcopy(request)
         if result.get("execution"):
             result["execution"].pop("token_hash", None)
+        if result["status"] in {"pending", "approved"}:
+            blocker = execution_blocker(result["manifest"])
+            if blocker:
+                result["execution_blocker"] = blocker
         return result
 
     # Attach controller time and request identity to each audit entry
@@ -162,6 +166,12 @@ class Controller:
         else:
             from .models import Caller
             manifest.update(schema_version=2, caller=(proposal.caller or Caller()).model_dump())
+        if proposal.engine in {"terraform", "opentofu"} and any(
+                item.action in {"import", "move"} for item in preview.changes):
+            if proposal.schema_version == 1:
+                raise Refused("Migration plans require the current caller contract; submit fresh evidence", 422)
+            # Mark new complete effect sets without rewriting old approved manifests.
+            manifest["native_effects_version"] = 2
         if target.local_isolated_iac and proposal.engine == "manifest":
             if (not proposal.isolated_packet
                     or fingerprint(proposal.isolated_packet.model_dump()) != target.identity["packet_digest"]
@@ -396,6 +406,10 @@ class Controller:
             request = self.store.request(connection, request_id)
             target = self._current(request)
             self.check_source(target, source, "execute")
+            manifest = request["manifest"]
+            blocker = execution_blocker(manifest)
+            if blocker:
+                raise Refused(blocker)
             original = request["manifest"]["source"]
             # A rerun is a new attempt and needs a new plan, not an old approval
             if any(getattr(source, key) != original[key] for key in ("sha", "run_id", "run_attempt", "actor_id")):
