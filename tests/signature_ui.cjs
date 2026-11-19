@@ -5,6 +5,7 @@ let document;
 class Node {
   constructor(tag) { this.tagName=tag; this.children=[]; this.dataset={}; this.listeners={}; this.value=""; }
   append(...nodes) { this.children.push(...nodes); }
+  contains(node) { return this===node || this.children.some(child=>child.contains(node)); }
   setAttribute(key,value) { this[key]=value; }
   addEventListener(name,work) { this.listeners[name]=work; }
   reportValidity() { return (!this.required || !!this.value) && this.children.every(node=>node.reportValidity()); }
@@ -24,7 +25,7 @@ const context=vm.createContext({document,Map,Set,Date,Number,Object,encodeURICom
   api:async(...args)=>{calls.push(args);return result;}});
 vm.runInContext(fs.readFileSync("src/deploy_ops/ui/signatures.js","utf8"),context);
 context.show=async()=>render();
-function render(){root.children=[];context.signatureControls(root,release,component,prepared,new Set());}
+function render(){if(root.contains(document.activeElement))document.activeElement=document.body;root.children=[];context.signatureControls(root,release,component,prepared,new Set());}
 function nodes(tag){return root.querySelectorAll(tag);}
 function input(name){return nodes("input").find(node=>node.name===name);}
 function set(name,value){const node=input(name);node.value=value;node.listeners.input();}
@@ -46,11 +47,21 @@ const event={preventDefault(){}};
   assert.equal(input("directory").value,"/private/owner-choice");assert.equal(input("file").value,"release.tar");
   let resolveSearch;context.api=()=>new Promise(resolve=>{resolveSearch=resolve;});
   let query=nodes("input").find(node=>node.type==="search");query.value="release";query.oninput();
-  const searching=nodes("form").find(node=>node.method==="get").onsubmit(event);
+  const find=button("Find frozen files");find.focus();
+  const searching=nodes("form").find(node=>node.method==="get").onsubmit({...event,submitter:find});
+  document.activeElement=document.body;
   query.value="index";query.oninput();render();
   resolveSearch({release_id:release,component,prepared_sha256:prepared,total:1,files:[{name:"release.tar",size:12}]});await searching;
   query=nodes("input").find(node=>node.type==="search");assert.equal(query.value,"index");
   assert(nodes("label").some(node=>node.textContent==="Matches for “release”"));
+  assert.equal(document.activeElement,button("Find frozen files"));
+  // A response cannot steal focus from another control while the same named query completes.
+  let otherSearch;context.api=()=>new Promise(resolve=>{otherSearch=resolve;});
+  const secondFind=button("Find frozen files");secondFind.focus();
+  const pendingSearch=nodes("form").find(node=>node.method==="get").onsubmit({...event,submitter:secondFind});
+  const other=new Node("button");other.focus();
+  otherSearch({release_id:release,component,prepared_sha256:prepared,total:1,files:[{name:"release.tar",size:12}]});await pendingSearch;
+  assert.equal(document.activeElement,other);
   const match=nodes("select")[0];match.value="release.tar";match.onchange();
   let complete;context.api=(...args)=>{calls.push(args);return new Promise(resolve=>{complete=resolve;});};
   const first=form().onsubmit(event);assert(form().querySelectorAll("button").every(node=>node.disabled));

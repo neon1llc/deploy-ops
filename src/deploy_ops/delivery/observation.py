@@ -142,5 +142,5 @@ def observe(engine, release_id: str) -> dict:
         status = 'drifted' if 'drifted' in states else 'unknown' if states & {'unknown', 'unsupported'} else 'matching'
         result = {'release_id': release_id, 'observed_at': int(time.time()), 'status': status, 'components': components,
                   'scope': 'Local deployment files at observation time; no application health or cloud checks', 'repairs': False}
-        engine.ledger._event(connection, release_id, 'release.observed', result)
-    return result
+        sequence = engine.ledger._event(connection, release_id, 'release.observed', result)
+    return {**result, 'reference': {'sequence': sequence, 'digest': fingerprint(result)}}

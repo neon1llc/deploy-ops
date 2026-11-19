@@ -274,12 +274,14 @@
               <details id="incident-panel">
                 <summary>Local incidents</summary>
                 <p>
-                  Track a failed or uncertain release without changing its deployment outcome.
+                  Track a failed or uncertain release, or a recorded later observation,
+                  without changing its deployment outcome.
                   Owners are local labels. Escalations queue signals; they do not contact another
                   responder or start a background scheduler.
                 </p>
                 <form id="incident-open-form">
-                  <label for="incident-release">Failed or uncertain release ID</label
+                  <p id="incident-origin">Source: failed or uncertain delivery. A recorded later observation can be selected from release details.</p>
+                  <label for="incident-release">Release ID</label
                   ><input
                     id="incident-release"
                     name="release"
@@ -347,8 +349,11 @@
                     ><button id="incident-resolve" name="action" value="resolve" type="submit">
                       Resolve
                     </button>
+                    <button id="incident-handoff-preview" type="button">Preview responder route</button>
+                    <button id="incident-handoff-submit" name="action" value="handoff" type="submit" hidden>Queue reviewed responder handoff</button>
                   </div>
                 </form>
+                <div id="incident-handoff-review" role="region" aria-label="Responder handoff review"></div>
                 <p>
                   Acknowledgement stops escalation. Resolution records your decision; it does not
                   repair or reconcile the deployment. Notes stay in the local audit. Keep secrets

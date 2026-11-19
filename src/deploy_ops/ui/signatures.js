@@ -24,7 +24,7 @@ function signatureControls(area, release, component, prepared, expanded) {
   const query = document.createElement("input"); query.id = queryLabel.htmlFor; query.type = "search"; query.maxLength = 200;
   query.value = draft.query; query.dataset.key = query.id; query.oninput = () => { draft.query = query.value; };
   const search = document.createElement("button"); search.type = "submit"; search.textContent = "Find frozen files";
-  search.dataset.key = prefix + "-find"; search.disabled = draft.searching;
+  search.dataset.key = prefix + "-find"; search.dataset.signaturePrepared = prepared; search.disabled = draft.searching;
   searchForm.append(query, search); finder.append(searchForm); panel.append(finder);
 
   const form = document.createElement("form"); form.method = "post";
@@ -69,6 +69,7 @@ function signatureControls(area, release, component, prepared, expanded) {
   // Commit a late search only to its named query and frozen prepared identity
   searchForm.onsubmit = async event => {
     event.preventDefault(); if (!searchForm.reportValidity() || draft.searching) return;
+    const ownedFocus = searchForm.contains(document.activeElement) || event.submitter === search;
     const wanted = query.value; draft.query = wanted; draft.searching = true; search.disabled = true;
     try {
       const result = await api("/releases/" + release + "/signatures/files?component=" + encodeURIComponent(component) + "&query=" + encodeURIComponent(wanted));
@@ -76,7 +77,13 @@ function signatureControls(area, release, component, prepared, expanded) {
       draft.matches = result; draft.matchesQuery = wanted; draft.error = false;
       draft.status = "Loaded " + result.files.length + " of " + result.total + " matches for “" + wanted + "”. Refine the search when there are more than 100 matches.";
     } catch (error) { draft.status = error.message; draft.error = true; }
-    finally { draft.searching = false; search.disabled = false; await redraw(); }
+    finally {
+      draft.searching = false; search.disabled = false; await redraw();
+      if (ownedFocus && selected === release && token && document.activeElement === document.body) {
+        [...element("detail").querySelectorAll("[data-key]")].find(node =>
+          node.dataset.key === prefix + "-find" && node.dataset.signaturePrepared === prepared)?.focus({preventScroll: true});
+      }
+    }
   };
   if (draft.matches) {
     const label = text(finder, "label", "Matches for “" + draft.matchesQuery + "”"); label.htmlFor = prefix + "-matches";

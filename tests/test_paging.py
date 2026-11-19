@@ -428,3 +428,23 @@ def test_originating_integration_is_pinned(system, monkeypatch):
     state = paging.status(engine.ledger)
     assert 'Originating integration credential changed' in json.dumps(state)
     assert 'replacement-fixture-key' not in json.dumps(state)
+
+
+# A late definite notification failure cannot open a new native page from an obsolete local incident
+@pytest.mark.parametrize('decision',['resolve','acknowledge'])
+def test_late_native_fallback_rechecks_incident(system,decision):
+    engine,_=system
+    draft=paging.config(engine.ledger)['draft']
+    draft['destinations']['primary']={'provider':'json','endpoint_env':'DEPLOY_OPS_PAGING_JSON'}
+    draft['routes']=[{'name':'incident','destinations':['primary'],'fallback':'self-hosted'}]
+    paging.save_config(engine.ledger,draft,1);paging.activate(engine.ledger,2)
+    incident=opened(system)
+    def rejected_after_decision(*args):
+        transition(engine.ledger,incident['id'],decision,incident['version'],'Operator decided while primary was in flight')
+        return {'state':'failed','reason':'Definite primary rejection','retryable':False}
+    assert paging.drain(engine.ledger,limit=1,sender=rejected_after_decision)['failed']==1
+    result=paging.status(engine.ledger)
+    assert result['bindings']==[]
+    primary=next(row for row in result['deliveries'] if row['state']=='failed')
+    assert primary['result']['fallback_admission']['state']=='not_admitted'
+    assert primary['result']['fallback_admission']['reason']=='Incident changed or is no longer open'

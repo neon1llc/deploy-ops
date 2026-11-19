@@ -12,7 +12,7 @@ from datetime import datetime
 
 from pydantic import ValidationError
 
-from ..config import canonical
+from ..config import canonical, fingerprint
 from ..errors import Refused
 from .paging_config import CAPABILITIES, PLANNED, Destination, Paging, Route
 from .paging_providers import integration_identity, read_remote, send
@@ -99,8 +99,9 @@ def activate(ledger, revision):
 def _route(settings, context, now):
     selected = settings['default_destinations']
     reason, fallback, quiet = 'Default route', '', False
+    matching = {**context, 'event': 'incident.opened' if context.get('event') == 'incident.handoff_requested' else context.get('event', '')}
     for route in settings['routes']:
-        if all(not route[field] or context.get(key, '') in route[field] for field, key in (
+        if all(not route[field] or matching.get(key, '') in route[field] for field, key in (
                 ('projects', 'project'), ('environments', 'environment'), ('components', 'component'),
                 ('events', 'event'), ('severities', 'severity'))):
             selected, fallback = route['destinations'], route['fallback']
@@ -109,7 +110,7 @@ def _route(settings, context, now):
                 route['quiet_until'].replace('Z', '+00:00')).timestamp() > now)
             break
     rows = []
-    native_event = context.get('event') == 'incident.opened'
+    native_event = context.get('event') in {'incident.opened', 'incident.handoff_requested'}
     for name, destination in settings['destinations'].items():
         matched = name in selected
         why = reason if matched else 'Not selected by the effective route'
@@ -117,10 +118,13 @@ def _route(settings, context, now):
             matched, why = False, 'Destination disabled'
         elif matched and quiet:
             matched, why = False, 'Quiet period is active'
+        elif matched and not CAPABILITIES[destination['provider']]['notifications'] and context.get('native_handoff', True) is False:
+            matched, why = False, 'Incident has not been handed off'
         elif matched and not CAPABILITIES[destination['provider']]['notifications'] and not native_event:
-            matched, why = False, 'Native pages start only from an opened incident'
+            matched, why = False, 'Native pages start only from an opened incident or reviewed handoff'
         rows.append({'name': name, 'selected': matched, 'reason': why})
-    return {'selected': [row['name'] for row in rows if row['selected']], 'destinations': rows, 'fallback': fallback}
+    return {'selected': [row['name'] for row in rows if row['selected']], 'destinations': rows, 'fallback': fallback,
+            'quiet': quiet, 'native_handoff': context.get('native_handoff', True), 'route_event': matching['event']}
 
 
 # Preview either the active revision or an unsaved validated draft
@@ -128,7 +132,13 @@ def preview(ledger, context, configuration=None):
     with ledger.store.connect() as connection:
         current = _configuration(connection)
     settings = validate(configuration) if configuration is not None else current['active']
-    return {**_route(settings, context, time.time()), 'revision': current['active_revision']}
+    source = 'active' if configuration is None else 'saved-draft' if settings == current['draft'] else 'unsaved-draft'
+    revision = current['active_revision'] if source == 'active' else current['revision'] if source == 'saved-draft' else None
+    now = int(time.time())
+    return {**_route(settings, context, now), 'revision': revision, 'source': source,
+            'configuration_digest': fingerprint(settings), 'observed_at': now, 'context': context,
+            'effect': 'preview only; no handoff, catch-up or destination contact'}
+
 
 
 # Read one binding inside the transaction owning its next transition
@@ -171,30 +181,37 @@ def _open_binding(connection, incident_id, name, settings, payload, revision):
     return binding
 
 
+# Keep route preview and committed incident events on the same public context semantics
+def routing_context(release, event, incident=None, component=''):
+    incident = incident or {}
+    origin = incident.get('origin')
+    affected = origin.get('components', []) if origin else [name for name, node in release.get('nodes', {}).items()
+                                                          if node['status'] in {'failed', 'uncertain'}]
+    severity = 'critical' if release.get('status') == 'uncertain' else 'warning' if origin and origin['status'] == 'unknown' else 'error'
+    if event in {'release.succeeded', 'release.waiting'}:
+        severity = 'info'
+    return {'project': release.get('project', ''), 'environment': release.get('environment', ''),
+            'component': component or (affected[0] if len(affected) == 1 else ''), 'event': event,
+            'severity': severity, 'native_handoff': incident.get('native_handoff', True)}
+
+
 # Route new durable events in the same transaction as their incident or release
 def enqueue(connection, release_id, event, detail, sequence):
     if event not in {'release.succeeded', 'release.failed', 'release.uncertain', 'release.waiting',
-                     'incident.opened', 'incident.acknowledged', 'incident.resolved', 'incident.escalated'}:
+                     'incident.opened', 'incident.handoff_requested', 'incident.acknowledged', 'incident.resolved', 'incident.escalated'}:
         return
     current = _configuration(connection)
     row = connection.execute('SELECT data FROM releases WHERE id=?', (release_id,)).fetchone()
     release = json.loads(row[0]) if row else {}
-    component = detail.get('component', '')
-    if not component:
-        failed = [name for name, node in release.get('nodes', {}).items() if node['status'] in ('failed', 'uncertain')]
-        component = failed[0] if len(failed) == 1 else ''
-    payload = {'release_id': release_id, 'event': event, 'project': release.get('project', ''),
-               'environment': release.get('environment', ''), 'component': component,
-               'severity': 'critical' if release.get('status') == 'uncertain' else 'error',
-               'actor': detail.get('actor', 'local-operator'), 'time': int(time.time())}
-    if event in ('release.succeeded', 'release.waiting'):
-        payload['severity'] = 'info'
+    payload = {**routing_context(release, event, component=detail.get('component', '')),
+               'release_id': release_id, 'actor': detail.get('actor', 'local-operator'), 'time': int(time.time())}
     incident_id = detail.get('incident_id', '')
     if incident_id:
         incident_row = connection.execute('SELECT data FROM incidents WHERE id=?', (incident_id,)).fetchone()
         if incident_row:
             incident = json.loads(incident_row[0])
             payload.update({key: value for key, value in incident.items() if key != 'id'})
+            payload.update(routing_context(release, event, incident, detail.get('component', '')))
         payload.update(incident_id=incident_id, version=detail['version'])
 
     # Local resolution cancels unsent native triggers without claiming remote closure
@@ -407,8 +424,25 @@ def _finish(ledger, row, result):
         if state == 'failed' and fallback and not obsolete and row['action'] in ('trigger', 'notify'):
             target, target_settings = fallback['name'], fallback['settings']
             native = not CAPABILITIES[target_settings['provider']]['notifications']
-            if not target_settings['enabled'] or (native and payload['event'] != 'incident.opened'):
+            if not target_settings['enabled'] or (native and payload['event'] not in {'incident.opened', 'incident.handoff_requested'}):
                 return
+            if native and not connection.execute(
+                    'SELECT 1 FROM notification_bindings WHERE incident_id=? AND destination=?',
+                    (payload.get('incident_id', ''), target)).fetchone():
+                # A historical notification failure is not fresh authority to start a native page
+                incident_row = connection.execute('SELECT data FROM incidents WHERE id=?',
+                                                  (payload.get('incident_id', ''),)).fetchone()
+                incident = json.loads(incident_row[0]) if incident_row else {}
+                if (incident.get('version') != payload.get('version') or incident.get('status') != 'open'
+                        or incident.get('native_handoff', True) is False):
+                    admission = {'state': 'not_admitted', 'destination': target,
+                                 'reason': 'Incident changed or is no longer open' if incident.get('version') != payload.get('version') or incident.get('status') != 'open' else
+                                           'Incident has not been handed off', 'checked_at': now,
+                                 'expected_version': payload.get('version'), 'current_version': incident.get('version')}
+                    connection.execute('UPDATE notification_obligations SET result=? WHERE id=?',
+                                       (canonical({**result, 'fallback_admission': admission}), row['id']))
+                    ledger.store.event(connection, now, 'paging', 'paging.fallback.not_admitted', row['id'], admission)
+                    return
             next_binding = _open_binding(connection, payload['incident_id'], target, target_settings, payload, fallback['revision']) if native else None
             _obligation(connection, row['event_id'], target, target_settings, payload, 'trigger' if native else 'notify',
                         next_binding['id'] if next_binding else '')

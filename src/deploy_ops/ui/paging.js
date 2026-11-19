@@ -208,6 +208,8 @@ async function pagingRefresh() {
   for (const item of state.deliveries) {
     text(deliveries, "p", item.destination + " · " + item.action + " · " + item.state + " · attempts " + item.attempts + "/" + item.attempt_limit + (item.exhausted ? " · exhausted" : "") + (item.overdue ? " · overdue" : "") +
       (item.result.reason ? " · " + item.result.reason : "") + (item.state === "queued" ? " · due " + new Date(item.due * 1000).toLocaleString() : ""));
+    if (item.result.fallback_admission?.state === 'not_admitted') text(deliveries, 'p',
+      'Fallback ' + item.result.fallback_admission.destination + ' was not admitted: ' + item.result.fallback_admission.reason + '. No new fallback page was queued.');
   }
 }
 
@@ -283,6 +285,9 @@ element("paging-preview-form").onsubmit = event => {
     const context = Object.fromEntries(new FormData(event.target));
     const result = await api("/paging/preview", "POST", {context, paging_configuration: pagingDraft});
     const root = element("paging-preview-result"); root.replaceChildren();
+    text(root, "p", "Evaluated " + result.source + " · revision " + (result.revision ?? "unsaved") + " · " + new Date(result.observed_at * 1000).toLocaleString());
+    text(root, "p", "Configuration digest: " + result.configuration_digest);
+    text(root, "p", "Context: " + ["project", "environment", "component", "event", "severity"].map(key => key + "=" + (result.context[key] || "any")).join(" · "));
     for (const item of result.destinations) text(root, "p", item.name + ": " + (item.selected ? "selected" : "not selected") + " · " + item.reason);
     element("paging-status").textContent = "Route preview only. No provider was contacted.";
   });

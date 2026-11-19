@@ -1,6 +1,7 @@
 # Local incidents and escalation signals
 
-An incident records who owns the response to a failed or uncertain release. It doesn't change the release outcome, repair a deployment, or show that a responder was paged. The owner is a label, not an authenticated identity.
+An incident records who owns the response to a failed or uncertain release, or to an exact saved
+later observation of drift or unavailable evidence. It doesn't change the release outcome, repair a deployment, or show that a responder was paged. The owner is a label, not an authenticated identity.
 
 ## Open, acknowledge and resolve
 
@@ -10,7 +11,7 @@ deploy-ops incidents open RELEASE_ID --owner operations \
 deploy-ops incidents list
 ```
 
-Only failed or uncertain releases qualify. Repeating an open request returns the existing incident, and changing its owner or policy is refused. A resolved incident is never reopened. Existing failures aren't opened automatically.
+Without an observation reference, only failed or uncertain releases qualify. Repeating an open request returns the existing incident, and changing its source, owner, or policy is refused. A resolved incident is never reopened. Existing failures aren't opened automatically.
 
 Use the incident ID and version returned by `list` for decisions:
 
@@ -20,6 +21,39 @@ deploy-ops incidents resolve INCIDENT_ID --version CURRENT_VERSION --note 'Cause
 ```
 
 Acknowledgement stops further escalation. You can resolve from open or acknowledged, which also stops escalation. A stale version is refused, so read the latest state and retry. Record target recovery separately through release reconciliation. Notes stay in local event and audit records and aren't sent in notifications. Keep secrets out of notes and owner labels.
+
+## Track a later observation and review responder handoff
+
+A successful deployment stays successful when a later observation finds changed or missing files.
+Run `deploy-ops observe RELEASE_ID`, then use its exact `reference.sequence` and `reference.digest`:
+
+```bash
+deploy-ops incidents open RELEASE_ID --owner operations --note 'Investigate later drift' \
+  --observation-sequence SAVED_SEQUENCE --observation-digest SAVED_DIGEST
+deploy-ops incidents handoff-preview INCIDENT_ID
+# Review the active revision, route digest, quiet state and prior routing decisions first.
+deploy-ops incidents handoff INCIDENT_ID --version CURRENT_VERSION \
+  --route-digest REVIEWED_ROUTE_DIGEST --note 'Queue the reviewed responder route'
+```
+
+The reference must identify a saved adverse observation of this release. `unknown` means evidence is
+unavailable or unsupported, not that the application is unhealthy. Current observations cover local
+files only. The source and scope stay visible in incident history. One incident per release is supported.
+A resolved episode is preserved and cannot be replaced by another observation or silently reopened.
+
+In the console, choose **Track this recorded observation** in release details, fill the owner and note,
+and open the local incident. Opening from an observation does not queue native responder pages.
+Ordinary notification routing remains independent. Select the incident, choose **Preview responder
+route**, review current routing and recorded suppression, then use **Queue reviewed responder handoff** with a
+note and confirmation. Previewing never contacts a destination. Handoff queues work that a running
+worker may send immediately. It does not acknowledge a responder, repair a deployment or resolve it.
+
+The handoff digest binds the incident version and active route, including current quiet eligibility.
+Changes require a fresh preview. A quiet period expiring never replays its suppressed opening.
+Handoff is a deliberate new event using the `incident.opened` routing filters. Existing native bindings
+or a previously requested handoff block another handoff. Inspect those bindings and use their explicit
+readback, retry or resolution actions instead, especially when an earlier outcome is unknown. An earlier
+ordinary notification might already have reached someone. No recall or duplicate-free delivery is claimed.
 
 ## Explicit escalation checks
 

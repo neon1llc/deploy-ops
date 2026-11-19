@@ -18,6 +18,9 @@ let selectedIncident = null;
 let incidentRecords = [];
 let incidentKey = "";
 let incidentBusy = false;
+let incidentOrigin = null;
+let incidentHandoff = null;
+let incidentHandoffKey = "";
 
 
 // Track saved text and unsaved form drafts as separate revisions
@@ -360,7 +363,10 @@ async function refresh() {
     if (!releases.length) text(root, "p", "No releases yet. Preview the workflow, then prepare one.");
     for (const release of releases) {
       const previewState = release.preview ? " · preview " + (release.cleanup?.status || (Date.now() >= release.preview.expires_at * 1000 ? "cleanup due" : "active")) : "";
-      const node = button(release.environment + " · " + release.status + previewState + " · " + release.id.slice(0, 8), () => show(release.id), release.id);
+      const ordered = Array.isArray(release.order) ? release.order.filter(name => typeof name === "string" && name) : [];
+      const names = ordered.length ? ordered : Object.keys(release.nodes || {});
+      const label = names.length ? names.slice(0, 3).join(" → ") + (names.length > 3 ? " (+" + (names.length - 3) + ")" : "") : "Release";
+      const node = button(label + " · " + release.environment + " · " + release.status + previewState + " · " + release.id.slice(0, 8), () => show(release.id), release.id);
       node.className = "release"; root.append(node);
       if (node.dataset.key === focused) node.focus({preventScroll: true});
     }
@@ -755,6 +761,7 @@ async function show(id) {
     }, "recover-release"));
   }
   if (["failed", "uncertain"].includes(release.status)) root.append(button("Track a local incident", async () => {
+    incidentOrigin = null; renderIncidentOrigin();
     element("incident-release").value = id;
     document.dispatchEvent(new CustomEvent("deployops:navigate", {detail: {view: "incidents"}}));
     element("incident-panel").open = true;
@@ -770,7 +777,8 @@ async function show(id) {
     if (document.activeElement === document.body) element("detail").querySelector('[data-key="observe"]')?.focus({preventScroll: true});
     message("Deployment observation: " + observation.status + ". No repairs were made.");
   }, "observe"));
-  const observation = data.events.filter(event => event.name === "release.observed").at(-1)?.detail;
+  const observationEvent = data.events.filter(event => event.name === "release.observed").at(-1);
+  const observation = observationEvent?.detail;
   if (observation) {
     text(root, "p", "Observed " + new Date(observation.observed_at * 1000).toLocaleString() + " · " + observation.status);
     const list = document.createElement("ul"); root.append(list);
@@ -778,6 +786,14 @@ async function show(id) {
       text(list, "li", name + ": " + result.status + (result.reason ? ". " + result.reason : ". " + result.scope));
     }
     reviewEvidence(root, "observation", "Observation evidence", observation, expanded);
+    if (["succeeded", "failed", "uncertain"].includes(release.status) && ["drifted", "unknown"].includes(observation.status) && observationEvent.reference) {
+      root.append(button("Track this recorded observation", async () => {
+        incidentOrigin = {release_id: id, ...observationEvent.reference, status: observation.status};
+        element("incident-release").value = id; renderIncidentOrigin();
+        document.dispatchEvent(new CustomEvent("deployops:navigate", {detail: {view: "incidents"}}));
+        element("incident-panel").open = true; element("incident-owner").focus();
+      }, "track-observation"));
+    }
   }
   // Keep command outcomes in committed order without treating local process exit as provider state
   const commands = data.events.filter(event => ["command.finished", "command.failed"].includes(event.name));
@@ -1307,11 +1323,45 @@ async function refreshIncidents() {
 function renderIncident() {
   const record = incidentRecords.find(item => item.id === selectedIncident);
   element("incident-decision-form").hidden = !record || record.status === "resolved";
-  if (!record) return;
+  const submit = element("incident-handoff-submit"); submit.hidden = true;
+  const review = element("incident-handoff-review");
+  if (!record) { review.replaceChildren(); incidentHandoff = null; incidentHandoffKey = ""; return; }
   element("incident-detail").textContent = record.id + " · " + record.status + " · owner: " + record.owner + " · version " + record.version +
     " · escalation level " + record.level + "/" + record.limit + " · " + (record.next_escalation_at ?
-      "next due " + new Date(record.next_escalation_at * 1000).toLocaleString() : "no further escalation scheduled") + ". Release: " + record.release_id;
+      "next due " + new Date(record.next_escalation_at * 1000).toLocaleString() : "no further escalation scheduled") + ". Release: " + record.release_id +
+    (record.origin ? " · recorded observation " + record.origin.sequence + " (" + record.origin.status + "); deployment outcome is unchanged." : "") +
+    (record.handoff_requested_at ? " Responder handoff was requested; inspect per-destination delivery." : record.native_handoff === false ? " Not handed off to native responders." : "");
   element("incident-acknowledge").hidden = record.status === "acknowledged";
+  if (incidentHandoff?.incident_id !== record.id || incidentHandoff?.incident_version !== record.version) incidentHandoff = null;
+  const key = JSON.stringify(incidentHandoff || {id: record.id, version: record.version});
+  if (key !== incidentHandoffKey) {
+    incidentHandoffKey = key; review.replaceChildren();
+    if (incidentHandoff) {
+      const data = incidentHandoff;
+      text(review, "h4", "Reviewed active responder route");
+      reviewFacts(review, [["Settings", data.source], ["Active revision", data.revision],
+        ["Previewed at", new Date(data.observed_at * 1000).toLocaleString()], ["Route digest", data.route_digest],
+        ["Environment", data.context.environment], ["Component", data.context.component || "Release scope"]]);
+      for (const item of data.decision.destinations) text(review, "p", item.name + ": " + (item.selected ? "selected" : "not selected") + " · " + item.reason);
+      if (data.reason) text(review, "p", data.reason).className = "isolated-warning";
+      text(review, "p", data.risk);
+      text(review, "p", "Preview does not hand off an earlier quiet or suppressed event. Only the explicit queued handoff below creates new destination work.");
+      for (const prior of data.prior_routes || []) text(review, "p", "Recorded " + prior.event + " · incident version " + prior.version +
+        " · routing revision " + prior.revision + " · quiet: " + (prior.decision.quiet ? "yes" : "no") +
+        " · native handoff: " + (prior.decision.native_handoff === false ? "not requested" : "eligible only under that recorded route"));
+      reviewEvidence(review, "incident-handoff", "Exact prospective context and recorded route decisions", data);
+    }
+  }
+  submit.hidden = !incidentHandoff?.available || record.status !== "open";
+  submit.disabled = incidentBusy;
+}
+
+
+// Keep the selected evidence reference separate from authored owner and note text
+function renderIncidentOrigin() {
+  element("incident-origin").textContent = incidentOrigin
+    ? "Source: saved " + incidentOrigin.status + " observation " + incidentOrigin.sequence + " · digest " + incidentOrigin.digest + ". Opening preserves delivery history and does not queue native pages."
+    : "Source: failed or uncertain delivery. A recorded later observation can be selected from release details.";
 }
 
 
@@ -1325,10 +1375,12 @@ async function incidentAction(form, action) {
     await action();
     await refresh();
   } catch (error) {
+    incidentHandoff = null; incidentHandoffKey = "";
+    try { await refreshIncidents(); } catch (_) { /* Keep the last readable incident and authored note. */ }
     element("incident-status").textContent = error.message;
     element("incident-status").className = "error";
   } finally {
-    incidentBusy = false; buttons.forEach(control => { control.disabled = false; });
+    incidentBusy = false; renderIncident(); buttons.forEach(control => { control.disabled = false; });
     if (document.activeElement === document.body) element("incident-status").focus({preventScroll: true});
   }
 }
@@ -1346,10 +1398,12 @@ element("incident-open-form").onsubmit = event => {
   incidentAction(event.currentTarget, async () => {
     const record = await api("/incidents", "POST", {release_id: element("incident-release").value,
       owner: element("incident-owner").value, note: element("incident-open-note").value,
-      interval_seconds: Number(element("incident-interval").value), limit: Number(element("incident-limit").value)});
+      interval_seconds: Number(element("incident-interval").value), limit: Number(element("incident-limit").value),
+      ...(incidentOrigin ? {observation_sequence: incidentOrigin.sequence, observation_digest: incidentOrigin.digest} : {})});
     if (!token) return;
     selectedIncident = record.id;
-    incidentMessage("Incident recorded. Destination work is queued; a running paging worker may send it now.");
+    incidentMessage(record.origin ? "Local incident recorded for the saved observation. No native page was queued for this incident; review responder handoff separately. Ordinary notification routing is independent."
+      : "Incident recorded. Destination work is queued; a running paging worker may send it now.");
   });
 };
 
@@ -1362,11 +1416,34 @@ element("incident-decision-form").onsubmit = event => {
   const note = element("incident-note").value;
   incidentAction(event.currentTarget, async () => {
     if (!record || !action) throw new Error("Select an incident and a decision first.");
-    const updated = await api("/incidents/" + record.id + "/" + action, "POST", {version: record.version, note});
+    if (action === "handoff" && (!incidentHandoff?.available || incidentHandoff.incident_id !== record.id || incidentHandoff.incident_version !== record.version)) throw new Error("Preview this incident's current responder route first.");
+    if (action === "handoff" && !await confirmAction("Queue this exact responder handoff? Earlier notifications may already have reached someone. Unknown delivery needs inspection; this does not repair or resolve the deployment.")) return;
+    const updated = await api("/incidents/" + record.id + "/" + action, "POST", {version: record.version, note,
+      ...(action === "handoff" ? {route_digest: incidentHandoff.route_digest} : {})});
     if (!token) return;
-    incidentMessage("Incident " + updated.status + ". Deployment outcome is unchanged.");
+    incidentMessage(action === "handoff" ? "Responder handoff queued. A running worker may contact destinations now. Deployment and responder acknowledgement are separate."
+      : "Incident " + updated.status + ". Deployment outcome is unchanged.");
   });
 };
+
+
+// Read current routing without discarding notes or accepting a late response for another incident
+element("incident-handoff-preview").onclick = () => {
+  const record = incidentRecords.find(item => item.id === selectedIncident);
+  if (!record) return;
+  return incidentAction(element("incident-decision-form"), async () => {
+    const data = await api("/incidents/" + record.id + "/handoff");
+    if (!token || selectedIncident !== record.id || incidentRecords.find(item => item.id === record.id)?.version !== record.version) return;
+    incidentHandoff = data; incidentHandoffKey = "";
+    incidentMessage("Active route preview only. No handoff, catch-up or destination contact occurred.");
+  });
+};
+element("incident-release").oninput = () => {
+  if (incidentOrigin && element("incident-release").value !== incidentOrigin.release_id) {
+    incidentOrigin = null; renderIncidentOrigin();
+  }
+};
+
 
 
 // Advance due local escalation only through an explicit operator action
