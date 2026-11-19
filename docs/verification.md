@@ -1,5 +1,15 @@
 # Verification
 
+## Bounded Slack review, 2026-11-05
+
+The previous renderer reproduced a missing25th deletion, resource type and finding while still offering
+approval. Current fixtures preserve all normalized review text over bounded plain-text pages, including
+2000 rows, long reasons/findings and non-BMP Unicode. Signed member continuation changes no authority
+or audit state. Wrong identity/digests/pages and changed review content refuse. Final-page approval
+uses the existing controller and leaves execution unclaimed. Existing incompatible evidence has no
+new approval shortcut. These are local protocol checks, not a live Slack workspace, mobile/desktop Slack
+rendering or human-review qualification. No Slack message was sent.
+
 ## Later evidence and responder handoff, 2026-11-05
 
 A real local directory deployment succeeded before its marker was changed and observed as drifted.

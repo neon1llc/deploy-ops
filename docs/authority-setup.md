@@ -72,7 +72,11 @@ Create a Slack app from [manifest.yaml](../integrations/slack/manifest.yaml) wit
 
 Set `DEPLOY_OPS_SLACK_SIGNING_SECRET` and `DEPLOY_OPS_SLACK_BOT_TOKEN` in the controller's secret store or environment. Set the workspace ID, app ID, channel ID, and allowed Slack user IDs in the administrator-owned configuration, and map each approver to a numeric GitHub user ID.
 
-A pending request produces an approval card. Buttons authorize the exact request digest. Requests need a valid Slack signature, recent timestamp, the expected app and workspace, and an allowed member.
+A pending request produces a plain-text review card. It lists every normalized change with its resource type and action, every finding, the manual-review flag, source claims, public artifact, tool, and policy bindings, and the decision reason. Native plan and artifact bytes are referenced, not embedded. Long reviews use bounded pages that show section and page extents and the exact request ID and digest on each page. **Continue review** and **Previous review page** only read state. If the request or review content changed, or a page is unavailable, show the request again. There is no new cursor store or deployment action.
+
+New cards offer **Approve this plan** only at the end of the normalized review, and withhold it when an execution-compatibility blocker exists. **Reject** stays available on every pending page. Reaching a page doesn't prove a person read it. Existing signed decision buttons and operator CLI decisions keep their exact-digest authorization contract, with no server-side reading or progress requirement. Approval still waits for a separate authorized claim and execution, and never starts a deployment from chat.
+
+Buttons authorize the exact request digest. Review continuation and decisions both need a valid Slack signature, recent timestamp, the expected app and workspace, and an allowed member. The renderer stays within Slack's [section limit](https://docs.slack.dev/reference/block-kit/blocks/section-block/), [message block limit](https://docs.slack.dev/reference/block-kit/blocks/), and [button limits](https://docs.slack.dev/reference/block-kit/block-elements/button-element/). Repository labels stay plain text, and no mentions, links, or commands are interpreted from their content.
 
 ```text
 /deploy-ops pending
