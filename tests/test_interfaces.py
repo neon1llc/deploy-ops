@@ -187,3 +187,94 @@ def test_signed_delegation_command_cannot_be_replayed_after_revocation(system):
     controller.pause(False, "operator")
     with pytest.raises(Refused, match="already handled"):
         slack.handle(body, str(clock[0]), signed_body)
+
+
+# Every normalized row/finding survives bounded pages, including long labels and non-BMP Unicode
+@pytest.mark.parametrize('count', [25, 2000])
+def test_slack_review_preserves_complete_normalized_text(system, proposal, source, count):
+    from deploy_ops.slack import card, review_text
+    request = system[0].submit(proposal, source)
+    request['manifest']['preview'] = {
+        'changes': [{'address': f'late-resource-{index}-' + 'x' * 400, 'resource_type': 'aws_fixture',
+                     'action': 'delete' if index == count - 1 else 'update'} for index in range(count)],
+        'findings': ['Full finding ' + '🔎' * 4000 + ' end of finding'], 'manual_only': True}
+    request['reason'] = 'Long public review reason ' + 'r' * 5000
+    content, rendered, page = review_text(request), [], 0
+    while True:
+        result = card(request, page)
+        sections = [block['text']['text'] for block in result['blocks'] if block['type'] == 'section']
+        rendered.extend(sections[1:])
+        assert len(result['blocks']) <= 50
+        assert all(len(text.encode('utf-16-le')) // 2 <= 3000 for text in sections)
+        assert all(block['text']['type'] == 'plain_text' for block in result['blocks'] if block['type'] == 'section')
+        assert request['id'] in sections[0] and request['digest'] in sections[0] and 'manual-only: yes' in sections[0]
+        buttons = [item for block in result['blocks'] for item in block.get('elements', [])]
+        assert len({item['action_id'] for item in buttons}) == len(buttons)
+        assert all(len(item['value']) <= 2000 and len(item['text']['text']) <= 75 for item in buttons)
+        next_page = next((item for item in buttons if item['text']['text'] == 'Continue review'), None)
+        assert any(item['action_id'] == 'reject' for item in buttons)
+        if next_page:
+            assert not any(item['action_id'] == 'approve' for item in buttons)
+            page += 1
+        else:
+            assert any(item['action_id'] == 'approve' for item in buttons)
+            break
+    assert ''.join(rendered) == content
+    assert f'late-resource-{count-1}' in content and 'type "aws_fixture"' in content
+    assert 'end of finding' in content and 'r' * 5000 in content
+
+
+# Signed continuation reads the exact request and review without changing authority or audit
+# Forged pages/digests/membership and changed review content refuse before a decision
+def test_slack_authenticated_review_continuation_and_held_approval(system, proposal, source):
+    from deploy_ops.slack import card
+    controller, _, clock = system
+    proposal.preview['resource_changes'] = [
+        {'address': 'aws_ecs_service.' + str(index) + 'x' * 380, 'type': 'aws_ecs_service',
+         'change': {'actions': ['update']}} for index in range(150)]
+    request = controller.submit(proposal, source)
+    assert request['status'] == 'pending'
+    config = controller.settings.slack.model_copy(update={'team_id': 'T1', 'app_id': 'A1', 'approvers': {'U1': '999'}})
+    slack = Slack(controller, config, 'review-secret', '')
+    first = card(controller.get(request['id']))
+    buttons = lambda result: [item for block in result['blocks'] for item in block.get('elements', [])]
+    cursor = next(item['value'] for item in buttons(first) if item['text']['text'] == 'Continue review')
+    before = controller.store.verify()
+
+    # Preserve the existing signed member boundary for read-only pagination and later approval
+    def interact(action, value, user='U1'):
+        payload = {'type': 'block_actions', 'team': {'id': 'T1'}, 'api_app_id': 'A1', 'user': {'id': user},
+                   'actions': [{'action_id': action, 'value': value}]}
+        body = urlencode({'payload': json.dumps(payload)}).encode()
+        return slack.handle(body, str(clock[0]), signature(body, clock[0], 'review-secret'))
+
+    with pytest.raises(Refused, match='approver'):
+        interact('review_next', cursor, 'intruder')
+    fields = cursor.split(':')
+    for index, replacement in [(1, 'f' * 64), (2, 'e' * 64), (3, '999999'), (3, '-1'), (3, '01')]:
+        changed = fields.copy(); changed[index] = replacement
+        with pytest.raises(Refused):
+            interact('review_next', ':'.join(changed))
+    result = interact('review_next', cursor)
+    while any(item['text']['text'] == 'Continue review' for item in buttons(result)):
+        cursor = next(item['value'] for item in buttons(result) if item['text']['text'] == 'Continue review')
+        result = interact('review_next', cursor)
+    assert controller.store.verify() == before
+    assert controller.get(request['id'])['status'] == 'pending'
+    approve = next(item for item in buttons(result) if item['action_id'] == 'approve')
+    interact('approve', approve['value'])
+    approved = controller.get(request['id'])
+    assert approved['status'] == 'approved' and approved['execution'] is None
+    with pytest.raises(Refused, match='content changed'):
+        interact('review_next', cursor)
+
+
+# Existing incompatible prepared contracts remain visible but get no new approval shortcut
+def test_slack_blocked_review_has_reject_without_approve(system, proposal, source):
+    from deploy_ops.slack import card
+    request = system[0].submit(proposal, source)
+    request['execution_blocker'] = 'Prepare fresh compatible native evidence'
+    result = card(request)
+    actions = [item['action_id'] for block in result['blocks'] for item in block.get('elements', [])]
+    assert 'reject' in actions and 'approve' not in actions
+    assert any('Prepare fresh compatible native evidence' in block.get('text', {}).get('text', '') for block in result['blocks'])

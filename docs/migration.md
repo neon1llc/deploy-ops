@@ -207,3 +207,11 @@ Use one matching runtime version for all writers and stop older paging workers b
 There is no cross-version writer lock. Older workers do not enforce the new handoff/fallback admission
 rules. Existing outbox rows are not rewritten or backfilled, and existing in-flight remote outcomes
 still require inspection. Back up state first and retain the matching package for read-only recovery.
+
+## Bounded Slack review in v0.30.0
+
+New cards render the full normalized review over bounded native pages and expose approval only on the
+last page. Read-only continuation binds the request digest and displayed review digest. Restart review
+if its content changes. Upgrade the callback consumer with the renderer so new continuation actions are
+understood. Existing request bytes, audit rows, exact-digest decision buttons and the separate execution
+contract are unchanged. No reading-progress ledger or retroactive human-review claim is introduced.

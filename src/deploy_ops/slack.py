@@ -29,39 +29,89 @@ def verify_signature(body: bytes, timestamp: str, signature: str, secret: str, n
     return hashlib.sha256(message).hexdigest()
 
 
-# Render repository-controlled labels as bounded plain text
-def card(request: dict) -> dict:
-    """Use plain text fields so repository labels cannot inject mentions or links."""
-    manifest = request["manifest"]
-    source = manifest["source"]
-    changes = manifest["preview"]["changes"]
-    cost = manifest["estimated_monthly_delta_cents"]
-    estimate = "Unknown" if cost is None else f"${cost / 100:.2f}/month estimated change"
+# Preserve all normalized review text, including types and findings, without interpreting labels as markup
+def review_text(request: dict) -> str:
+    manifest, preview = request['manifest'], request['manifest']['preview']
+    quoted = lambda value: json.dumps(value, ensure_ascii=False, sort_keys=True)
     lines = [
-        f"{manifest['target']} | {request['status']}",
-        f"{source['repository']} @ {source['sha'][:12]}",
-        f"Initiator: {source['actor']} (GitHub ID {source['actor_id']})",
-        f"{len(changes)} resource entries | {estimate}",
-        f"Reason: {request['reason']}",
-        f"Request: {request['id']}",
-        f"Digest: {request['digest']}",
+        'Scope: complete normalized controller preview and public bindings. Native plan/artifact bytes are referenced, not embedded.',
+        'Target: ' + quoted(manifest['target']),
+        'Status: ' + request['status'],
+        'Reason: ' + quoted(request['reason']),
+        'Manual-only review: ' + ('yes' if preview.get('manual_only') else 'no'),
     ]
-    caller = manifest.get("caller", manifest.get("agent", {}))
-    if caller.get("label"):
-        lines.append(f"Caller label (self-reported): {caller['label']}")
-    blocks = [{"type": "section", "text": {"type": "plain_text", "text": "\n".join(lines)[:2900]}}]
-    if changes:
-        detail = "\n".join(f"{item['action']}: {item['address']}" for item in changes[:20])
-        blocks.append({"type": "section", "text": {"type": "plain_text", "text": detail[:2900]}})
-    if request["status"] == "pending":
-        value = request["id"] + ":" + request["digest"]
-        blocks.append({"type": "actions", "elements": [
-            {"type": "button", "text": {"type": "plain_text", "text": "Approve this plan"},
-             "action_id": "approve", "value": value, "style": "primary"},
-            {"type": "button", "text": {"type": "plain_text", "text": "Reject"},
-             "action_id": "reject", "value": value, "style": "danger"},
-        ]})
-    return {"text": "DeployOps deployment review", "blocks": blocks}
+    for key in ('cloud', 'engine', 'schema_version', 'native_effects_version', 'artifact_digest', 'preview_digest',
+                'tool_version', 'lock_digest', 'policy_digest', 'planning_request', 'receipts'):
+        if key in manifest:
+            lines.append(key + ': ' + quoted(manifest[key]))
+    cost = manifest.get('estimated_monthly_delta_cents')
+    lines.append('Estimated monthly delta: ' + ('unknown' if cost is None else f'${cost / 100:.2f}; estimate, not observed cost'))
+    lines.append('Source claims: ' + quoted(manifest['source']))
+    lines.append('Caller (self-reported, not authority): ' + quoted(manifest.get('caller', manifest.get('agent', {}))))
+    lines.append('Request expires at Unix time: ' + quoted(request.get('expires_at')))
+    if request.get('execution_blocker'):
+        lines.append('Execution unavailable: ' + quoted(request['execution_blocker']))
+    lines.append('Findings (' + str(len(preview.get('findings', []))) + '):')
+    lines.extend(str(index) + '. ' + quoted(finding) for index, finding in enumerate(preview.get('findings', []), 1))
+    lines.append('Changes (' + str(len(preview['changes'])) + '), in normalized order:')
+    lines.extend(str(index) + '. ' + change['action'] + ' | type ' + quoted(change['resource_type']) +
+                 ' | address ' + quoted(change['address']) for index, change in enumerate(preview['changes'], 1))
+    return '\n'.join(lines)
+
+
+# Pack lines without losing long labels or Unicode; 1400 code points fit within 2800 UTF-16 units
+# This remains below Slack's 3000-character section limit under either counting convention
+def _review_sections(content):
+    sections, pending = [], ''
+    for line in content.splitlines(keepends=True):
+        if len(pending) + len(line) > 1400 and pending:
+            sections.append(pending)
+            pending = ''
+        while len(line) > 1400:
+            sections.append(line[:1400])
+            line = line[1400:]
+        pending += line
+    if pending:
+        sections.append(pending)
+    return sections
+
+
+# Page the native message within Slack's bounds; incomplete pages never offer a new approval shortcut
+def card(request: dict, page: int = 0, expected_review_digest: str = '') -> dict:
+    content = review_text(request)
+    review_digest = hashlib.sha256(content.encode()).hexdigest()
+    if expected_review_digest and expected_review_digest != review_digest:
+        raise Refused('Review content changed. Show the request again before continuing', 409)
+    sections = _review_sections(content)
+    pages = (len(sections) + 7) // 8
+    if type(page) is not int or not 0 <= page < pages:
+        raise Refused('Review page is unavailable. Show the request again', 422)
+    start, stop = page * 8, min((page + 1) * 8, len(sections))
+    preview = request['manifest']['preview']
+    header = (f"Request: {request['id']}\nDigest: {request['digest']}\n"
+              f"Page {page + 1}/{pages}; text sections {start + 1}–{stop}/{len(sections)}. "
+              f"{len(preview['changes'])} changes; {len(preview.get('findings', []))} findings; "
+              f"manual-only: {'yes' if preview.get('manual_only') else 'no'}.\n"
+              + ('More review text remains. Continue before deciding.' if stop < len(sections) else
+                 'End of normalized review text. Paging does not prove that a person read or understood it.'))
+    blocks = [{'type': 'section', 'text': {'type': 'plain_text', 'text': header}}]
+    blocks.extend({'type': 'section', 'text': {'type': 'plain_text', 'text': section}} for section in sections[start:stop])
+    value = request['id'] + ':' + request['digest']
+    elements = []
+    for label, target in [('Previous review page', page - 1), ('Continue review', page + 1)]:
+        if 0 <= target < pages:
+            elements.append({'type': 'button', 'text': {'type': 'plain_text', 'text': label},
+                             'action_id': 'review_previous' if target < page else 'review_next',
+                             'value': value + ':' + review_digest + ':' + str(target)})
+    if request['status'] == 'pending':
+        if stop == len(sections) and not request.get('execution_blocker'):
+            elements.append({'type': 'button', 'text': {'type': 'plain_text', 'text': 'Approve this plan'},
+                             'action_id': 'approve', 'value': value, 'style': 'primary'})
+        elements.append({'type': 'button', 'text': {'type': 'plain_text', 'text': 'Reject'},
+                         'action_id': 'reject', 'value': value, 'style': 'danger'})
+    if elements:
+        blocks.append({'type': 'actions', 'elements': elements})
+    return {'text': f"DeployOps deployment review: {request['id']}, page {page + 1}/{pages}", 'blocks': blocks}
 
 
 # Keep chat delivery separate from deployment authority
@@ -102,6 +152,15 @@ class Slack:
                 if payload.get("type") != "block_actions" or len(payload["actions"]) != 1:
                     raise ValueError("Unsupported interaction")
                 action = payload["actions"][0]
+                # Continuation is read-only and checks both immutable request and displayed review identity
+                if action['action_id'] in {'review_previous', 'review_next'}:
+                    request_id, digest, review_digest, page = action['value'].split(':')
+                    if not page.isascii() or not page.isdecimal() or str(int(page)) != page:
+                        raise ValueError('Invalid review page')
+                    request = self.controller.get(request_id)
+                    if digest != request['digest']:
+                        raise Refused('Request digest changed. Show the request again', 409)
+                    return {'response_type': 'ephemeral', **card(request, int(page), review_digest)}
                 request_id, digest = action["value"].split(":", 1)
                 request = self.controller.decide(
                     request_id, Decision(digest=digest, decision=action["action_id"]), actor, github_id,
