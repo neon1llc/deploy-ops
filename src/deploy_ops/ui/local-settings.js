@@ -94,14 +94,25 @@ function localRender() {
   }
   for (const [key, field] of Object.entries(contract.fields)) {
     const label = document.createElement("label"); label.textContent = field.title;
-    const input = document.createElement("input"); input.id = "local-field-" + key; input.value = draft[key]; input.spellcheck = false;
+    const input = document.createElement(field.enum ? "select" : "input"); input.id = "local-field-" + key;
+    label.htmlFor = input.id; input.name = key;
+    if (field.enum) input.append(...field.enum.map(value => new Option(value, value)));
+    input.value = draft[key]; input.spellcheck = false;
     input.oninput = () => { draft[key] = input.value; localDirty.get(localKey()).add(key);
       root.querySelectorAll("[data-pin]").forEach(button => { if (button.dataset.pin === key) button.disabled = false; }); }; label.append(input); root.append(label);
+    if (field.description) {
+      const help = text(root, "p", field.description); help.id = input.id + "-help";
+      input.setAttribute("aria-describedby", help.id);
+    }
     const info = metadata[key];
     text(root, "p", scope === "environment" && info
       ? "Effective: " + String(info.runtime_default ? "environment/component destination at preparation" : info.effective ?? "omitted") + " · source: " + info.source + " · component authored: " + String(info.component_authored ? info.component : "omitted")
       : "Authored: " + String(Object.hasOwn(contract.base, key) ? contract.base[key] : "omitted") + " · adapter default: " + String(field.default ?? "required"));
-    if (scope === "environment") {
+    if (scope === "base" && Array.isArray(contract.required) && !contract.required.includes(key)) {
+      const reset = text(root, "button", "Use adapter default " + field.title.toLowerCase()); reset.type = "button";
+      reset.disabled = !Object.hasOwn(contract.base, key) || localBusy;
+      reset.onclick = () => localApply(key);
+    } else if (scope === "environment") {
       const pin = document.createElement("button"); pin.type = "button"; pin.textContent = "Pin " + field.title.toLowerCase() + " override";
       pin.dataset.pin = key;
       pin.disabled = localBusy || Boolean(info?.runtime_default && !localDirty.get(localKey()).has(key));
@@ -133,7 +144,11 @@ async function localApply(field = "", pin = "") {
       values});
     if (element("config").value !== source) throw new Error("Draft changed while applying. Your text was preserved.");
     element("config").value = result.toml; formSource = result.toml; formContract = result;
-    if (field) localDrafts.get(key)[field] = result.local_edit_forms[name].environments[environment][field].effective ?? "";
+    if (field) {
+      const updated = result.local_edit_forms[name];
+      localDrafts.get(key)[field] = scope === "base" ? updated.base[field] ?? updated.fields[field].default ?? ""
+        : updated.environments[environment][field].effective ?? "";
+    }
     for (const changed of field ? [field] : Object.keys(values)) localDirty.get(key).delete(changed);
     element("config-diff").textContent = result.diff || "No changes.";
     element("local-status").textContent = "Draft updated. Review, validate and explicitly save before preparing a release.";

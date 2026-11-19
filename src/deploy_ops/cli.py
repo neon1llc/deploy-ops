@@ -111,7 +111,7 @@ def parser():
     config.add_argument("--name")
     config.add_argument("--scope", choices=["build", "base", "environment"], help="Local component or native environment edit scope")
     config.add_argument("--environment", help="Local environment for an override or reset")
-    config.add_argument("--field", help="One environment override to remove with config reset")
+    config.add_argument("--field", help="One optional component option or environment override to remove with config reset")
     config.add_argument("--values", type=json.loads, default={})
     config.add_argument("--draft-out", type=Path, help="Write successful add/patch/edit/reset TOML to a separate draft file")
     # Common creation inputs remain readable while structured values cover advanced contracts
