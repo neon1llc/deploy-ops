@@ -10,6 +10,16 @@ creation, native tools or credential acquisition. Ordinary notes, nonautomatic v
 cache content stay usable. This is a root-input boundary, not complete child-module/external-input
 provenance, a live provider case or race-proof filesystem isolation.
 
+## Retained capture inspection correction, 2026-11-05
+
+Independent exact-handler review reproduced an obsolete failed inspection reaching the global banner
+after a newer success, and a successful retry retaining its old error. Both outcomes now use the
+same session/generation/field binding and a local status. Narrow deferred-response DOM cases check
+late-error suppression, retained prior content on current failure, successful error replacement and
+unchanged authored fields/unrelated messages. Capture facts stack within the narrow desktop history
+column so full identifiers and ordinary words have useful width. Earlier capture/backend/native
+proof remains separately scoped; no new authority or provider action.
+
 ## Inspectable source capture attempts, 2026-11-05
 
 A real second-source refusal copied the first source before stopping, with no registered release or

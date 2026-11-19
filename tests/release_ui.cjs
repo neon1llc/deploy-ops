@@ -116,6 +116,38 @@ function control(key) {
 
 // Confirm approval never submits execution and readback never submits a deployment
 (async () => {
+  // Fence both retained-inspection outcomes and replace only this inspection's local error
+  for (const id of ['capture-inspect-form', 'capture-state', 'capture-id', 'capture-inspection', 'capture-inspection-status']) nodes.set(id, new Node('div'));
+  vm.runInContext(source.slice(source.indexOf('// Inspect a selected retained'), source.indexOf('// Keep bounded local delegation')), context);
+  const inspections = [];
+  context.inspectLater = () => new Promise((resolve, reject) => inspections.push({resolve, reject}));
+  vm.runInContext('api=inspectLater', context);
+  nodes.get('message').textContent = 'Unrelated operation note';
+  // Submit through the actual editable form while controlling response order
+  const inspect = name => {
+    nodes.get('capture-state').value = '/' + name;
+    nodes.get('capture-id').value = name.toLowerCase().repeat(32);
+    return nodes.get('capture-inspect-form').onsubmit({preventDefault() {}});
+  };
+  // Minimal supported response exercises adoption without needing a native store or provider
+  const retained = name => ({id: name, available: false, reason: 'Retained ' + name, state_directory: '/' + name, observed_at: 1});
+  const first = inspect('A'); const second = inspect('B');
+  inspections[1].resolve(retained('B')); await second;
+  inspections[0].reject(new Error('Obsolete A failure')); await first;
+  assert.equal(nodes.get('message').textContent, 'Unrelated operation note');
+  assert.equal(nodes.get('capture-inspection-status').textContent, 'Capture inspected.');
+  assert(nodes.get('capture-inspection').querySelectorAll('p').some(node => node.textContent === 'Retained B'));
+  const failed = inspect('C'); inspections[2].reject(new Error('Current C failure')); await failed;
+  assert(nodes.get('capture-inspection-status').textContent.includes('Current C failure'));
+  assert.equal(nodes.get('capture-inspection-status').className, 'error');
+  assert(nodes.get('capture-inspection').querySelectorAll('p').some(node => node.textContent === 'Retained B'));
+  const retry = inspect('C'); inspections[3].resolve(retained('C')); await retry;
+  assert.equal(nodes.get('capture-inspection-status').textContent, 'Capture inspected.');
+  assert.equal(nodes.get('capture-inspection-status').className, '');
+  assert.equal(nodes.get('message').textContent, 'Unrelated operation note');
+  assert.equal(nodes.get('capture-state').value, '/C');
+  assert.equal(nodes.get('capture-id').value, 'c'.repeat(32));
+  vm.runInContext('api=capture', context);
   // Save recovery retains authored drafts, binds the observed hash, and offers reload as a separate choice
   nodes.set('save-recovery', new Node('div')); nodes.set('inspect-save', new Node('button'));
   nodes.set('config', new Node('textarea')); nodes.get('config').value = 'unsaved owner draft';
