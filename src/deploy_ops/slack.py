@@ -40,10 +40,11 @@ def review_text(request: dict) -> str:
         'Reason: ' + quoted(request['reason']),
         'Manual-only review: ' + ('yes' if preview.get('manual_only') else 'no'),
     ]
-    for key in ('cloud', 'engine', 'schema_version', 'native_effects_version', 'artifact_digest', 'preview_digest',
-                'tool_version', 'lock_digest', 'policy_digest', 'planning_request', 'receipts'):
-        if key in manifest:
-            lines.append(key + ': ' + quoted(manifest[key]))
+    # The manifest is the existing public contract; dedicated sections cover the remaining fields
+    # Include its public generated planning packet instead of maintaining a second field allowlist
+    separate = {'target', 'source', 'preview', 'estimated_monthly_delta_cents', 'caller', 'agent'}
+    for key in sorted(set(manifest) - separate):
+        lines.append(key + ': ' + quoted(manifest[key]))
     cost = manifest.get('estimated_monthly_delta_cents')
     lines.append('Estimated monthly delta: ' + ('unknown' if cost is None else f'${cost / 100:.2f}; estimate, not observed cost'))
     lines.append('Source claims: ' + quoted(manifest['source']))
@@ -88,7 +89,7 @@ def card(request: dict, page: int = 0, expected_review_digest: str = '') -> dict
         raise Refused('Review page is unavailable. Show the request again', 422)
     start, stop = page * 8, min((page + 1) * 8, len(sections))
     preview = request['manifest']['preview']
-    header = (f"Request: {request['id']}\nDigest: {request['digest']}\n"
+    header = (f"Request: {request['id']}\nDigest: {request['digest']}\nTarget: {request['manifest']['target']}\n"
               f"Page {page + 1}/{pages}; text sections {start + 1}–{stop}/{len(sections)}. "
               f"{len(preview['changes'])} changes; {len(preview.get('findings', []))} findings; "
               f"manual-only: {'yes' if preview.get('manual_only') else 'no'}.\n"

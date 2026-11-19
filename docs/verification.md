@@ -7,7 +7,10 @@ approval. Current fixtures preserve all normalized review text over bounded plai
 2000 rows, long reasons/findings and non-BMP Unicode. Signed member continuation changes no authority
 or audit state. Wrong identity/digests/pages and changed review content refuse. Final-page approval
 uses the existing controller and leaves execution unclaimed. Existing incompatible evidence has no
-new approval shortcut. These are local protocol checks, not a live Slack workspace, mobile/desktop Slack
+new approval shortcut. A later supported isolated-IaC planning request exposed a missing public packet
+in the first renderer. The v0.30.1 correction renders all existing public manifest bindings, including
+the generated module and lock/tool/provider digests. Registered Terraform/OpenTofu planning cases
+verify complete packet text without broker/runner use or private registration references. These are local protocol checks, not a live Slack workspace, mobile/desktop Slack
 rendering or human-review qualification. No Slack message was sent.
 
 ## Later evidence and responder handoff, 2026-11-05

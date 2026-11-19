@@ -269,6 +269,7 @@ def parser():
     from .isolated import arguments
     arguments(commands.add_parser("isolated", help="Approve and run one registered isolated GCP recipe"))
     gate = commands.add_parser("gate", help="Use the independent approval controller and IaC worker")
+    gate.add_argument("--url", help="Controller HTTPS URL, otherwise DEPLOY_OPS_URL")
     gate.add_argument("args", nargs=argparse.REMAINDER)
     return root
 
@@ -375,7 +376,9 @@ def dispatch(args):
         return isolated(args)
     if args.command == "gate":
         from . import gate_cli
-        return gate_cli._dispatch(gate_cli.parser().parse_args(args.args))
+        # Forward the leading option before the delegated command without duplicating URL validation
+        forwarded = ["--url", args.url] if args.url is not None else []
+        return gate_cli._dispatch(gate_cli.parser().parse_args(forwarded + args.args))
     if args.command == "init":
         from .delivery.scaffold import create
         return {"project": str(create(args.directory))}
