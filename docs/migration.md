@@ -24,3 +24,11 @@ Default protected resource types now include CloudFormation and ARM names alongs
 The optional `local_isolated_iac` target mode keeps local operator provenance separate from GitHub claims. It's omitted from existing target fingerprints when unused, and no database schema migration is needed. Register a new private grant for the isolated route. Existing local or federated grants don't gain this authority.
 
 Container Apps requests prepared before exact revision journaling must be completed or reconciled under their original version. Prepare a fresh release for the new adapter, which refuses old prepared requests without a reviewed recovery identity. Existing Single-mode apps must contain exactly one named application container.
+
+## Waiting transition identity
+
+New waiting nodes retain the exact `waiting_request` ID/digest in the same transaction as their
+first `release.waiting` event and outboxes. Existing history and delivery IDs stay unchanged. An
+older waiting node without this binding records one current decision-needed transition on its next
+advance, then unchanged observations stay quiet. Stop old writers before upgrading; older writers
+do not enforce this deduplication. This adds no reminder scheduler or authority.
