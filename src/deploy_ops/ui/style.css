@@ -171,6 +171,10 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 var(--mono,
 .isolated-facts { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(0, 3fr); gap: 8px 16px; }
 .isolated-facts dt { font-weight: 650; }
 .isolated-facts dd { margin: 0; overflow-wrap: anywhere; }
+/* Stack capture facts in the narrow history column so values keep the full available width */
+#capture-history .isolated-facts { display: block; }
+#capture-history .isolated-facts dd { margin-block: 4px 12px; }
+#captures > details { padding: 12px; }
 .isolated-warning { color: var(--warning, CanvasText); }
 
 /* Retain table semantics and opaque sticky headings inside a keyboard-scrollable region */

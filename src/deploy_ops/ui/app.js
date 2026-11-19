@@ -997,18 +997,30 @@ element("release-form").onsubmit = (event) => { event.preventDefault(); safe(asy
 
 
 // Inspect a selected retained location without discarding authored paths or accepting a late result for another selection
-element("capture-inspect-form").onsubmit = event => { event.preventDefault(); safe(async () => {
+element("capture-inspect-form").onsubmit = async event => { event.preventDefault();
   const generation = ++captureInspectionGeneration;
+  const session = token;
   const state = element("capture-state").value;
   const id = element("capture-id").value;
-  const data = await api("/captures/" + encodeURIComponent(id) + "/inspect", "POST", {state_directory: state});
-  if (!token || generation !== captureInspectionGeneration || element("capture-state").value !== state || element("capture-id").value !== id) return;
-  const root = element("capture-inspection"); root.replaceChildren();
-  text(root, "h3", "Retained capture inspection");
-  reviewFacts(root, [["State inspected", data.state_directory], ["Observed at", new Date(data.observed_at * 1000).toLocaleString()]]);
-  captureDetails(root, data);
-  text(root, "p", "This is retained evidence. Continue through its original operation owner after inspecting current conditions.");
-}); };
+  const current = () => token && token === session && generation === captureInspectionGeneration
+    && element("capture-state").value === state && element("capture-id").value === id;
+  const status = element("capture-inspection-status");
+  status.textContent = "Inspecting selected capture…"; status.className = "";
+  try {
+    const data = await api("/captures/" + encodeURIComponent(id) + "/inspect", "POST", {state_directory: state});
+    if (!current()) return;
+    const root = element("capture-inspection"); root.replaceChildren();
+    text(root, "h3", "Retained capture inspection");
+    reviewFacts(root, [["State inspected", data.state_directory], ["Observed at", new Date(data.observed_at * 1000).toLocaleString()]]);
+    captureDetails(root, data);
+    text(root, "p", "This is retained evidence. Continue through its original operation owner after inspecting current conditions.");
+    status.textContent = "Capture inspected."; status.className = "";
+  } catch (error) {
+    if (!current()) return;
+    status.textContent = "Inspection failed. Any previous result below is retained. " + error.message;
+    status.className = "error";
+  }
+};
 
 
 // Keep bounded local delegation a separate operator decision
