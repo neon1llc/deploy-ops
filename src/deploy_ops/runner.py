@@ -30,8 +30,8 @@ def executable(engine: str) -> str:
     return binary
 
 
-# Require the approved commit and unchanged tracked infrastructure
-def workdir(workspace: Path, relative: str, commit: str) -> Path:
+# Require the approved commit and reviewed automatically loaded root inputs
+def workdir(workspace: Path, relative: str, commit: str, engine: str) -> Path:
     root = workspace.resolve()
     path = (root / relative).resolve()
     if not path.is_relative_to(root) or not path.is_dir():
@@ -40,10 +40,23 @@ def workdir(workspace: Path, relative: str, commit: str) -> Path:
                              capture_output=True, text=True).stdout.strip()
     if current != commit:
         raise Refused("Checked-out commit differs from the approved commit")
-    # Untracked artifacts are allowed, but tracked infrastructure must match the commit
+    # Ordinary untracked artifacts remain usable, but tracked infrastructure must match
     result = subprocess.run(["git", "diff", "--quiet", "HEAD", "--"], cwd=root)
     if result.returncode != 0:
         raise Refused("Tracked files differ from the approved commit")
+    # Native tools load these root files even when Git ignores them; inspect names, never values
+    extensions = ('.tf', '.tf.json') + (('.tofu', '.tofu.json') if engine == 'opentofu' else ())
+    inputs = [entry for entry in path.iterdir() if entry.name.endswith(extensions)
+              or entry.name in {'terraform.tfvars', 'terraform.tfvars.json', '.terraform.lock.hcl'}
+              or entry.name.endswith(('.auto.tfvars', '.auto.tfvars.json'))]
+    if any(entry.is_symlink() or not entry.is_file() for entry in inputs):
+        raise Refused("Automatically loaded IaC inputs must be ordinary reviewed files", 422)
+    if inputs:
+        tracked = subprocess.run(['git', '--literal-pathspecs', 'ls-files', '-z', '--',
+                                  *[str(entry.relative_to(root)) for entry in inputs]],
+                                 cwd=root, check=True, capture_output=True).stdout.split(b'\0')
+        if any(os.fsencode(str(entry.relative_to(root))) not in tracked for entry in inputs):
+            raise Refused("Automatically loaded IaC inputs are not all in the approved commit; review and commit them or use a clean checkout. No files were changed", 422)
     return path
 
 
@@ -113,7 +126,7 @@ def execute(client: Client, lease: dict, artifact: Path, workspace: Path) -> int
     result, outcome, infrastructure = None, "aborted", None
     try:
         binary = executable(authority["engine"])
-        directory = workdir(workspace, authority["workdir"], authority["commit"])
+        directory = workdir(workspace, authority["workdir"], authority["commit"], authority["engine"])
         if file_digest(directory / ".terraform.lock.hcl") != authority["lock_digest"]:
             raise Refused("Provider lock changed after planning")
         version = json.loads(subprocess.run([binary, "version", "-json"], check=True,
@@ -173,7 +186,7 @@ def plan(client: Client, target: str, engine: str, workspace: Path, output: Path
     context = client.call("GET", f"/v1/targets/{target}/plan-context")
     if engine not in context["engines"] or engine not in BINARIES:
         raise Refused("Engine is not enabled for guarded planning", 422)
-    directory = workdir(workspace, context["workdir"], context["commit"])
+    directory = workdir(workspace, context["workdir"], context["commit"], engine)
     binary = executable(engine)
     output.mkdir(parents=True, exist_ok=True, mode=0o700)
     artifact = output.resolve() / "plan.bin"

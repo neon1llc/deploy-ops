@@ -1,5 +1,15 @@
 # Verification
 
+## Automatic root IaC inputs, 2026-11-05
+
+A provider-free native Terraform plan reproduced an ignored automatic variable file overriding the
+tracked default while the earlier workdir check accepted the commit. Focused real-Git cases now
+refuse ignored/untracked root configuration, automatic variables and lock files, plus a committed
+configuration symlink, without exposing values or changing files. Planning refuses before output
+creation, native tools or credential acquisition. Ordinary notes, nonautomatic variables and native
+cache content stay usable. This is a root-input boundary, not complete child-module/external-input
+provenance, a live provider case or race-proof filesystem isolation.
+
 ## Inspectable source capture attempts, 2026-11-05
 
 A real second-source refusal copied the first source before stopping, with no registered release or

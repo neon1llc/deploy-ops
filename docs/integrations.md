@@ -36,6 +36,27 @@ deploy-ops gate execute --lease .deploy_ops/lease.json --artifact plan.bin
 
 Submission runs in the planning environment. Claim and execution run in the execution environment, in the same workflow run and attempt. The sequence above doesn't mean both stages belong in one job.
 
+## Automatically loaded IaC files
+
+Guarded `plan` and `execute` require the registered commit and unchanged tracked files. They also
+refuse untracked or ignored root `.tf`/`.tf.json` files, automatic variable files
+(`terraform.tfvars`, `terraform.tfvars.json`, `*.auto.tfvars`, `*.auto.tfvars.json`) and the provider
+lock file. OpenTofu additionally checks `.tofu`/`.tofu.json`, which can override the matching Terraform
+file. This check inspects filenames and Git membership, never variable values. Root native input
+symlinks and nonregular files refuse. It happens before credentials or native initialization.
+
+The refusal changes no files. Review public configuration through the normal commit workflow or use
+a clean checkout. Keep secrets out of Git. Ordinary untracked notes, explicitly selected variable
+files that this command does not load, saved plans and native caches remain usable. Execution still
+applies the exact approved saved plan; it does not generate a replacement plan.
+
+This bounded root check does not attest local child modules outside the root, module downloads,
+files read by expressions or providers, arbitrary external inputs, submodule contents or concurrent
+uncooperative changes after inspection. Use a controlled, isolated runner for those boundaries.
+Native file loading is documented by [Terraform](https://developer.hashicorp.com/terraform/language/files)
+and [OpenTofu](https://opentofu.org/docs/language/files/); automatic variable names follow their
+[input variable contract](https://opentofu.org/docs/language/values/variables/).
+
 ## Generic manifest contract
 
 The `manifest` engine lets a trusted pipeline present a normalized change list and an immutable artifact digest. It always needs human approval, even during a delegation window, and has no saved-plan or process-supervision guarantees.
