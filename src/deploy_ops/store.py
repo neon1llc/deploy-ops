@@ -52,7 +52,7 @@ class Store:
 
     # Inspect only supported existing private state without bootstrap, migration or repair
     @classmethod
-    def open_existing(cls, path: Path):
+    def open_existing(cls, path: Path, *, writable: bool = False):
         path = path.resolve()
         if not path.is_file():
             raise Refused("Retained state not found or uninitialized at the selected location", 404)
@@ -65,6 +65,7 @@ class Store:
             raise Refused("Retained WAL inspection needs its existing shared-memory file or a coherent backup", 503)
         store = cls.__new__(cls)
         store.path, store.read_only = path, True
+        store.existing = True
         try:
             with store.connect() as connection:
                 if connection.execute("PRAGMA user_version").fetchone()[0] != 1:
@@ -78,6 +79,7 @@ class Store:
                         raise Refused("Retained state has an unsupported schema", 503)
         except sqlite3.Error:
             raise Refused("Retained state cannot be read consistently; no repair was attempted", 503) from None
+        store.read_only = not writable
         return store
 
 
@@ -87,6 +89,8 @@ class Store:
         if self.read_only:
             connection = sqlite3.connect(self.path.as_uri() + '?mode=ro', uri=True, timeout=5, isolation_level=None)
             connection.execute("PRAGMA query_only=ON")
+        elif getattr(self, 'existing', False):
+            connection = sqlite3.connect(self.path.as_uri() + '?mode=rw', uri=True, timeout=5, isolation_level=None)
         else:
             connection = sqlite3.connect(self.path, timeout=5, isolation_level=None)
         connection.row_factory = sqlite3.Row

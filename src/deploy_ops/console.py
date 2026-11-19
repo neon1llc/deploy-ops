@@ -39,6 +39,7 @@ class Input(BaseModel):
     name: str = ""
     values: dict = Field(default_factory=dict)
     source_hash: str = ""
+    operation_id: str = ""
     scope: str = ""
     edit_environment: str = ""
     field: str = ""
@@ -281,11 +282,18 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     # Expose the current draft model without credential references
     @app.get("/api/workspace", dependencies=[Depends(operator)])
     def workspace():
-        from .delivery.configuration import inspect
-        source = engine.path.read_text()
+        from .delivery.configuration import inspect, read_source
+        source = read_source(engine.path)
         return {**inspect(source), "toml": source,
                 "cloud_access": getattr(engine.gate, "access_error", "Remote controller owns authentication"),
                 "mode": "remote-controller" if engine.gate.__class__.__name__ == "RemoteGate" else "local-operator"}
+
+
+    # Read interrupted Save facts even when an existing console's current TOML was externally damaged
+    @app.get("/api/config/recovery", dependencies=[Depends(operator)])
+    def config_recovery():
+        from .delivery.configuration import save_recovery
+        return save_recovery(engine.path, engine.state)
 
 
     # Validate drafts separately from conflict-checked local saves
@@ -293,7 +301,21 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     def configure(action: str, data: Input):
         nonlocal engine
         from .delivery.engine import Engine
-        from .delivery.configuration import add, edit, inspect, patch, save, source_hash, validate
+        from .delivery.configuration import add, edit, inspect, patch, read_source, save, source_hash, validate
+        if action == 'reconcile':
+            from .delivery.configuration import reconcile_save
+            if engine.gate.__class__.__name__ != 'LocalGate':
+                raise Refused('Reconcile a local Save through its local operator context', 403)
+            with mutex:
+                if workers:
+                    raise Refused('Wait for current workers before reconciling Save')
+                result = reconcile_save(engine.path, engine.state, data.operation_id, data.source_hash, data.note)
+                try:
+                    inspect(read_source(engine.path))
+                except Refused:
+                    return {**result, 'reload': False, 'configuration_valid': False}
+                engine = Engine(engine.path, engine.state)
+                return {**result, 'reload': True, 'configuration_valid': True}
         if action in {"edit", "reset"}:
             if (action == "reset" and not data.field) or (action == "edit" and data.field):
                 raise Refused("Choose a field only for override reset", 422)
@@ -304,9 +326,9 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
             return patch(data.configuration, data.section, data.name, data.values)
         if action == "add":
             return {**add(data.configuration, data.section, data.name, data.values),
-                    "saved_source_hash": source_hash(engine.path.read_text())}
+                    "saved_source_hash": source_hash(read_source(engine.path))}
         if action in {"validate", "diff"}:
-            return validate(data.configuration, engine.path.read_text())
+            return validate(data.configuration, read_source(engine.path))
         if action != "save":
             raise Refused("Unknown configuration action", 404)
 
@@ -449,8 +471,9 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
 
     # Refuse execution when an external edit changed the loaded workspace
     def current_contract():
-        from .delivery.configuration import inspect
-        if inspect(engine.path.read_text())["digest"] != engine.spec.digest:
+        from .delivery.configuration import inspect, read_source, require_saved
+        require_saved(engine.path, engine.state)
+        if inspect(read_source(engine.path))["digest"] != engine.spec.digest:
             raise Refused("Workspace changed outside this console. Review and save it here, or restart before preparing releases")
 
 

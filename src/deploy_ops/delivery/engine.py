@@ -613,6 +613,8 @@ class Engine:
 
     # Persist each component transition and stop at review or uncertainty
     def advance(self, release_id: str) -> dict:
+        from .configuration import require_saved
+        require_saved(self.path, self.state)
         release = self.ledger.get(release_id)
         if release["config_digest"] != self.spec.digest:
             raise Refused("Workspace changed. Create a new release instead of resuming")

@@ -6,7 +6,6 @@ import html
 import json
 import os
 import re
-import stat
 import time
 from pathlib import Path
 from typing import Annotated, Literal
@@ -16,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, Validation
 from .. import __version__
 from ..config import fingerprint
 from ..errors import Refused
+from .files import MAX_READ_BYTES as MAX_BYTES, read_regular as read_file
 from .ledger import Ledger
 
 
@@ -26,7 +26,6 @@ Digest = Annotated[str, StringConstraints(pattern=r'^[0-9a-f]{64}$')]
 Identifier = Annotated[str, StringConstraints(pattern=r'^[0-9a-f]{32}$')]
 Outcome = Literal['queued', 'preparing', 'prepared', 'waiting', 'running', 'cancel_requested',
                   'cancelled', 'succeeded', 'failed', 'uncertain', 'skipped', 'blocked']
-MAX_BYTES = 2 * 1024 * 1024
 
 
 # Reject extra keys and coercion at every imported object boundary
@@ -123,23 +122,6 @@ class Summary(Public):
     components: Annotated[list[Component], Field(min_length=1, max_length=200)]
     omitted: Literal['source,credentials,authority,raw-state,raw-provider-responses'] = 'source,credentials,authority,raw-state,raw-provider-responses'
     sha256: Digest
-
-
-# Read one bounded ordinary file without following a final link or accepting an in-place write
-def read_file(path: Path) -> bytes:
-    try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        with os.fdopen(descriptor, 'rb') as handle:
-            before = os.fstat(handle.fileno())
-            if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_BYTES:
-                raise Refused('Inspection input must be a bounded regular file', 422)
-            content = handle.read(MAX_BYTES + 1)
-            after = os.fstat(handle.fileno())
-            if len(content) > MAX_BYTES or (before.st_ino, before.st_size, before.st_mtime_ns) != (after.st_ino, after.st_size, after.st_mtime_ns):
-                raise Refused('Inspection input changed during capture; capture it again', 409)
-            return content
-    except OSError:
-        raise Refused('Inspection input is unavailable; no repair was attempted', 422) from None
 
 
 # Reject parent links before looking at a known journal; never traverse arbitrary release paths

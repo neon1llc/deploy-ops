@@ -5,6 +5,7 @@ import hashlib
 import io
 import os
 import shutil
+import stat
 import subprocess
 import tarfile
 from pathlib import Path
@@ -15,6 +16,28 @@ from .spec import Repository
 
 # Exclude transient working-tree files only before creating a reviewed snapshot
 IGNORED = {".git", ".deploy-ops", ".terraform", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache"}
+
+# Bound ordinary retained reads independently of source snapshot limits
+MAX_READ_BYTES = 2 * 1024 * 1024
+
+
+# Read one bounded ordinary file without following its final link or accepting an in-place write
+def read_regular(path: Path, limit: int = MAX_READ_BYTES) -> bytes:
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, 'rb') as handle:
+            before = os.fstat(handle.fileno())
+            if not stat.S_ISREG(before.st_mode) or before.st_size > limit:
+                raise Refused('Retained input must be a bounded regular file', 422)
+            content = handle.read(limit + 1)
+            after = os.fstat(handle.fileno())
+            current = path.lstat()
+            keys = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
+            if len(content) > limit or any(getattr(before, key) != getattr(item, key) for item in (after, current) for key in keys):
+                raise Refused('Retained input changed during inspection; read it again', 409)
+            return content
+    except OSError:
+        raise Refused('Retained input is unavailable; no repair was attempted', 422) from None
 
 
 # Resolve paths before enforcing the registered workspace boundary

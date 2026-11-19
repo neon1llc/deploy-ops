@@ -14,17 +14,31 @@ from .errors import Refused
 
 
 # Keep readers from observing a partially written local record
-def private_json(path: Path, value: object) -> None:
-    """Replace a local record atomically with owner-only permissions."""
+def private_json(path: Path, value: object, *, durable: bool = False) -> None:
+    """Replace an owner-only record; durable intent flushes bytes before publishing the new name."""
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     descriptor, name = tempfile.mkstemp(dir=path.parent, prefix=".deploy_ops-")
     try:
         with os.fdopen(descriptor, "w") as handle:
             json.dump(value, handle, indent=2, allow_nan=False)
             handle.write("\n")
+            if durable:
+                handle.flush()
+                os.fsync(handle.fileno())
         os.replace(name, path)
+        if durable:
+            sync_directory(path.parent)
     finally:
         Path(name).unlink(missing_ok=True)
+
+
+# Persist directory entry changes after an owned file replacement or removal
+def sync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 # Hash bounded chunks so large artifacts need not fit in memory

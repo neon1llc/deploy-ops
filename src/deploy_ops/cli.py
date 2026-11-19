@@ -46,9 +46,11 @@ def parser():
     provider.add_argument("release")
     provider.add_argument("component")
     config = commands.add_parser("config", help="Inspect, edit, validate, compare or explicitly save a workspace draft")
-    config.add_argument("action", choices=["inspect", "add", "patch", "edit", "reset", "validate", "diff", "save"])
+    config.add_argument("action", choices=["inspect", "add", "patch", "edit", "reset", "validate", "diff", "save", "recovery", "reconcile"])
     config.add_argument("--file", type=Path, help="Draft TOML input; required for validate, diff and save")
     config.add_argument("--source-hash", help="Exact saved workspace hash from inspect; required for save")
+    config.add_argument("--operation-id", help="Exact interrupted Save identity from config recovery")
+    config.add_argument("--note", help="Inspection note for config reconcile, which keeps the current file")
     config.add_argument("--section", choices=["repositories", "environments", "components", "options"])
     config.add_argument("--name")
     config.add_argument("--scope", choices=["build", "base", "environment"], help="Local component or native environment edit scope")
@@ -245,12 +247,20 @@ def dispatch(args):
         from importlib.resources import files
         return json.loads(files("deploy_ops").joinpath("catalog.json").read_text())
     if args.command == "config":
-        from .delivery.configuration import add, edit, inspect, patch, save, source_hash, validate
+        if args.action in {'recovery', 'reconcile'}:
+            from .delivery.configuration import reconcile_save, save_recovery
+            state = (args.state or args.project.resolve().parent / '.deploy-ops').resolve()
+            if args.action == 'recovery':
+                return save_recovery(args.project, state)
+            if args.controller:
+                raise Refused('Reconcile a local Save through its local operator context', 403)
+            return reconcile_save(args.project, state, args.operation_id or '', args.source_hash or '', args.note or '')
+        from .delivery.configuration import add, edit, inspect, patch, read_source, save, source_hash, validate
         if args.action in {"validate", "diff", "save"} and not args.file:
             raise Refused("Choose the proposed TOML draft with --file", 422)
         if args.action == "save" and not args.source_hash:
             raise Refused("Provide the saved workspace --source-hash from config inspect", 422)
-        source = (args.file or args.project).read_text()
+        source = read_source((args.file or args.project).resolve())
         if args.draft_out and (args.action not in {"add", "patch", "edit", "reset"} or args.draft_out.resolve() == args.project.resolve()
                                or (args.draft_out.exists() and args.draft_out.samefile(args.project))):
             raise Refused("--draft-out requires add/patch/edit/reset and a different file from the saved workspace", 422)
@@ -289,12 +299,12 @@ def dispatch(args):
                     values[key] = value
             result = (add if args.action == "add" else patch)(source, args.section, args.name, values)
             if args.action == "add":
-                result["saved_source_hash"] = source_hash(args.project.read_text())
+                result["saved_source_hash"] = source_hash(read_source(args.project.resolve()))
             if args.draft_out:
                 args.draft_out.write_text(result["toml"])
             return result
         if args.action in {"validate", "diff"}:
-            return validate(source, args.project.read_text())
+            return validate(source, read_source(args.project.resolve()))
         from .delivery.engine import Engine
         return save(Engine(args.project, args.state, args.controller), source, args.source_hash)
 

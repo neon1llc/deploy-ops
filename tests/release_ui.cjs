@@ -111,6 +111,31 @@ function control(key) {
 
 // Confirm approval never submits execution and readback never submits a deployment
 (async () => {
+  // Save recovery retains authored drafts, binds the observed hash, and offers reload as a separate choice
+  nodes.set('save-recovery', new Node('div')); nodes.set('inspect-save', new Node('button'));
+  nodes.set('config', new Node('textarea')); nodes.get('config').value = 'unsaved owner draft';
+  context.saveObservation = {available: true, status: 'after_replace', operation_id: 'save-fixture',
+    source_hash: 'observed-current', before_hash: 'before', draft_hash: 'after', audit: 'not_recorded',
+    recovery_directory: 'private recovery copies', reason: 'Keep the observed current file'};
+  context.recoveryCalls = [];
+  context.saveAPI = async (path, method, body) => {
+    context.recoveryCalls.push({path, method, body});
+    if (method === 'POST') { context.saveObservation.available = false; return {reload: true, configuration_valid: true}; }
+    return context.saveObservation;
+  };
+  vm.runInContext('const originalPromptAction=promptAction; promptAction=async()=>null; api=saveAPI;', context);
+  await vm.runInContext('inspectSaveRecovery()', context);
+  const recoveryControl = () => nodes.get('save-recovery').querySelectorAll('button').find(node => node.dataset.key === 'reconcile-save');
+  await recoveryControl().onclick();
+  assert.equal(context.recoveryCalls.filter(call => call.method === 'POST').length, 0);
+  vm.runInContext('promptAction=async()=>"Inspected current file and retained recovery copies";', context);
+  await recoveryControl().onclick();
+  const submitted = context.recoveryCalls.find(call => call.method === 'POST');
+  assert.equal(submitted.path, '/config/reconcile');
+  assert.equal(submitted.body.operation_id, 'save-fixture'); assert.equal(submitted.body.source_hash, 'observed-current');
+  assert.equal(nodes.get('config').value, 'unsaved owner draft');
+  assert.equal(context.document.activeElement.dataset.key, 'reload-after-save');
+  vm.runInContext('api=capture; promptAction=originalPromptAction;', context);
   // Inspection controls delegate the selected release and format without invoking deployment actions
   context.inspections = [];
   vm.runInContext('const originalSaveInspection=saveInspection; saveInspection=async(id, report)=>inspections.push({id,report});', context);
