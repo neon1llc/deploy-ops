@@ -46,6 +46,19 @@ def parser():
     backup_restore.add_argument('--workspace-out', type=Path, required=True, help='New workspace directory; existing work is preserved')
     backup_restore.add_argument('--state-out', type=Path, help='New state directory; default is .deploy-ops inside the new workspace')
     backup_restore.add_argument('--digest', help='Exact backup manifest digest from inspect; refuse a changed extent')
+    artifacts = commands.add_parser('artifact', help='Observe a reviewed frozen static artifact with maintained tools; no release policy change')
+    artifact_actions = artifacts.add_subparsers(dest='artifact_action', required=True)
+    artifact_actions.add_parser('options', help='Suggest private output and show supported observation bounds')
+    artifact_collect = artifact_actions.add_parser('collect')
+    artifact_collect.add_argument('release')
+    artifact_collect.add_argument('--component', required=True)
+    artifact_collect.add_argument('--out', type=Path, required=True, help='New private directory outside workspace and state')
+    artifact_collect.add_argument('--inventory', action=argparse.BooleanOptionalAction, default=True)
+    artifact_collect.add_argument('--vulnerabilities', action='store_true')
+    artifact_collect.add_argument('--allow-network', action='store_true', help='Allow Trivy advisory DB retrieval; dependency network and telemetry remain disabled')
+    artifact_collect.add_argument('--timeout-seconds', type=int, default=60, help='Maximum duration per native command, 10–300 seconds')
+    artifact_inspect = artifact_actions.add_parser('inspect')
+    artifact_inspect.add_argument('directory', type=Path)
     evidence = commands.add_parser("evidence", help="Save or inspect source-free operation facts; never execute imported evidence")
     evidence_actions = evidence.add_subparsers(dest="evidence_action", required=True)
     capture = evidence_actions.add_parser("capture", help="Read one retained release without loading its workspace or credentials")
@@ -265,6 +278,16 @@ def serve_preview(owner, release, component, port):
 
 # Route every entry point through the shared deployment owners
 def dispatch(args):
+    if args.command == 'artifact':
+        from .delivery import artifacts
+        if args.artifact_action == 'options':
+            return artifacts.options()
+        if args.artifact_action == 'inspect':
+            return artifacts.inspect(args.directory)
+        profile = artifacts.Profile(inventory=args.inventory, vulnerabilities=args.vulnerabilities,
+                                    allow_network=args.allow_network, timeout_seconds=args.timeout_seconds)
+        state = (args.state or args.project.resolve().parent / '.deploy-ops').resolve()
+        return artifacts.collect(state, args.release, args.component, args.out, profile, args.project.resolve().parent)
     if args.command == 'backup':
         from .delivery import backup
         if args.backup_action == 'options':

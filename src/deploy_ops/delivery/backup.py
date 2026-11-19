@@ -20,7 +20,7 @@ from ..errors import Refused
 from ..store import RESTORE_MARKER, Store
 from .configuration import inspect as inspect_config, read_source, require_saved, source_hash, workspace_lock
 from .evidence import Digest, Identifier, Name, Public, Text
-from .files import checked_path, digest_tree, inventory_tree, read_regular
+from .files import checked_path, digest_tree, inventory_tree, location, read_regular
 from .ledger import Ledger
 from .retained import Retained
 
@@ -32,14 +32,6 @@ MAX_ENTRIES = 20000
 MAX_MANIFEST_BYTES = 16_000_000
 JOURNALS = {'ecs-operation.json', 'container-apps-operation.json', 'cloud-run-operation.json', 'cloudformation-operation.json', 'arm-operation.json'}
 RESTORE_MANIFEST = '.deploy-ops-backup-manifest.json'
-
-
-# Make operator-selected filesystem locations explicit while supporting native home shorthand
-def location(path: Path) -> Path:
-    try:
-        return path.expanduser().resolve()
-    except (OSError, RuntimeError, ValueError):
-        raise Refused('Choose a valid filesystem location; no path was created or repaired', 422) from None
 
 
 # Suggest new private targets without replacing a path the operator has already chosen

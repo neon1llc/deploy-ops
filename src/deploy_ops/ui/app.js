@@ -521,6 +521,7 @@ async function show(id) {
     reviewFacts(area, [["Adapter", node.adapter], ["Source revision", node.source?.revision],
       ["Local target", node.physical_target?.path], ["Target owner", node.physical_target?.owner?.join("/")]]);
     if (node.preview) reviewChanges(area, name, node.preview, expanded);
+    if (node.adapter === "static" && node.artifact_digest && typeof artifactControls === "function") artifactControls(area, id, name, expanded);
     for (const warning of node.warnings || []) text(area, "p", "Review: " + warning);
     if (["cloudformation", "cdk", "arm", "bicep", "ecs", "container-apps", "cloud-run"].includes(node.adapter) && (node.request_digest || node.status === "uncertain")) {
       area.append(button("Read provider status", async () => {

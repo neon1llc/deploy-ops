@@ -1,5 +1,32 @@
 # Verification
 
+## Retained static artifact observations, 2026-11-05
+
+The v0.22.0 collector's domain/API checks cover a real artifact waiting for approval, exact byte and
+prepared identity, invalid current configuration, restored frozen bytes without execution admission,
+unavailable tools, no supported packages, explicit advisory DB consent, changed subjects before/during
+measurement, preserved existing paths and changed/unsupported offline reports. The client contract
+covers delayed suggestions, typed paths retained across polling, duplicate submits, exact subject/profile
+binding and the previous good result surviving failed or mismatched responses. Those are DOM checks.
+
+Native Syft 1.51.1 generated CycloneDX 1.7 for a synthetic artifact containing one software package
+and one file component; these are separate counts. The shared collector also read the actual static
+artifact delivered in the earlier Edge journey: its one file/332 bytes matched the retained
+`516ed16f…` subject digest. Native Syft found no software packages. Trivy 0.74.0 was unavailable with
+the selected fresh offline advisory cache. The observation retained both results, without treating
+empty inventory, unavailable scanning or command success as security admission. Source CLI/native
+observations preceded final package binding. No signing service, image push, tool installation or cloud
+effect was involved.
+
+A new Edge tab reached the token form, then browser control detached during token entry and remained
+unavailable through a bounded recovery. The owned tab and console were closed. The new mounted artifact
+controls, their current keyboard/layout behavior, AT and human acceptance remain unqualified. Existing
+v0.20 mounted workflows and the v0.21 offline report browser proof remain separately scoped.
+
+Tools run independently against the same subject. Trivy's upstream third-party-SBOM coverage warning
+prevents treating Syft-to-Trivy conversion as a complete scan. This increment supplies observations,
+not OCI verification, trusted-signature enforcement or a release-policy gate.
+
 ## Cloud Run native boundary, 2026-11-05
 
 The v0.21.0 candidate's v2 API fixtures exercise separate conditional candidate/traffic writes,
