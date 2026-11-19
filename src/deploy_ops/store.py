@@ -30,6 +30,18 @@ CREATE TABLE IF NOT EXISTS deliveries (id TEXT PRIMARY KEY, expires_at INTEGER N
 PRAGMA user_version = 1;
 """
 
+# Restored copies retain historical authority rows without admitting new writes
+RESTORE_MARKER = '.deploy-ops-restore.json'
+
+
+# Keep imported state inspection-only across delivery and standalone controller entry points
+def require_writable(path: Path):
+    parent = path.resolve().parent
+    for directory in (parent, *parent.parents):
+        marker = directory / RESTORE_MARKER
+        if marker.exists() or marker.is_symlink():
+            raise Refused('Restored state is inspection-only. Revalidate original ownership and current authority before execution; no replay or adoption is supplied', 403)
+
 
 # Persist authority decisions and tamper-evident audit links together
 class Store:
@@ -38,6 +50,7 @@ class Store:
 
     # Reject unknown schema versions before opening writable state
     def __init__(self, path: str):
+        require_writable(Path(path))
         self.read_only = False
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -54,6 +67,8 @@ class Store:
     @classmethod
     def open_existing(cls, path: Path, *, writable: bool = False):
         path = path.resolve()
+        if writable:
+            require_writable(path)
         if not path.is_file():
             raise Refused("Retained state not found or uninitialized at the selected location", 404)
         metadata = path.stat()
@@ -86,6 +101,8 @@ class Store:
     # Close each connection even if the caller fails
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
+        if not self.read_only:
+            require_writable(self.path)
         if self.read_only:
             connection = sqlite3.connect(self.path.as_uri() + '?mode=ro', uri=True, timeout=5, isolation_level=None)
             connection.execute("PRAGMA query_only=ON")

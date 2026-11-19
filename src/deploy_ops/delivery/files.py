@@ -36,8 +36,56 @@ def read_regular(path: Path, limit: int = MAX_READ_BYTES) -> bytes:
             if len(content) > limit or any(getattr(before, key) != getattr(item, key) for item in (after, current) for key in keys):
                 raise Refused('Retained input changed during inspection; read it again', 409)
             return content
+    except FileNotFoundError:
+        # Observation distinguishes a missing deployed file from unreadable evidence
+        raise
     except OSError:
         raise Refused('Retained input is unavailable; no repair was attempted', 422) from None
+
+
+# Reject path escapes and linked ancestors without rewriting retained absolute paths
+def checked_path(root: Path, value: str | Path) -> Path:
+    path = Path(value)
+    if not path.is_absolute():
+        path = root / path
+    if not path.is_relative_to(root) or '..' in path.parts:
+        raise Refused('Observed path is outside the deployment root')
+    for item in [root, *reversed(path.parents), path]:
+        if item.is_relative_to(root) and item.is_symlink():
+            raise Refused('Symbolic links are not supported in observed paths')
+    return path
+
+
+# Inventory bytes and empty directories for preview retirement and coherent private capture
+def inventory_tree(root: Path, max_bytes: int = 100_000_000, max_entries: int = 10000) -> dict:
+    files, directories, total = {}, [], 0
+    if not stat.S_ISDIR(root.lstat().st_mode):
+        raise Refused('Retained tree is not an ordinary directory')
+
+    # Propagate inaccessible or changing entries rather than silently omitting them
+    def walk(folder):
+        nonlocal total
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                if len(files) + len(directories) >= max_entries:
+                    raise Refused('Retained inventory exceeds its entry limit')
+                metadata = entry.stat(follow_symlinks=False)
+                if not (stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)):
+                    raise Refused('Retained tree contains a symbolic link or unsupported file type')
+                path = checked_path(root, Path(entry.path))
+                relative = path.relative_to(root).as_posix()
+                if stat.S_ISDIR(metadata.st_mode):
+                    directories.append(relative)
+                    walk(path)
+                elif stat.S_ISREG(metadata.st_mode):
+                    content = read_regular(path, min(100_000_000, max_bytes - total))
+                    total += len(content)
+                    files[relative] = {'sha256': hashlib.sha256(content).hexdigest(), 'size': len(content),
+                                       'executable': bool(metadata.st_mode & 0o111)}
+                else:
+                    raise Refused('Retained tree contains a link or unsupported file type')
+    walk(root)
+    return {'files': dict(sorted(files.items())), 'directories': sorted(directories), 'bytes': total}
 
 
 # Resolve paths before enforcing the registered workspace boundary

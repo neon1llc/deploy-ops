@@ -18,6 +18,7 @@ from .configuration import boundary
 from ..models import Proposal
 from .gate import LocalGate, target_name
 from .observation import checked_path, read_regular, reviewed, tree_digest
+from .files import inventory_tree
 
 
 # Match the retained ownership record's exact serialized bytes
@@ -89,30 +90,9 @@ def list_previews(engine):
 
 # Inventory bounded regular files and directories without following links
 def _scan(root):
-    files, directories, total = {}, [], 0
-
-
-    # Reject unexpected file types instead of treating them as owned content
-    def walk(folder):
-        nonlocal total
-        with os.scandir(folder) as entries:
-            for entry in entries:
-                if len(files) + len(directories) >= 10000:
-                    raise Refused("Preview inventory exceeds 10,000 entries")
-                path = Path(entry.path)
-                relative = path.relative_to(root).as_posix()
-                mode = entry.stat(follow_symlinks=False).st_mode
-                if stat.S_ISDIR(mode):
-                    directories.append(relative)
-                    walk(path)
-                elif stat.S_ISREG(mode):
-                    content = read_regular(checked_path(root, path), 100_000_000 - total)
-                    total += len(content)
-                    files[relative] = hashlib.sha256(content).hexdigest()
-                else:
-                    raise Refused("Preview contains a symbolic link or unsupported entry; inspect it before cleanup")
-    walk(root)
-    return {"files": dict(sorted(files.items())), "directories": sorted(directories)}
+    inventory = inventory_tree(root)
+    return {'files': {name: item['sha256'] for name, item in inventory['files'].items()},
+            'directories': inventory['directories']}
 
 
 # Separate unchanged generated files from retained or unrecognized data

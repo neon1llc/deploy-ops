@@ -18,7 +18,7 @@ from pydantic import ValidationError
 
 from ..errors import Refused
 from ..client import private_json, sync_directory
-from ..store import Store
+from ..store import Store, require_writable
 from .files import read_regular
 from .ledger import Ledger
 from .spec import ADAPTERS, NAME, Build, Component, Environment, Repository, Workspace
@@ -312,6 +312,7 @@ def validate(source: str, current: str) -> dict:
 @contextmanager
 def workspace_lock(state):
     import fcntl
+    require_writable(state / 'state.db')
     descriptor = os.open(state / "workspace.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
         try:

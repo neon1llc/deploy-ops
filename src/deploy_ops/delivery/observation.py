@@ -10,36 +10,7 @@ from pathlib import Path
 
 from ..config import fingerprint
 from ..errors import Refused
-
-
-# Reject path escapes and symlinked ancestors before inspection
-def checked_path(root: Path, value: str | Path) -> Path:
-    path = Path(value)
-    if not path.is_absolute():
-        path = root / path
-    if not path.is_relative_to(root) or '..' in path.parts:
-        raise Refused('Observed path is outside the deployment root')
-    for item in [root, *reversed(path.parents), path]:
-        if item.is_relative_to(root) and item.is_symlink():
-            raise Refused('Symbolic links are not supported in observed paths')
-    return path
-
-
-# Check file identity and size around a bounded read
-def read_regular(path: Path, limit: int) -> bytes:
-    info = path.lstat()
-    if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
-        raise Refused('Observed entry is not a bounded regular file')
-    # O_NOFOLLOW closes the final-component symlink replacement window on supported hosts
-    fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
-    with os.fdopen(fd, 'rb') as stream:
-        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-            raise Refused('Observed entry changed type')
-        data = stream.read(limit + 1)
-        after = os.fstat(stream.fileno())
-    if len(data) > limit or (info.st_ino, info.st_size, info.st_mtime_ns) != (after.st_ino, after.st_size, after.st_mtime_ns):
-        raise Refused('Observed file changed while reading')
-    return data
+from .files import checked_path, read_regular
 
 
 # Hash only regular files without silently skipping unreadable entries

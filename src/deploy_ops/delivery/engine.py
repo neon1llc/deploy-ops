@@ -30,6 +30,10 @@ class Engine:
     # Bind the workspace, private ledger and selected authority backend
     def __init__(self, project: Path, state: Path | None = None, controller: str | None = None):
         self.path = project.resolve()
+        # Refuse restored write admission before loading configuration, grants or creating directories
+        from ..store import require_writable
+        require_writable(self.path)
+        require_writable((state or self.path.parent / '.deploy-ops').resolve() / 'state.db')
         self.spec = load(self.path)
         self.state = (state or self.path.parent / ".deploy-ops").resolve()
         private_directory(self.state)
