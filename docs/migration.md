@@ -63,3 +63,11 @@ worker admission. This is outside the approved manifest. HTTP claim input cannot
 Deployment, preview cleanup and provider readback keep their separate meanings under the shared lock.
 An imported, legacy or external claim without matching ownership remains unknown; no later successful
 readback or refused local execution authorizes resolving it.
+
+## Portable inspection
+
+The version 1 inspection format is additive and read-only. It does not change the database schema,
+approved envelopes, controller manifests or authority. New native journal writes add recorded and
+observation timestamps; old records without them remain readable and report time unavailable.
+The JSON reader rejects unsupported versions and does not turn an imported summary into runtime state.
+Keep the original state and matching runtime for recovery. The inspection artifact is not a backup.

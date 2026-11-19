@@ -2,6 +2,7 @@
 
 
 import argparse
+import hashlib
 import json
 import os
 import secrets
@@ -30,6 +31,16 @@ def parser():
     commands.add_parser("doctor")
     commands.add_parser("catalog")
     commands.add_parser("schema")
+    evidence = commands.add_parser("evidence", help="Save or inspect source-free operation facts; never execute imported evidence")
+    evidence_actions = evidence.add_subparsers(dest="evidence_action", required=True)
+    capture = evidence_actions.add_parser("capture", help="Read one retained release without loading its workspace or credentials")
+    capture.add_argument("release")
+    capture.add_argument("--out", type=Path, required=True, help="New owner-only JSON file; existing files are preserved")
+    capture.add_argument("--run-id")
+    capture.add_argument("--run-attempt")
+    inspection = evidence_actions.add_parser("inspect", help="Validate a portable summary offline, without opening its recorded paths")
+    inspection.add_argument("file", type=Path)
+    inspection.add_argument("--html", type=Path, help="Save a readable offline desktop report to a new file")
     provider = commands.add_parser("provider", help="Read native provider status or discard an unexecuted change set")
     provider.add_argument("action", choices=["inspect", "discard"])
     provider.add_argument("release")
@@ -292,6 +303,22 @@ def dispatch(args):
         from .delivery.engine import Engine
         from .delivery.operator import Operator
         return Operator(Engine(args.project, args.state, args.controller)).call(args.action, args.identifier, args.values)
+
+    # Portable evidence never initializes execution owners or grants imported facts authority
+    if args.command == "evidence":
+        from .delivery import evidence
+        if args.evidence_action == 'inspect':
+            document = evidence.inspect(args.file)
+            if args.html:
+                evidence.write(args.html, evidence.report(document))
+            return document
+        state = (args.state or args.project.resolve().parent / '.deploy-ops').resolve()
+        document = evidence.capture(state, args.release, args.run_id, args.run_attempt)
+        content = json.dumps(document, indent=2) + '\n'
+        evidence.write(args.out, content)
+        return {'capture': document['capture'], 'outcome': document['outcome'], 'upload': document['upload'],
+                'sha256': document['sha256'], 'file_sha256': hashlib.sha256(content.encode()).hexdigest(),
+                'file': str(args.out)}
 
     # Retained history is readable without loading workspace, credentials or execution owners
     if args.command in {"status", "events"}:

@@ -111,6 +111,17 @@ function control(key) {
 
 // Confirm approval never submits execution and readback never submits a deployment
 (async () => {
+  // Inspection controls delegate the selected release and format without invoking deployment actions
+  context.inspections = [];
+  vm.runInContext('const originalSaveInspection=saveInspection; saveInspection=async(id, report)=>inspections.push({id,report});', context);
+  await vm.runInContext('show("release-fixture")', context);
+  calls.length = 0;
+  await control('inspection-report').onclick();
+  await control('inspection-json').onclick();
+  assert.deepEqual(JSON.parse(JSON.stringify(context.inspections)), [
+    {id: 'release-fixture', report: true}, {id: 'release-fixture', report: false}]);
+  assert.equal(calls.length, 0);
+  vm.runInContext('saveInspection=originalSaveInspection;', context);
   // Explain current and legacy command outcomes without adding an execution control or raw HTML
   context.fixture.events = [
     {name: "command.finished", detail: {component: "web", tool: "python3", elapsed_ms: 250}},

@@ -118,6 +118,20 @@ async function api(path, method = "GET", body) {
 }
 
 
+// Save only the backend's inspection projection; the offline report has no execution controls
+async function saveInspection(id, report) {
+  const data = await api('/releases/' + id + '/inspection' + (report ? '?report=true' : ''));
+  const blob = new Blob([report ? data.html : JSON.stringify(data, null, 2) + '\n'],
+    {type: report ? 'text/html;charset=utf-8' : 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a'); link.href = url;
+  link.download = 'deployment-inspection-' + id + (report ? '.html' : '.json');
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  message('Inspection download requested. Open the report locally for offline review; it does not check current cloud health.');
+}
+
+
 // Prevent overlapping actions while preserving a stable keyboard focus key
 function button(label, action, key = label) {
   const node = document.createElement("button"); node.textContent = label;
@@ -491,6 +505,9 @@ async function show(id) {
   text(root, "p", release.environment + " · " + release.status);
   reviewEvidence(root, "release-binding", "Release identity and source binding",
     {release: release.id, contract_digest: release.config_digest, source_digest: release.source_digest}, expanded);
+  const inspection = document.createElement('div'); inspection.className = 'controls'; root.append(inspection);
+  inspection.append(button('Save offline inspection report', () => saveInspection(id, true), 'inspection-report'),
+    button('Save inspection JSON', () => saveInspection(id, false), 'inspection-json'));
   if (release.reason) text(root, "p", release.reason);
   if (release.preview) renderPreview(root, data);
   for (const [name, node] of Object.entries(release.nodes)) {
