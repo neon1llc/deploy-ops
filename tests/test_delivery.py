@@ -84,6 +84,28 @@ def test_cancel_prepared_release_withdraws_authority(engine, approved):
     assert not list(engine.deployments.rglob("resource.json"))
 
 
+# Controller reconciliation can close delivery tracking without rewriting a final decision
+@pytest.mark.parametrize("outcome", ["failed", "succeeded", None])
+def test_cancel_after_controller_inspection(engine, outcome):
+    from deploy_ops.delivery.operator import Operator
+    operator = Operator(engine)
+    release = engine.advance(engine.create("development", "foundation")["id"])
+    node = release["nodes"]["foundation"]
+    engine.approve(release["id"], "foundation", node["request_digest"])
+    engine.gate.claim(engine.gate.status(node["request_id"]), release)
+    operator.call("pause")
+    if outcome:
+        operator.call("resolve", node["request_id"], {"outcome": outcome,
+                      "note": "Inspected the disposable claim-only fixture; no apply command was invoked"})
+    client = TestClient(create_app(engine, "t" * 40), base_url="http://127.0.0.1:8765")
+    response = client.post("/api/releases/" + release["id"] + "/cancel",
+                           headers={"Authorization": "Bearer " + "t" * 40}, json={})
+    assert response.status_code == (200 if outcome == "failed" else 409)
+    assert engine.ledger.get(release["id"])["status"] == ("cancelled" if outcome == "failed" else "waiting")
+    assert engine.gate.status(node["request_id"])["status"] == (outcome or "uncertain")
+    assert not list(engine.deployments.rglob("resource.json"))
+
+
 # Descendants cannot outlive command supervision after their parent exits
 @pytest.mark.skipif(os.name != "posix", reason="POSIX process-group supervision")
 def test_command_cleans_descendant_after_parent_exits(tmp_path):
