@@ -31,6 +31,14 @@ def parser():
     commands.add_parser("doctor")
     commands.add_parser("catalog")
     commands.add_parser("schema")
+    # Inspect source capture evidence even when current workspace configuration is unavailable
+    captures = commands.add_parser('captures', help='Read source capture attempts separately from registered releases')
+    capture_actions = captures.add_subparsers(dest='capture_action', required=True)
+    capture_list = capture_actions.add_parser('list')
+    capture_list.add_argument('--offset', type=int, default=0)
+    capture_list.add_argument('--limit', type=int, default=20)
+    capture_show = capture_actions.add_parser('show')
+    capture_show.add_argument('capture_id')
     backup = commands.add_parser('backup', help='Capture or restore private state; restored copies remain inspection-only')
     backup_actions = backup.add_subparsers(dest='backup_action', required=True)
     backup_actions.add_parser('options', help='Suggest new private targets and report capture bounds without creating files')
@@ -322,6 +330,10 @@ def serve_preview(owner, release, component, port, active_target=False):
 
 # Route every entry point through the shared deployment owners
 def dispatch(args):
+    if args.command == 'captures':
+        from .delivery import captures
+        state = (args.state or args.project.resolve().parent / '.deploy-ops').resolve()
+        return captures.list_records(state, args.offset, args.limit) if args.capture_action == 'list' else captures.inspect(state, args.capture_id)
     if args.command == 'rollout' and args.rollout_action == 'read':
         from .delivery.rollouts import read_snapshot
         return read_snapshot(args.file)

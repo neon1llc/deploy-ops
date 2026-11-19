@@ -12,6 +12,12 @@ let detailGeneration = 0;
 let releaseKey = "";
 let acting = false;
 
+// Keep source capture history separate from deployment identity and authored configuration drafts
+let captureOffset = 0;
+let captureKey = "";
+let captureGeneration = 0;
+let captureInspectionGeneration = 0;
+
 
 // Retain incident selection independently from deployment status
 let selectedIncident = null;
@@ -372,7 +378,95 @@ async function refresh() {
     }
   }
   if (selected) await show(selected);
+  await refreshCaptures();
   await refreshIncidents();
+}
+
+
+// Observe bounded capture pages without replacing unchanged disclosures or taking focus from another region
+async function refreshCaptures() {
+  const offset = captureOffset;
+  const generation = ++captureGeneration;
+  let data;
+  try {
+    data = await api("/captures?offset=" + offset + "&limit=20");
+  } catch (error) {
+    if (token && offset === captureOffset && generation === captureGeneration) {
+      element("capture-status").textContent = error.message;
+      element("capture-status").className = "error";
+    }
+    return;
+  }
+  if (!token || offset !== captureOffset || generation !== captureGeneration) return;
+  element("capture-status").textContent = "";
+  element("capture-status").className = "";
+  const key = JSON.stringify({...data, observed_at: undefined});
+  if (key === captureKey) return;
+  captureKey = key;
+  const root = element("captures");
+  const focused = root.contains(document.activeElement) ? document.activeElement.dataset.key : null;
+  const expanded = new Set([...root.querySelectorAll("details[open]")].map(node => node.dataset.capture || node.dataset.review));
+  const scrolls = new Map([...root.querySelectorAll("[data-review-scroll]")].map(node => [node.dataset.reviewScroll, [node.scrollTop, node.scrollLeft]]));
+  root.replaceChildren();
+  const status = text(root, "p", data.total ? "Showing " + (offset + 1) + "–" + Math.min(offset + data.records.length, data.total) +
+    " of " + data.total + " source capture records." : "No recorded source captures. Older releases can predate this evidence.");
+  status.tabIndex = -1; status.dataset.key = "capture-page-status";
+  for (const entry of data.records) {
+    const panel = document.createElement("details"); panel.dataset.capture = entry.id; panel.open = expanded.has(entry.id); root.append(panel);
+    const record = entry.record;
+    const phase = record?.phase.replaceAll("-", " ");
+    text(panel, "summary", (record ? (record.components.join(" → ") || "Source capture") + " · " + phase : "Unavailable capture record") +
+      " · " + entry.id.slice(0, 8)).dataset.key = "capture-" + entry.id;
+    captureDetails(panel, entry, expanded, true);
+  }
+  const controls = document.createElement("div"); controls.className = "controls"; root.append(controls);
+  const newer = button("Newer capture records", async () => { captureOffset = Math.max(0, offset - 20); captureKey = ""; await refreshCaptures(); }, "capture-newer");
+  const older = button("Older capture records", async () => { captureOffset = offset + 20; captureKey = ""; await refreshCaptures(); }, "capture-older");
+  newer.disabled = offset === 0; older.disabled = !data.has_more; controls.append(newer, older);
+  for (const node of root.querySelectorAll("[data-review-scroll]")) {
+    const position = scrolls.get(node.dataset.reviewScroll);
+    if (position) [node.scrollTop, node.scrollLeft] = position;
+  }
+  if (focused && document.activeElement === document.body) {
+    const replacement = [...root.querySelectorAll("[data-key]")].find(node => node.dataset.key === focused && !node.disabled);
+    (replacement || status).focus({preventScroll: true});
+  }
+}
+
+
+// Share recorded-source facts while offering a current release link only for the current state owner
+function captureDetails(panel, entry, expanded = new Set(), currentState = false) {
+  const record = entry.record;
+  const registered = entry.registration?.state === "registered";
+  const phase = record?.phase.replaceAll("-", " ");
+  if (!entry.available) { text(panel, "p", entry.reason).className = "error"; return; }
+  reviewFacts(panel, [["Capture ID", entry.id], ["Recorded project", record.project], ["Environment", record.environment],
+    ["Recorded toolkit", record.toolkit_version],
+    ["Last source phase", phase], ["Stopped during", record.stopped_during.replaceAll("-", " ")],
+    ["Last recorded", new Date(record.updated_at * 1000).toLocaleString()],
+    ["Component copies recorded", record.copied_components.length + " of " + record.components.length],
+    ["Current repository", record.repository], ["Current component", record.component],
+    ["Registration", registered ? "Registered release · " + entry.registration.release_status : entry.registration.state.replaceAll("-", " ")],
+    ["Reused source release", record.origin_release], ["Reused component", record.reused_component]]);
+  if (record.reason) text(panel, "p", record.reason);
+  if (entry.registration.reason) text(panel, "p", entry.registration.reason);
+  for (const [name, repository] of Object.entries(record.repositories)) text(panel, "p", "Configured selector for " + name + ": " + repository.path + " · " +
+    (repository.allow_uncommitted ? "current local files; configured Git ref is unused" : "committed Git ref " + repository.revision));
+  for (const [name, source] of Object.entries(record.captured_repositories)) reviewFacts(panel, [
+    ["Captured repository", name], ["Captured revision", source.revision], ["Captured tree digest", source.digest]]);
+  text(panel, "p", entry.scope);
+  if (currentState && registered) {
+    const id = entry.registration.release_id;
+    const link = button("Open registered release", async () => {
+      const ownedFocus = document.activeElement === link;
+      await show(id);
+      if (token && selected === id && ownedFocus && [link, document.body].includes(document.activeElement)) {
+        element("detail-heading").focus({preventScroll: true});
+      }
+    }, "capture-release-" + entry.id);
+    panel.append(link);
+  }
+  reviewEvidence(panel, "capture-evidence-" + entry.id, "Exact capture record and registration observation", entry, expanded);
 }
 
 
@@ -891,7 +985,29 @@ element("plan").onclick = () => safe(async () => {
 
 // Start preparation only through an explicit release submission
 element("release-form").onsubmit = (event) => { event.preventDefault(); safe(async () => {
-  const release = await api("/releases", "POST", selection()); selected = release.id; message("Release preparation started."); await refresh();
+  try {
+    const release = await api("/releases", "POST", selection());
+    if (!token) return;
+    selected = release.id; message("Release preparation started."); await refresh();
+  } catch (error) {
+    if (token) { element("capture-history").open = true; await refreshCaptures(); }
+    throw error;
+  }
+}); };
+
+
+// Inspect a selected retained location without discarding authored paths or accepting a late result for another selection
+element("capture-inspect-form").onsubmit = event => { event.preventDefault(); safe(async () => {
+  const generation = ++captureInspectionGeneration;
+  const state = element("capture-state").value;
+  const id = element("capture-id").value;
+  const data = await api("/captures/" + encodeURIComponent(id) + "/inspect", "POST", {state_directory: state});
+  if (!token || generation !== captureInspectionGeneration || element("capture-state").value !== state || element("capture-id").value !== id) return;
+  const root = element("capture-inspection"); root.replaceChildren();
+  text(root, "h3", "Retained capture inspection");
+  reviewFacts(root, [["State inspected", data.state_directory], ["Observed at", new Date(data.observed_at * 1000).toLocaleString()]]);
+  captureDetails(root, data);
+  text(root, "p", "This is retained evidence. Continue through its original operation owner after inspecting current conditions.");
 }); };
 
 

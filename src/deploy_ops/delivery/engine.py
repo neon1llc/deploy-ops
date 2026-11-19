@@ -268,48 +268,81 @@ class Engine:
         origin = self.ledger.get(promote) if promote else None
         if origin:
             self._check_promotion(origin, environment, component, rollback)
-        # Create fresh private source roots without modifying the original repositories
-        release_id = uuid.uuid4().hex
-        root = self.state / "releases" / release_id
-        private_directory(root)
-        nodes, snapshots, repositories = {}, {}, {}
-        for node in graph["components"]:
-            name = node["name"]
-            configured = self.spec.component(name, environment)
-            folder = root / name
-            private_directory(folder)
-            source = folder / "source"
+        # Refuse known missing source before allocating an attempt; promotion can reuse its retained source
+        from . import captures
+        selected = {node['name']: self.spec.component(node['name'], environment) for node in graph['components']}
+        for name, configured in selected.items():
             if origin and name == component:
-                original = self.state / "releases" / origin["id"] / name
-                envelope = self._reviewed_envelope(origin, name)
-                if digest_tree(original / "source") != envelope["source_digest"]:
-                    raise Refused("Original release source changed. Promotion is not safe")
-                shutil.copytree(original / "source", source, ignore=shutil.ignore_patterns(".terraform"))
-                source_record = origin["nodes"][name]["source"]
-            else:
-                # Capture each selected repository once so components cannot observe different moving refs
-                if configured.repository not in repositories:
-                    captured = root / 'repositories' / configured.repository
-                    source_record = snapshot(self.spec.repositories[configured.repository], self.path.parent, captured)
-                    repositories[configured.repository] = (captured, source_record)
-                captured, source_record = repositories[configured.repository]
-                shutil.copytree(captured, source)
-            snapshots[name] = source_record
-            nodes[name] = {"status": "queued", "adapter": configured.adapter, "source": source_record, "outputs": {}}
-        release = {"id": release_id, "project": self.spec.name, "environment": environment,
-                   "config_digest": self.spec.digest, "source_digest": fingerprint(snapshots),
-                   "created_at": int(time.time()), "status": "queued", "order": list(nodes), "nodes": nodes,
-                   "caller_label": agent, "origin_release": promote, "rollback": rollback, "artifact_inputs": artifact_inputs,
-                   "receipt_inputs": receipts}
-        if preview_metadata:
-            from .previews import initialize
-            release["preview"] = preview_metadata
-            initialize(self, release)
-        if load(self.path).digest != self.spec.digest:
-            raise Refused("The workspace changed during source capture; reload it before creating a release")
-        self.ledger.save(release, "release.created", {"environment": environment, "order": list(nodes),
-                                                    "actor_kind": "github" if isinstance(self.gate, RemoteGate) else "local"})
-        return release
+                continue
+            repository = self.spec.repositories[configured.repository]
+            source_root = inside(self.path.parent, repository.path)
+            if not source_root.is_dir():
+                raise Refused('Repository ' + configured.repository + ' directory is missing; no source capture started', 422)
+            if not repository.allow_uncommitted and not (source_root / '.git').exists():
+                raise Refused('Initialize Git or explicitly enable local working-tree snapshots; no source capture started', 422)
+        # Capture evidence uses the intended release ID without registering a deployment early
+        release_id = uuid.uuid4().hex
+        chosen = {value.repository: self.spec.repositories[value.repository] for value in selected.values()}
+        root, attempt = captures.begin(self.state, release_id, self.spec.name, environment, self.spec.digest,
+                                       list(selected), chosen, origin['id'] if origin else None, component if origin else None)
+        try:
+            nodes, snapshots, repositories = {}, {}, {}
+            for node in graph["components"]:
+                name = node["name"]
+                configured = selected[name]
+                folder = root / name
+                private_directory(folder)
+                source = folder / "source"
+                if origin and name == component:
+                    captures.update(root, attempt, "copying-component", component=name, repository=configured.repository)
+                    original = self.state / "releases" / origin["id"] / name
+                    envelope = self._reviewed_envelope(origin, name)
+                    if digest_tree(original / "source") != envelope["source_digest"]:
+                        raise Refused("Original release source changed. Promotion is not safe")
+                    shutil.copytree(original / "source", source, ignore=shutil.ignore_patterns(".terraform"))
+                    source_record = origin["nodes"][name]["source"]
+                else:
+                    # Capture each selected repository once so components cannot observe different moving refs
+                    if configured.repository not in repositories:
+                        captures.update(root, attempt, 'capturing-repository', repository=configured.repository, component=name)
+                        captured = root / 'repositories' / configured.repository
+                        source_record = snapshot(self.spec.repositories[configured.repository], self.path.parent, captured)
+                        repositories[configured.repository] = (captured, source_record)
+                        captures.update(root, attempt, 'capturing-repository', captured_repositories={
+                            **attempt['captured_repositories'], configured.repository: source_record})
+                    captured, source_record = repositories[configured.repository]
+                    captures.update(root, attempt, 'copying-component', component=name, repository=configured.repository)
+                    shutil.copytree(captured, source)
+                snapshots[name] = source_record
+                captures.update(root, attempt, 'copying-component', copied_components=list(snapshots))
+                nodes[name] = {"status": "queued", "adapter": configured.adapter, "source": source_record, "outputs": {}}
+            release = {"id": release_id, "project": self.spec.name, "environment": environment,
+                       "config_digest": self.spec.digest, "source_digest": fingerprint(snapshots),
+                       "created_at": int(time.time()), "status": "queued", "order": list(nodes), "nodes": nodes,
+                       "caller_label": agent, "origin_release": promote, "rollback": rollback, "artifact_inputs": artifact_inputs,
+                       "receipt_inputs": receipts}
+            captures.update(root, attempt, 'validating-workspace', source_digest=fingerprint(snapshots))
+            if preview_metadata:
+                from .previews import initialize
+                release["preview"] = preview_metadata
+                initialize(self, release)
+            if load(self.path).digest != self.spec.digest:
+                raise Refused("The workspace changed during source capture; reload it before creating a release")
+            captures.update(root, attempt, 'registration-requested')
+            self.ledger.save(release, "release.created", {"environment": environment, "order": list(nodes),
+                                                        "actor_kind": "github" if isinstance(self.gate, RemoteGate) else "local"})
+            return release
+        except BaseException as error:
+            reason = str(error) if isinstance(error, Refused) else 'Source capture stopped before returning a registration result'
+            # Preserve the last durable phase if recording this refusal itself cannot finish
+            from contextlib import suppress
+            with suppress(Exception):
+                captures.update(root, attempt, 'refused' if isinstance(error, Exception) else 'interrupted',
+                                stopped_during=attempt['phase'], reason=reason)
+            if not isinstance(error, Exception):
+                raise
+            raise Refused('Source capture ' + release_id + ' did not finish. ' + reason +
+                          '. Inspect with captures show ' + release_id, getattr(error, 'status', 409)) from error
 
 
     # Resolve component dependencies and keep process authority scoped to this release

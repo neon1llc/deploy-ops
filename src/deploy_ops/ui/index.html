@@ -225,6 +225,24 @@
                     <button id="refresh" class="secondary">Refresh</button>
                   </div>
                   <div id="releases"></div>
+                  <details id="capture-history">
+                    <summary>Source capture history</summary>
+                    <p>A capture can stop before a release is registered. These records show source-copy progress and separately observed registration. They provide no resume or cleanup action.</p>
+                    <p id="capture-status" role="status"></p>
+                    <div id="captures"></div>
+                    <details>
+                      <summary>Inspect retained capture elsewhere</summary>
+                      <p>Read an original or restored record without loading its workspace or credentials. Registration in another state location does not authorize this console to resume it.</p>
+                      <form id="capture-inspect-form">
+                        <label for="capture-state">Retained state directory</label>
+                        <input id="capture-state" required pattern="(?:/|~/).*" maxlength="4096" autocomplete="off" spellcheck="false" />
+                        <label for="capture-id">Source capture ID</label>
+                        <input id="capture-id" required pattern="[0-9a-f]{32}" minlength="32" maxlength="32" autocomplete="off" spellcheck="false" />
+                        <button type="submit">Inspect retained capture</button>
+                      </form>
+                      <div id="capture-inspection"></div>
+                    </details>
+                  </details>
                 </section>
                 <section>
                   <h2 id="detail-heading" tabindex="-1">Release detail</h2>

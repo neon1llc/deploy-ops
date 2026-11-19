@@ -1,5 +1,16 @@
 # Verification
 
+## Inspectable source capture attempts, 2026-11-05
+
+A real second-source refusal copied the first source before stopping, with no registered release or
+controller request. Current records retain that phase and the successful first identity, while an
+existing unrecorded folder stays unchanged. A controlled real capture barrier exposes in-progress
+source copying without a liveness or registration claim. Successful registration links the same ID
+and exact bindings. Missing source refuses early. Reader/API cases cover unavailable configuration
+or registration, wrong marker identity, bounded pages and authentication. Private backup/restore
+retains only an unregistered attempt marker, explicitly omits partial source trees and refuses writes
+through the restored state. These are local source/inspection cases, not provider or human acceptance.
+
 ## Completed command output accounting, 2026-11-05
 
 Real local children were held at an exit barrier before the first poll. Old source accepted an excess
