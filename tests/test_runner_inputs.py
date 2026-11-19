@@ -38,7 +38,8 @@ def checkout(tmp_path, monkeypatch):
     ('terraform', 'private.auto.tfvars'), ('terraform', 'private.auto.tfvars.json'),
     ('terraform', 'terraform.tfvars'), ('terraform', 'terraform.tfvars.json'),
     ('opentofu', 'override.tofu'), ('opentofu', 'override.tofu.json'),
-    ('terraform', '.terraform.lock.hcl'),
+    ('terraform', '.terraform.lock.hcl'), ('terraform', '.private.auto.tfvars'),
+    ('opentofu', '.private.auto.tfvars.json'),
 ])
 def test_automatic_unreviewed_input_refuses_without_exposing_or_changing_it(checkout, engine, name):
     root, commit = checkout
@@ -100,3 +101,29 @@ def test_planning_refuses_before_native_or_credentials(checkout, monkeypatch):
     with pytest.raises(Refused, match='not all in the approved commit'):
         runner.plan(Client(), 'example', 'terraform', root, output, Caller())
     assert not output.exists()
+
+
+# Native configuration ignores hidden scratch files while automatic variables stay separately guarded
+@pytest.mark.parametrize('engine', ['terraform', 'opentofu'])
+def test_native_ignored_configuration_stays_untouched(checkout, engine):
+    root, commit = checkout
+    for name in ['.scratch.tf', '.#main.tf', 'main.tf~', '#main.tf#', '.scratch.tf.json', '.scratch.tofu']:
+        (root / name).write_text('invalid editor scratch, not native configuration')
+    assert runner.workdir(root, '.', commit, engine) == root
+    assert (root / '.scratch.tf').read_text() == 'invalid editor scratch, not native configuration'
+
+
+# OpenTofu selects the matching Tofu extension rather than an unused Terraform alternative
+@pytest.mark.parametrize('native,unused', [('main.tofu', 'main.tf'), ('other.tofu.json', 'other.tf.json')])
+def test_opentofu_configuration_precedence(checkout, native, unused):
+    root, commit = checkout
+    (root / native).write_text('')
+    subprocess.run(['git', 'add', '-f', native], cwd=root, check=True, capture_output=True)
+    subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                    '-c', 'core.hooksPath=/dev/null', 'commit', '-m', 'Reviewed Tofu alternative'],
+                   cwd=root, check=True, capture_output=True)
+    commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+    # The existing main.tf stays tracked; JSON case adds only an unused untracked alternative
+    if unused != 'main.tf':
+        (root / unused).write_text('unused Terraform alternative')
+    assert runner.workdir(root, '.', commit, 'opentofu') == root

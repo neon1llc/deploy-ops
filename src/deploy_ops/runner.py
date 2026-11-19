@@ -46,7 +46,15 @@ def workdir(workspace: Path, relative: str, commit: str, engine: str) -> Path:
         raise Refused("Tracked files differ from the approved commit")
     # Native tools load these root files even when Git ignores them; inspect names, never values
     extensions = ('.tf', '.tf.json') + (('.tofu', '.tofu.json') if engine == 'opentofu' else ())
-    inputs = [entry for entry in path.iterdir() if entry.name.endswith(extensions)
+    entries = list(path.iterdir())
+    # Native configuration skips dotfiles; extension matching already excludes trailing ~/# backups
+    configurations = {entry.name for entry in entries if entry.name.endswith(extensions) and not entry.name.startswith('.')}
+    if engine == 'opentofu':
+        configurations -= {name for name in configurations if
+                           (name.endswith('.tf') and name[:-3] + '.tofu' in configurations)
+                           or (name.endswith('.tf.json') and name[:-8] + '.tofu.json' in configurations)}
+    # Automatic variable loading has its own rules, and the hidden provider lock stays mandatory
+    inputs = [entry for entry in entries if entry.name in configurations
               or entry.name in {'terraform.tfvars', 'terraform.tfvars.json', '.terraform.lock.hcl'}
               or entry.name.endswith(('.auto.tfvars', '.auto.tfvars.json'))]
     if any(entry.is_symlink() or not entry.is_file() for entry in inputs):
