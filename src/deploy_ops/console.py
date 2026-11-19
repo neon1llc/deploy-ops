@@ -577,6 +577,31 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
 
 
     # List retained releases for the authenticated operator
+    # Source capture evidence does not register a deployment or expose continuation actions
+    @app.get('/api/captures', dependencies=[Depends(operator)])
+    def capture_records(offset: int = 0, limit: int = 20):
+        from .delivery.captures import list_records
+        return list_records(engine.state, offset, limit)
+
+
+    # An exact ID reads only its recorded marker and separately observed registration
+    @app.get('/api/captures/{capture_id}', dependencies=[Depends(operator)])
+    def capture_record(capture_id: str):
+        from .delivery.captures import inspect
+        return inspect(engine.state, capture_id)
+
+
+    # Inspect a selected original or restored location without borrowing this console's execution owner
+    @app.post('/api/captures/{capture_id}/inspect', dependencies=[Depends(operator)])
+    def retained_capture(capture_id: str, data: Input):
+        from .delivery.captures import inspect
+        from .delivery.files import location
+        selected = Path(data.state_directory)
+        if not data.state_directory or not (selected.is_absolute() or data.state_directory.startswith('~/')):
+            raise Refused('Choose an absolute retained state directory or a path beginning with ~/', 422)
+        return inspect(location(selected), capture_id)
+
+
     @app.get("/api/releases", dependencies=[Depends(operator)])
     def releases():
         return engine.ledger.list()

@@ -183,7 +183,7 @@ separate from local metadata and native built-in-resource proof. See [configurat
 
 ## Kubernetes connection/UID contract
 
-New preparations carry a version1 `kubernetes_request` and exact request digest. They bind selected
+New preparations carry a version 1 `kubernetes_request` and exact request digest. They bind selected
 client connection, public TLS identity, tool version and existing object UID/version/container baseline.
 The new writer refuses older Kubernetes mutation evidence before runner claim and native adapter use.
 Historical records are not rewritten. Shared read-only prepared compatibility checks also project
@@ -195,7 +195,7 @@ refuse that added extent. Deployment inspection format2 explicitly refuses the n
 legacy summaries retain their meaning. No database migration, automatic namespace/resource adoption,
 cluster creation, kubeconfig edit, permission or host trust change is introduced. See [Kubernetes](kubernetes.md).
 
-## Later observations and responder handoff in v0.29.0
+## Later observations and responder handoff
 
 Saved observations gain a returned sequence/digest reference without changing their stored detail or
 original delivery outcome. New observation-origin incidents initially hold native pages. Explicit
@@ -208,7 +208,7 @@ There is no cross-version writer lock. Older workers do not enforce the new hand
 rules. Existing outbox rows are not rewritten or backfilled, and existing in-flight remote outcomes
 still require inspection. Back up state first and retain the matching package for read-only recovery.
 
-## Bounded Slack review in v0.30.0
+## Bounded Slack review
 
 New cards render the full normalized review over bounded native pages and expose approval only on the
 last page. Read-only continuation binds the request digest and displayed review digest. Restart review
@@ -220,3 +220,14 @@ The v0.30.1 correction includes the registered public isolated-IaC planning pack
 bounded renderer omitted. Other public manifest fields now come from the existing controller contract
 rather than a second field list. Target identity stays visible on each page. Existing v0.30.0 source
 and review results remain historical. Restart an incomplete review after upgrading.
+
+## Source capture evidence
+
+New creations write a version 1 `deploy-ops.source-capture` marker in their newly reserved private root.
+Existing release/request/database formats and older releases without markers remain supported. The
+marker does not create a release, grant or alternate work queue. Current CLI and console readers work
+without loading the inspected location's workspace. Unsupported marker versions refuse.
+
+The private backup extent adds the allowlisted marker filename. Unregistered partial source folders
+remain explicitly omitted. Use the matching current runtime to inspect/restore that extent: an older
+backup reader can refuse the newly supported filename. Restoration stays read-only.

@@ -18,6 +18,7 @@ from ..client import private_json, sync_directory
 from ..config import fingerprint
 from ..errors import Refused
 from ..store import RESTORE_MARKER, Store
+from . import captures
 from .configuration import inspect as inspect_config, read_source, require_saved, source_hash, workspace_lock
 from .evidence import Digest, Identifier, Name, Public, Text
 from .files import checked_path, digest_tree, inventory_tree, location, read_regular
@@ -139,6 +140,8 @@ def allowed(value: str) -> bool:
         return False
     if len(parts) == 3:
         return True
+    if len(parts) == 4 and parts[3] == captures.FILENAME:
+        return True
     if not re.fullmatch(r'[a-z][a-z0-9-]{0,47}', parts[3]):
         return False
     if len(parts) == 4 or parts[3] == 'repositories':
@@ -217,6 +220,7 @@ def inventory(project: Path, state: Path, releases: list[dict]) -> dict:
         root = state / 'releases' / identifier
         payload = 'state/releases/' + identifier
         directories.update({'state/releases', payload})
+        file(root / captures.FILENAME, payload + '/' + captures.FILENAME, False)
         if (root / 'repositories').exists() or (root / 'repositories').is_symlink():
             if 'repositories' not in release['nodes']:
                 tree(root / 'repositories', payload + '/repositories')
@@ -267,7 +271,7 @@ def inventory(project: Path, state: Path, releases: list[dict]) -> dict:
                 omitted.extend(prefix + '/' + child.name for child in folder.iterdir() if child.name not in known)
         if root.exists():
             omitted.extend(payload + '/' + child.name for child in root.iterdir()
-                           if child.name not in {*release['nodes'], 'repositories'})
+                           if child.name not in {*release['nodes'], 'repositories', captures.FILENAME})
     for name in ('deployments', 'previews'):
         if (state / name).exists() or (state / name).is_symlink():
             tree(state / name, 'state/' + name)
@@ -291,7 +295,18 @@ def inventory(project: Path, state: Path, releases: list[dict]) -> dict:
     if (state / 'releases').exists():
         checked_path(state, state / 'releases')
         known_releases = {release['id'] for release in releases}
-        omitted.extend('state/releases/' + path.name for path in (state / 'releases').iterdir() if path.name not in known_releases)
+        for path in (state / 'releases').iterdir():
+            if path.name in known_releases:
+                continue
+            payload = 'state/releases/' + path.name
+            try:
+                captures.load_record(state, path.name)
+            except Refused:
+                omitted.append(payload)
+                continue
+            # Only the supported marker is retained; partial source folders never become adopted release trees
+            file(path / captures.FILENAME, payload + '/' + captures.FILENAME)
+            omitted.extend(payload + '/' + child.name for child in path.iterdir() if child.name != captures.FILENAME)
     if len(files) + len(directories) > MAX_ENTRIES or total > MAX_BYTES:
         raise Refused('Private backup exceeds its declared size or entry bound', 422)
     return {'files': dict(sorted(files.items())), 'directories': sorted(directories), 'missing': sorted(set(missing)),
