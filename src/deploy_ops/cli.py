@@ -165,6 +165,19 @@ def parser():
     preview.add_argument("--port", type=int, default=8000)
     preview.add_argument('--retained', action='store_true', help='Read a retained original-path artifact without loading workspace or execution authority')
     preview.add_argument('--active-target', action='store_true', help='Follow successful approved activations of this owned local target on one URL; default stays on the selected revision')
+    rollout = commands.add_parser('rollout', help='Measure a staged local candidate, separately switch its route and deliberately retire previous files')
+    rollout_actions = rollout.add_subparsers(dest='rollout_action', required=True)
+    rollout_read = rollout_actions.add_parser('read', help='Validate an inspection-only rollout snapshot offline')
+    rollout_read.add_argument('file', type=Path)
+    for name in ('prepare', 'approve', 'cancel', 'switch', 'inspect', 'check', 'prepare-retirement', 'approve-retirement', 'cancel-retirement', 'retire', 'recovery', 'reconcile'):
+        command = rollout_actions.add_parser(name)
+        command.add_argument('release')
+        if name in {'prepare', 'prepare-retirement'}:
+            command.add_argument('--component', required=True)
+        if name in {'approve', 'approve-retirement', 'cancel', 'cancel-retirement'}:
+            command.add_argument('--digest', required=True)
+        if name == 'reconcile':
+            command.add_argument('--note', required=True)
 
     # Incident decisions remain independent of transport delivery and release status
     incidents = commands.add_parser("incidents", help="Track local incidents separately from deployment outcomes")
@@ -279,6 +292,15 @@ def serve_preview(owner, release, component, port, active_target=False):
 
 # Route every entry point through the shared deployment owners
 def dispatch(args):
+    if args.command == 'rollout' and args.rollout_action == 'read':
+        from .delivery.rollouts import read_snapshot
+        return read_snapshot(args.file)
+    if args.command == 'rollout' and args.rollout_action in {'inspect', 'recovery'}:
+        from .delivery import rollouts
+        from .delivery.retained import Retained
+        state = (args.state or args.project.resolve().parent / '.deploy-ops').resolve()
+        owner = Retained(state)
+        return rollouts.inspect(owner, args.release) if args.rollout_action == 'inspect' else rollouts.recovery_status(owner, args.release)
     if args.command == 'artifact':
         from .delivery import artifacts
         if args.artifact_action == 'options':
@@ -442,6 +464,20 @@ def dispatch(args):
         return engine.ledger.events(args.release)
     if args.command == "observe":
         return engine.observe(args.release)
+    if args.command == 'rollout':
+        from .delivery import rollouts
+        action = args.rollout_action
+        if action in {'prepare', 'prepare-retirement'}:
+            return rollouts.prepare(engine, args.release, args.component, action == 'prepare-retirement')
+        if action in {'approve', 'approve-retirement'}:
+            return rollouts.approve(engine, args.release, args.digest, action == 'approve-retirement')
+        if action in {'cancel', 'cancel-retirement'}:
+            return rollouts.cancel(engine, args.release, args.digest, action == 'cancel-retirement')
+        if action in {'switch', 'retire'}:
+            return rollouts.execute(engine, args.release, action == 'retire')
+        if action == 'check':
+            return rollouts.check(engine, args.release)
+        return rollouts.reconcile(engine, args.release, args.note)
     if args.command == "approve":
         return engine.approve(args.release, args.component, args.digest)
     if args.command == "cancel":

@@ -185,10 +185,13 @@ class Engine:
         if hashlib.sha256(content).hexdigest() != release["nodes"][name]["artifact_digest"]:
             raise Refused("Reviewed deployment artifact changed")
         envelope = json.loads(content)
-        if envelope.get('schema_version') not in {1, 2} or envelope.get('adapter_contract_version', 1) not in {1, 2}:
+        if envelope.get('schema_version') not in {1, 2} or envelope.get('adapter_contract_version', 1) not in {1, 2, 3}:
             raise Refused("Unsupported prepared format. Inspect with the original runtime or prepare fresh evidence", 422)
         if envelope.get('adapter_contract_version', 1) == 2 and envelope.get('adapter') not in {'directory', 'static'}:
             raise Refused("Unsupported adapter contract. Inspect with the original runtime", 422)
+        if envelope.get('adapter_contract_version') == 3 and (envelope.get('adapter') != 'static'
+                or envelope.get('prepared', {}).get('activation') != 'separate'):
+            raise Refused('Unsupported separate-activation contract', 422)
         if envelope.get('adapter') != release['nodes'][name]['adapter']:
             raise Refused("Prepared adapter differs from the retained release", 422)
         return envelope
@@ -528,16 +531,12 @@ class Engine:
         self._login(context, credentials)
         adapter = REGISTRY[context.component.adapter]
         if release.get("origin_release") and context.component.adapter == "static" and (context.stage / "site").exists():
-            from .adapters.base import preview
-            from .adapters.local import pointer
-            prepared = {"preview": preview(name, "application_static", False),
-                        "destination": context.options.get("destination", str(self.deployments / context.environment / name)),
-                        "site_digest": digest_tree(context.stage / "site"),
-                        "previous_pointer": pointer(self.deployments, context.options.get("destination", str(self.deployments / context.environment / name)))}
+            from .adapters.local import static_prepared
+            prepared = static_prepared(context)
         else:
             prepared = adapter.prepare(context)
         # Bind source, artifact tree, options and provider preview into one immutable envelope
-        envelope = {"schema_version": 2, "adapter_contract_version": 2 if physical else 1,
+        envelope = {"schema_version": 2, "adapter_contract_version": 3 if prepared.get('activation') == 'separate' else (2 if physical else 1),
                     "physical_target": physical,
                     "local_dependencies": node.get('local_dependencies', {}),
                     "config_digest": self.spec.digest, "adapter": context.component.adapter,
@@ -563,6 +562,9 @@ class Engine:
         node = release["nodes"][name]
         folder = self.state / "releases" / release["id"] / name
         envelope = self._reviewed_envelope(release, name)
+        if (envelope['adapter'] == 'static' and envelope['prepared'].get('activation') == 'separate'
+                and envelope.get('adapter_contract_version') != 3):
+            raise Refused('Separate activation requires a newly reviewed adapter contract 3')
         if envelope["config_digest"] != self.spec.digest or digest_tree(folder / "source") != envelope["source_digest"]:
             raise Refused("Reviewed source or workspace changed")
         if digest_tree(folder / "artifacts") != envelope["artifact_tree"]:

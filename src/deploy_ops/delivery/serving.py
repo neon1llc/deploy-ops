@@ -62,6 +62,9 @@ class Sessions:
                 or release['nodes'][component].get('physical_target') != binding
                 or release['nodes'][component]['outputs'].get('pointer') != str(pointer)):
             raise Refused('Active-target serving requires a reviewed regular local target; use a fixed revision for previews or legacy evidence', 422)
+        if (envelope.get('adapter_contract_version') == 3
+                and release.get('rollout', {}).get('status') not in {'post-check', 'succeeded', 'switched-inspected'}):
+            raise Refused('The separately staged candidate has no confirmed or inspected route; inspect its rollout')
         return binding, site, digest
 
 

@@ -190,13 +190,14 @@ class Ledger:
         if not release_row or not evidence.get('owner_id'):
             return unknown
         release = json.loads(release_row[0])
-        nodes = [release.get('cleanup', {})] if kind == 'cleanup' else release['nodes'].values()
+        nodes = ([release.get('rollout', {}), release.get('rollout', {}).get('retirement', {})] if kind == 'rollout'
+                 else ([release.get('cleanup', {})] if kind == 'cleanup' else release['nodes'].values()))
         for node in nodes:
             if not node.get('request_id'):
                 continue
             request = self.store.request(connection, node['request_id'])
             execution = request.get('execution')
-            if not execution or (node.get('status') not in {'running', 'uncertain'} and request['status'] not in {'running', 'uncertain'}):
+            if not execution or (node.get('status') not in {'running', 'post-check', 'uncertain'} and request['status'] not in {'running', 'uncertain'}):
                 continue
             binding = execution.get('local_worker') or {}
             expected = self._worker_identity() | {'scope': scope, 'kind': kind, 'owner_id': evidence['owner_id']}

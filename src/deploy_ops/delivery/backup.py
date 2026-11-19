@@ -124,13 +124,13 @@ def allowed(value: str) -> bool:
         return len(parts) == 2
     if parts[1] in {'deployments', 'previews'}:
         return True
-    if parts[1] in {'cleanup', 'workspace-saves'}:
+    if parts[1] in {'cleanup', 'rollouts', 'workspace-saves'}:
         if len(parts) == 2:
             return True
         if not re.fullmatch(r'[0-9a-f]{32}', parts[2]):
             return False
         return len(parts) == 3 or (len(parts) == 4 and parts[3] in
-            ({'prepared.json'} if parts[1] == 'cleanup' else {'before.toml', 'draft.toml'}))
+            ({'prepared.json'} if parts[1] in {'cleanup', 'rollouts'} else {'before.toml', 'draft.toml'}))
     if parts[1] != 'releases':
         return False
     if len(parts) == 2:
@@ -163,7 +163,9 @@ def quiescent(connection):
     if connection.execute('SELECT 1 FROM release_locks LIMIT 1').fetchone():
         raise Refused('A retained operation lock exists. Inspect it through its original owner before coherent capture')
     if connection.execute("SELECT 1 FROM releases WHERE status IN ('running','preparing','cancel_requested') OR "
-                          "json_extract(data,'$.cleanup.status') IN ('preparing','running') LIMIT 1").fetchone():
+                          "json_extract(data,'$.cleanup.status') IN ('preparing','running') OR "
+                          "json_extract(data,'$.rollout.status') IN ('preparing','running','post-check') OR "
+                          "json_extract(data,'$.rollout.retirement.status') IN ('preparing','running') LIMIT 1").fetchone():
         raise Refused('A worker outcome is not quiescent. Finish or reconcile it before coherent capture')
     if connection.execute("SELECT 1 FROM requests WHERE status='running' LIMIT 1").fetchone():
         raise Refused('A controller execution is still running; no coherent capture was admitted')
@@ -269,7 +271,7 @@ def inventory(project: Path, state: Path, releases: list[dict]) -> dict:
     for name in ('deployments', 'previews'):
         if (state / name).exists() or (state / name).is_symlink():
             tree(state / name, 'state/' + name)
-    for name in ('cleanup', 'workspace-saves'):
+    for name in ('cleanup', 'rollouts', 'workspace-saves'):
         root = state / name
         if root.exists() or root.is_symlink():
             checked_path(state, root)
@@ -280,11 +282,11 @@ def inventory(project: Path, state: Path, releases: list[dict]) -> dict:
                 if not re.fullmatch(r'[0-9a-f]{32}', child.name) or child.is_symlink() or not child.is_dir():
                     raise Refused('Retained operation directory has unknown ownership', 422)
                 directories.add('state/' + name + '/' + child.name)
-                for filename in (('prepared.json',) if name == 'cleanup' else ('before.toml', 'draft.toml')):
+                for filename in (('prepared.json',) if name in {'cleanup', 'rollouts'} else ('before.toml', 'draft.toml')):
                     file(child / filename, 'state/' + name + '/' + child.name + '/' + filename)
     file(state / 'previous-workspace.toml', 'state/previous-workspace.toml', False)
     known = {'state.db', 'state.db-wal', 'state.db-shm', 'workspace.lock', 'releases', 'deployments', 'previews',
-             'cleanup', 'workspace-saves', 'previous-workspace.toml'}
+             'cleanup', 'rollouts', 'workspace-saves', 'previous-workspace.toml'}
     omitted.extend('state/' + path.name for path in state.iterdir() if path.name not in known)
     if (state / 'releases').exists():
         checked_path(state, state / 'releases')

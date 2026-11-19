@@ -78,7 +78,9 @@ class LocalGate:
                     engines=["delivery"], identity={}, planner_identity={}, delivery_digest=spec.digest,
                     allow_local_operator=True, production=config.production,
                     policy=Policy(allow_delegation=not config.production and not config.preview, require_cost_estimate=False,
-                                  allowed_actions=["create", "update", "read", "no-op"] + (["delete"] if config.preview else []),
+                                  allowed_actions=["create", "update", "read", "no-op"] + (["delete"] if config.preview or (
+                                      spec.component(component, environment).adapter == 'static'
+                                      and spec.component(component, environment).options.get('activation') == 'separate') else []),
                                   auto_types=["local_directory", "application_static"]),
                 )
         self.controller = Controller(Settings(targets=targets, database=str(store.path)), store) if targets else None

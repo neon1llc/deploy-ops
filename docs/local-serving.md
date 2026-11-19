@@ -54,6 +54,6 @@ has its recorded original paths and gains no target continuation authority. Isol
 and legacy targets without reviewed ownership support fixed revision serving only.
 
 A new console or CLI process adopts no prior listener, PID or port. Start a new foreground session
-explicitly after restart. This is local static routing, not complete blue-green deployment: candidate
-readiness, a separately approved route switch, measured post-check and explicit previous-capacity
-retirement remain separate unfinished work. No container or cloud routing is implied.
+explicitly after restart. Serving alone grants no route or retirement authority. For candidate readiness,
+a separately approved route switch, measured post-check and deliberate previous-capacity retirement,
+use the [local rollout workflow](local-rollouts.md). No container or cloud routing is implied.

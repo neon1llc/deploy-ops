@@ -39,6 +39,8 @@ def validate_creation(engine, graph, owner, hours, retain, with_dependencies):
         raise Refused("A preview supports one static application and at most one directory foundation", 422)
     for node in graph["components"]:
         component = engine.spec.component(node["name"], graph["environment"])
+        if component.options.get('activation', 'direct') != 'direct':
+            raise Refused('Isolated previews use fixed revisions and direct activation', 422)
         destination = component.options.get("destination")
         if destination is not None and not (isinstance(destination, str) and re.fullmatch(
                 r"\$\{outputs\.[a-z][a-z0-9-]*\.path\}", destination)):

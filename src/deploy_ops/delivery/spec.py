@@ -166,7 +166,7 @@ class Workspace(Record):
                 if parts[1] not in component.needs:
                     raise ValueError('Output references must name a declared dependency')
                 producer = self.component(parts[1], environment_name)
-                known = {'directory': {'path', 'name'}, 'static': {'path', 'digest', 'pointer'}}.get(producer.adapter, set(producer.outputs))
+                known = {'directory': {'path', 'name'}, 'static': {'path', 'digest', 'pointer', 'activation'}}.get(producer.adapter, set(producer.outputs))
                 if known and parts[2] not in known:
                     raise ValueError('Unknown declared dependency output reference')
         LOCAL_MODELS[component.adapter].model_validate(values, strict=True)
