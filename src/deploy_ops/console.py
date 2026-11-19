@@ -254,7 +254,7 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     @app.get("/assets/{name}")
     @app.get("/{name}")
     def asset(name: str):
-        if name not in ("app.js", "shell.js", "operator.js", "local-settings.js", "paging.js", "isolated.js", "backups.js", "artifacts.js", "signatures.js", "style.css", "appearance.mjs", "theme.mjs"):
+        if name not in ("app.js", "shell.js", "history.js", "operator.js", "local-settings.js", "paging.js", "isolated.js", "backups.js", "artifacts.js", "signatures.js", "style.css", "appearance.mjs", "theme.mjs"):
             raise HTTPException(404)
         return FileResponse(assets / name)
 
@@ -613,6 +613,12 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     @app.get("/api/releases", dependencies=[Depends(operator)])
     def releases():
         return engine.ledger.list()
+
+    # Read-only history does not change active blockers or dependency receipt queries
+    @app.get('/api/releases/history', dependencies=[Depends(operator)])
+    def release_history(query: str = '', environment: str = '', component: str = '', outcome: str = '',
+                        limit: int = 20, cursor: str = ''):
+        return engine.ledger.history(query, environment, component, outcome, limit, cursor)
 
 
     # Use the same source-free capture and report owner as offline CLI inspection

@@ -355,6 +355,26 @@ function selection() {
 }
 
 
+// Render retained release navigation once for recent and filtered history
+function releaseRows(releases, empty = "No releases yet. Preview the workflow, then prepare one.", fallback = null) {
+  const root = element("releases");
+  const focused = root.contains(document.activeElement) ? document.activeElement.dataset.key : null;
+  root.replaceChildren();
+  if (!releases.length) text(root, "p", empty);
+  let replacement = null;
+  for (const release of releases) {
+    const previewState = release.preview ? " · preview " + (release.cleanup?.status || (Date.now() >= release.preview.expires_at * 1000 ? "cleanup due" : "active")) : "";
+    const ordered = Array.isArray(release.order) ? release.order.filter(name => typeof name === "string" && name) : [];
+    const names = ordered.length ? ordered : Object.keys(release.nodes || {});
+    const label = names.length ? names.slice(0, 3).join(" → ") + (names.length > 3 ? " (+" + (names.length - 3) + ")" : "") : "Release";
+    const node = button(label + " · " + release.environment + " · " + release.status + previewState + " · " + release.id.slice(0, 8), () => show(release.id), release.id);
+    node.className = "release"; root.append(node);
+    if (node.dataset.key === focused) replacement = node;
+  }
+  if (focused && (replacement || fallback)) (replacement || fallback).focus({preventScroll: true});
+}
+
+
 // Refresh status only when returned data changes
 async function refresh() {
   const releases = await api("/releases");
@@ -363,20 +383,9 @@ async function refresh() {
   if (key !== releaseKey) {
     releaseKey = key;
     document.dispatchEvent(new CustomEvent("deployops:releases", {detail: releases}));
-    const root = element("releases");
-    const focused = root.contains(document.activeElement) ? document.activeElement.dataset.key : null;
-    root.replaceChildren();
-    if (!releases.length) text(root, "p", "No releases yet. Preview the workflow, then prepare one.");
-    for (const release of releases) {
-      const previewState = release.preview ? " · preview " + (release.cleanup?.status || (Date.now() >= release.preview.expires_at * 1000 ? "cleanup due" : "active")) : "";
-      const ordered = Array.isArray(release.order) ? release.order.filter(name => typeof name === "string" && name) : [];
-      const names = ordered.length ? ordered : Object.keys(release.nodes || {});
-      const label = names.length ? names.slice(0, 3).join(" → ") + (names.length > 3 ? " (+" + (names.length - 3) + ")" : "") : "Release";
-      const node = button(label + " · " + release.environment + " · " + release.status + previewState + " · " + release.id.slice(0, 8), () => show(release.id), release.id);
-      node.className = "release"; root.append(node);
-      if (node.dataset.key === focused) node.focus({preventScroll: true});
-    }
+    if (typeof historyRefresh !== "function") releaseRows(releases);
   }
+  if (typeof historyRefresh === "function") await historyRefresh();
   if (selected) await show(selected);
   await refreshCaptures();
   await refreshIncidents();
@@ -836,7 +845,8 @@ async function show(id) {
           if (!await confirmAction(label + " using the displayed " + name + " artifact? A new release will check authority and target state.")) return;
           const next = await api("/releases", "POST", { origin: id, component: name, environment: action.environment, rollback: action.rollback, only: true,
             receipts: readReceipts() });
-          selected = next.id; message("Artifact reuse requested. Inspect the new release and any required approval."); await refresh();
+          selected = next.id; if (typeof historyReset === "function") historyReset();
+          message("Artifact reuse requested. Inspect the new release and any required approval."); await refresh();
         }, label + "-" + name));
       }
     }
@@ -1001,7 +1011,8 @@ element("release-form").onsubmit = (event) => { event.preventDefault(); safe(asy
   try {
     const release = await api("/releases", "POST", selection());
     if (!token) return;
-    selected = release.id; message("Release preparation started."); await refresh();
+    selected = release.id; if (typeof historyReset === "function") historyReset();
+    message("Release preparation started."); await refresh();
   } catch (error) {
     if (token) { element("capture-history").open = true; await refreshCaptures(); }
     throw error;

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import base64
 import json
 import os
 import time
@@ -15,6 +16,10 @@ from pathlib import Path
 from ..config import canonical
 from ..errors import Refused
 from ..store import Store
+from .spec import NAME
+
+# History filters describe recorded outcomes, never execution authority or provider health
+HISTORY_OUTCOMES = ('queued', 'running', 'waiting', 'cancel_requested', 'cancelled', 'failed', 'uncertain', 'succeeded')
 
 
 # Store delivery progress beside the shared authority ledger
@@ -146,6 +151,67 @@ class Ledger:
         with self.store.connect() as connection:
             return [json.loads(row[0]) for row in connection.execute(
                 "SELECT data FROM releases ORDER BY rowid DESC LIMIT 200")]
+
+
+    # Browse the full retained extent with literal filters and read-only creation-bound cursors
+    def history(self, query: str = '', environment: str = '', component: str = '', outcome: str = '',
+                limit: int = 20, cursor: str = '') -> dict:
+        if (type(limit) is not int or not 1 <= limit <= 100 or not isinstance(query, str) or len(query) > 96
+                or any(not isinstance(value, str) for value in (environment, component, outcome, cursor))
+                or any(value and not NAME.fullmatch(value) for value in (environment, component))
+                or outcome and outcome not in HISTORY_OUTCOMES):
+            raise Refused('Choose literal history filters and a page size from 1 to 100', 422)
+        filters = {'query': query.strip().lower(), 'environment': environment, 'component': component, 'outcome': outcome}
+        from ..config import fingerprint
+        info = self.store.path.stat()
+        store = fingerprint([str(self.store.path.resolve()), info.st_dev, info.st_ino])
+        signature = fingerprint(filters)
+        position = None
+        if cursor:
+            try:
+                if len(cursor) > 512:
+                    raise ValueError()
+                position = json.loads(base64.b64decode(cursor + '=' * (-len(cursor) % 4), altchars=b'-_', validate=True))
+                if (not isinstance(position, dict) or set(position) != {'before', 'through', 'filters', 'store'}
+                        or any(type(position[key]) is not int for key in ('before', 'through'))
+                        or not 0 <= position['through'] < 2**63 - 1
+                        or not 1 <= position['before'] <= position['through'] + 1
+                        or position['filters'] != signature or position['store'] != store):
+                    raise ValueError()
+            except (ValueError, TypeError, KeyError):
+                raise Refused('History cursor does not match these filters or retained store; start from newest', 422) from None
+        clauses, parameters = [], []
+        for key, value in (('environment', environment), ('status', outcome)):
+            if value:
+                clauses.append('r.' + key + '=?'); parameters.append(value)
+        if component:
+            clauses.append("EXISTS(SELECT 1 FROM json_each(r.data,'$.nodes') n WHERE n.key=?)")
+            parameters.append(component)
+        if filters['query']:
+            clauses.append("(instr(lower(r.id),?)>0 OR instr(lower(json_extract(r.data,'$.project')),?)>0 "
+                           "OR EXISTS(SELECT 1 FROM json_each(r.data,'$.nodes') n WHERE instr(lower(n.key),?)>0))")
+            parameters.extend([filters['query']] * 3)
+        with self.store.connect() as connection:
+            connection.execute('BEGIN')
+            through = position['through'] if position else connection.execute('SELECT COALESCE(MAX(rowid),0) FROM releases').fetchone()[0]
+            before = position['before'] if position else through + 1
+            where = ' AND '.join(['r.rowid<=?', *clauses])
+            bound = [through, *parameters]
+            total = connection.execute('SELECT count(*) FROM releases r WHERE ' + where, bound).fetchone()[0]
+            rows = connection.execute('SELECT r.rowid AS position,r.data FROM releases r WHERE ' + where +
+                ' AND r.rowid<? ORDER BY r.rowid DESC LIMIT ?', [*bound, before, limit + 1]).fetchall()
+
+        # Cursors carry only bounded read position and binding hashes; they are not signed capabilities
+        def encode(value):
+            return base64.urlsafe_b64encode(canonical({'before': value, 'through': through,
+                'filters': signature, 'store': store}).encode()).decode().rstrip('=')
+
+        more = len(rows) > limit
+        rows = rows[:limit]
+        return {'releases': [json.loads(row['data']) for row in rows], 'filters': filters, 'limit': limit,
+                'total': total, 'cursor': encode(before), 'next_cursor': encode(rows[-1]['position']) if more else None,
+                'has_more': more, 'outcomes': list(HISTORY_OUTCOMES),
+                'scope': 'Recorded state at read time; cursor bounds creation history, not health or a frozen state snapshot'}
 
 
     # Return a release's events in their committed order

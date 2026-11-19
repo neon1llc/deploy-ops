@@ -1,5 +1,38 @@
 # Portable inspection
 
+## Find retained releases
+
+Use **Find releases** in Releases to search literal project names, component names or release IDs.
+**Apply history filters** also accepts an exact recorded environment, component and release outcome.
+Historical names remain searchable even after they leave the current workspace. **Older results** and
+**Newer results** navigate bounded pages; **Refresh** rereads the current page, and **Newest matching
+releases** starts again with later additions. Typed filters, unrelated drafts and selected release details
+remain in place while history refreshes.
+
+The CLI uses the same read-only query:
+
+```bash
+deploy-ops --state /private/delivery-state status --history
+deploy-ops --state /private/delivery-state status --query web --environment staging --outcome failed
+deploy-ops --state /private/delivery-state status --component web --limit 50
+```
+
+History flags return a page containing `releases`, normalized `filters`, matching `total`, `cursor` and
+`next_cursor`. Pass `--cursor` with the same filters for the next page. `GET /api/releases/history` accepts
+the same query fields and requires the existing operator authentication and origin/host checks. Page
+sizes are 1–100, default 20. Search is literal; `%` and `_` do not act as wildcards. Default `status` and
+`GET /api/releases` retain their newest-200 array response for compatibility. An exact ID still reads one
+record; it cannot be combined with history filters. These reads do not load current configuration,
+initialize a missing state directory, repair state, acquire execution authority or send notifications.
+
+Pages pin a creation boundary so new releases do not shift an older page. Recorded outcomes can still
+change; a cursor is not a frozen database snapshot, archival proof or execution capability. Filters and
+the selected store bind the read position. Start from newest after changing filters, replacing/restoring
+the store or performing database maintenance. Home metrics explicitly summarize recent rows; history
+filters do not change active execution blockers or dependency receipt lookup.
+
+## Save a portable summary
+
 Save an inspection when a deployment worker may disappear. The summary keeps the recorded release
 outcome, exact workspace digests, controller request identity, prepared artifact hash and supported
 native operation facts. It can be read without the original source, cloud tools or credentials.

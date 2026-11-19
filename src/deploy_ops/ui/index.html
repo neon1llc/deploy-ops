@@ -11,6 +11,7 @@
     <script src="shell.js" defer></script>
     <script type="module" src="appearance.mjs"></script>
     <script src="app.js" defer></script>
+    <script src="history.js" defer></script>
     <script src="paging.js" defer></script>
     <script src="operator.js" defer></script>
     <script src="local-settings.js" defer></script>
@@ -124,7 +125,7 @@
                   <p id="component-summary">Connect to load components.</p>
                 </section>
                 <section>
-                  <p class="eyebrow">RELEASES</p>
+                  <p class="eyebrow">RECENT RELEASES</p>
                   <strong class="metric" id="release-count">—</strong>
                   <p id="release-summary">Waiting for release history.</p>
                 </section>
@@ -224,6 +225,18 @@
                     <h2>Releases</h2>
                     <button id="refresh" class="secondary">Refresh</button>
                   </div>
+                  <form id="history-filters" action="/api/releases/history" method="get">
+                    <label for="history-query">Find releases</label><input id="history-query" name="query" type="search" maxlength="96" placeholder="Project, component or release ID" />
+                    <details><summary>Environment, component, outcome and page size</summary><div class="history-fields">
+                      <div><label for="history-environment">Environment filter</label><input id="history-environment" name="environment" pattern="[a-z][a-z0-9-]{0,47}" /></div>
+                      <div><label for="history-component">Component filter</label><input id="history-component" name="component" pattern="[a-z][a-z0-9-]{0,47}" /></div>
+                      <div><label for="history-outcome">Release outcome</label><select id="history-outcome" name="outcome"><option value="">All outcomes</option></select></div>
+                      <div><label for="history-limit">Releases per page</label><select id="history-limit" name="limit"><option>10</option><option selected>20</option><option>50</option><option>100</option></select></div>
+                    </div></details>
+                    <button type="submit">Apply history filters</button>
+                  </form>
+                  <p id="history-status" role="status" aria-live="polite" tabindex="-1">Recorded release history; no provider health check.</p>
+                  <div class="controls"><button id="history-newest" type="button" class="secondary">Newest matching releases</button><button id="history-newer" type="button" class="secondary" disabled>Newer results</button><button id="history-older" type="button" class="secondary" disabled>Older results</button></div>
                   <div id="releases"></div>
                   <details id="capture-history">
                     <summary>Source capture history</summary>

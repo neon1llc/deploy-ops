@@ -63,6 +63,8 @@ details details { background: var(--panel-raised, #fff); }
 .row, .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .row { justify-content: space-between; }
 .controls > label { flex: 1; min-width: min(160px, 100%); }
+.history-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr)); gap: 12px; }
+.history-fields label { margin-block-end: 7px; }
 .row p { margin-bottom: 0; }
 .grid { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 1.8fr); gap: 20px; align-items: start; }
 .view-actions { display: flex; justify-content: flex-end; margin-bottom: 16px; }
