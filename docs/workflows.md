@@ -77,6 +77,20 @@ For Container Apps, `deploy-ops provider inspect RELEASE_ID COMPONENT` reads the
 
 The adapter uses a release-specific revision suffix, and Azure rejects conflicting suffixes, but that isn't an idempotency guarantee. The read and write aren't atomic, so an external concurrent change can still race the update. DeployOps never repeats the update command after recording an attempt. Recovery and no-op behavior have command-fixture coverage only, not a live recovery exercise.
 
+## Inspect command output failures
+
+Local delivery commands share a 10 MB raw-byte budget across stdout and private diagnostics. The runner
+checks actual private-file extents while a child runs and again after it exits. An exit code of zero
+can still have an unusable result when that combined output exceeds the policy. Inspect the recorded
+command outcome and target before retrying: the command may already have changed files or a provider.
+No automatic replay or rollback follows an output-policy failure.
+
+CLI status/events and console release details retain the failure and observed exit code separately.
+Private diagnostics stay out of ordinary events. Successful captured machine output keeps its existing
+replacement decoding, while raw bytes determine the budget. Displayed stdout is redacted before its
+bounded tail is selected. This observation limit does not reserve disk capacity or prevent every
+between-check output burst.
+
 ## Notify and page
 
 Entering approval wait records one event with the exact component/request ID and digest. Repeated

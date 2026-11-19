@@ -16,6 +16,11 @@ from ..errors import Refused
 # Ambient credentials and arbitrary endpoint overrides are excluded from child environments
 SAFE_ENV = {"PATH", "LANG", "LC_ALL", "SSL_CERT_FILE", "SYSTEMROOT", "WINDIR"}
 
+# One byte budget covers both private child streams at running and terminal observations
+MAX_OUTPUT_BYTES = 10_000_000
+OUTPUT_LIMIT_MESSAGE = ("Command output exceeded its 10 MB limit (combined stdout and private diagnostics). "
+                        "The command may have acted; inspect the target before retrying")
+
 
 # Fixed operation names identify native failures without recording arguments or provider errors
 AZURE_OPERATIONS = (
@@ -75,6 +80,12 @@ def redact(text: str, secrets: list[str]) -> str:
     return ''.join(parts) + text[previous:]
 
 
+# Observe actual file extents even if a child has exited or rewound a stream
+def _check_output(output, diagnostic):
+    if os.fstat(output.fileno()).st_size + os.fstat(diagnostic.fileno()).st_size > MAX_OUTPUT_BYTES:
+        raise Refused(OUTPUT_LIMIT_MESSAGE)
+
+
 # Supervise bounded native commands with authority heartbeats
 class Process:
     # Keep process credentials and deadlines local to this execution context
@@ -121,16 +132,17 @@ class Process:
                 while process.poll() is None:
                     if time.monotonic() - started >= timeout or (self.deadline and time.time() >= self.deadline):
                         raise Refused("Command deadline reached. Check the target before retrying")
-                    if output.tell() + diagnostic.tell() > 10_000_000:
-                        raise Refused("Command output exceeded its 10 MB limit")
+                    _check_output(output, diagnostic)
                     self.heartbeat()
                     time.sleep(0.25)
 
-                # Only bounded successful output can reach the caller
+                # A completed child must satisfy the same combined budget before returning output
+                _check_output(output, diagnostic)
                 output.seek(0)
-                text = output.read(10_000_001).decode(errors="replace")
-                if len(text.encode()) > 10_000_000:
-                    raise Refused("Command output exceeded its 10 MB limit")
+                raw = output.read(MAX_OUTPUT_BYTES + 1)
+                if len(raw) > MAX_OUTPUT_BYTES:
+                    raise Refused(OUTPUT_LIMIT_MESSAGE)
+                text = raw.decode(errors="replace")
                 if process.returncode != 0:
                     # Raw provider output can contain secrets that the controller never received
                     label = metadata.get("operation", metadata["tool"])
