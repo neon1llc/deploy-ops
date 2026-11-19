@@ -1,5 +1,15 @@
 # Verification
 
+## Completed command output accounting, 2026-11-05
+
+Real local children were held at an exit barrier before the first poll. Old source accepted an excess
+private diagnostic stream and an excess combined stdout/diagnostic extent. Current terminal accounting
+refuses both, including after a local marker effect and exit0. Exactly10 MB combined output remains
+usable. Each case runs once, closes private streams and records a stopped local process without
+exposing diagnostics or replaying the command. A small raw-byte/invalid-UTF-8 case verifies decoding
+does not inflate the byte count. Existing sanitization-before-display-tail behavior is retained.
+This is local command evidence, not observed cloud rollback, resource exhaustion or an OS disk quota.
+
 ## Bounded Slack review, 2026-11-05
 
 The previous renderer reproduced a missing25th deletion, resource type and finding while still offering

@@ -932,3 +932,52 @@ def test_release_timing_projects_short_lease_and_lost_contact(tmp_path, monkeypa
     assert current['timing']['observed_at'] == clock[0]
     assert lease['token'] not in json.dumps(detail)
     assert 'token_hash' not in json.dumps(detail)
+
+
+# A real child crosses the exit barrier before the first poll, so terminal accounting cannot borrow the running check
+@pytest.mark.parametrize('stdout_bytes,stderr_bytes,refused', [
+    (11, 10_000_000, True), (6_000_000, 4_000_001, True), (11, 9_999_989, False)])
+def test_completed_command_accounts_for_both_private_streams(tmp_path, monkeypatch, stdout_bytes, stderr_bytes, refused):
+    native = subprocess.Popen
+    calls, streams, events = [], [], []
+    marker = tmp_path / 'effect-completed'
+
+    # Retain a real completed process and its actual private file handles without changing its output
+    def completed(*args, **kwargs):
+        child = native(*args, **kwargs)
+        child.wait(timeout=10)
+        calls.append(child)
+        streams.extend([kwargs['stdout'], kwargs['stderr'], kwargs['stdin']])
+        return child
+
+    monkeypatch.setattr(subprocess, 'Popen', completed)
+    code = ('import pathlib,sys;pathlib.Path(' + repr(str(marker)) + ').write_text("effect completed");'
+            'sys.stdout.buffer.write(b"o"*' + str(stdout_bytes) + ');'
+            'sys.stderr.buffer.write(b"private-diagnostic-sentinel"+b"d"*' + str(stderr_bytes-27) + ')')
+    process = Process(tmp_path, lambda event, detail: events.append((event, detail)))
+    if refused:
+        with pytest.raises(Refused, match='output exceeded'):
+            process.run([sys.executable, '-c', code], tmp_path, capture=True)
+        terminal = next(detail for event, detail in events if event == 'command.failed')
+        assert terminal['exit_code'] == 0 and terminal['outcome'] == 'failed'
+        assert not any(event == 'command.finished' for event, _ in events)
+    else:
+        assert process.run([sys.executable, '-c', code], tmp_path, capture=True) == 'o'*stdout_bytes
+        assert any(event == 'command.finished' for event, _ in events)
+    assert marker.read_text() == 'effect completed' and len(calls) == 1
+    assert 'private-diagnostic-sentinel' not in json.dumps(events)
+    assert events[-1][0] == 'command.stopped' and all(stream.closed for stream in streams)
+
+
+# Byte accounting must not charge UTF-8 replacement encoding as additional child output
+# Captured machine text keeps the existing replacement decoding without emitting its body
+def test_command_byte_limit_precedes_replacement_decoding(tmp_path, monkeypatch):
+    import deploy_ops.delivery.process as module
+    monkeypatch.setattr(module, 'MAX_OUTPUT_BYTES', 64)
+    events = []
+    result = Process(tmp_path, lambda event, detail: events.append((event, detail))).run(
+        [sys.executable, '-c', 'import sys;sys.stdout.buffer.write(bytes([255])*32);sys.stderr.buffer.write(b"d"*16)'],
+        tmp_path, capture=True)
+    assert result == '\ufffd'*32
+    assert not any(event == 'command.output' for event, _ in events)
+    assert any(event == 'command.finished' for event, _ in events)
