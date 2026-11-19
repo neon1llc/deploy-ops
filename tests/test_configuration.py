@@ -582,3 +582,14 @@ def test_local_edit_preserves_target_siblings_and_authored_sources(workspace):
     assert result['local_edit_forms']['web']['environments']['development']['directory']['effective'] == 'dist'
     assert edit(result['toml'], 'web', 'environment', {}, 'staging', 'directory')['diff'] == ''
     assert result['local_edit_forms']['web']['build_sources']['command'] == 'component'
+
+
+# Check actual retained-draft handlers without browser or provider dependencies
+def test_retained_local_field_conflicts():
+    import shutil
+    from pathlib import Path
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('Node is required for the local field UI contract')
+    root = Path(__file__).resolve().parents[1]
+    subprocess.run([node, str(root / 'tests' / 'local_settings_ui.cjs')], cwd=root, check=True, timeout=15)
