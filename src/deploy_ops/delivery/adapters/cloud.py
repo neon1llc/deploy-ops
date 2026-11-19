@@ -67,6 +67,9 @@ def ecs_observation(service: dict) -> dict:
 
 # Observe accepted or uncertain ECS requests without resubmitting them
 def inspect_pending(context: Context) -> dict:
+    if context.component.adapter == "cloud-run":
+        from . import cloud_run
+        return cloud_run.inspect(context)
     if context.component.adapter == "container-apps":
         return container_inspect(context)
     if context.component.adapter != "ecs":
@@ -114,6 +117,9 @@ def inspect_pending(context: Context) -> dict:
 
 # Require the same reviewed request before exposing operation recovery evidence
 def inspect(context: Context, prepared: dict) -> dict:
+    if context.component.adapter == "cloud-run":
+        from . import cloud_run
+        return cloud_run.inspect(context, prepared)
     if context.component.adapter == "container-apps":
         return container_inspect(context, prepared)
     if context.component.adapter != "ecs":
@@ -254,12 +260,6 @@ def container_inspect(context: Context, prepared: dict | None = None) -> dict:
     return {**observed, "operation": record["status"], "replay_allowed": False}
 
 
-# Keep Cloud Run project and region explicit on every command
-def google(context: Context, *parts: str) -> list[str]:
-    return ["gcloud", "run", *parts, "--region", need(context.options, "region"),
-            "--project", need(context.options, "project_id"), "--quiet", "--format=json"]
-
-
 # Capture the current revision before reviewing an immutable image update
 def prepare(context: Context) -> dict:
     image = need(context.options, "image")
@@ -307,14 +307,10 @@ def prepare(context: Context) -> dict:
         if request["no_op"]:
             result["preview"]["changes"][0]["action"] = "no-op"
     elif adapter == "cloud-run":
-        current = json.loads(context.command(google(context, "services", "describe", need(context.options, "name")),
-                                             capture=True))
-        state = current.get("status", {})
-        traffic = state.get("traffic", [])
-        if len(traffic) != 1 or traffic[0].get("percent") != 100:
-            raise Refused("Use a reviewed workflow for split-traffic Cloud Run services")
-        result["previous_revision"] = state.get("latestReadyRevisionName")
-        result["previous_traffic"] = traffic
+        from . import cloud_run
+        result.update(cloud_run.prepare(context, image))
+        if result['cloud_run_request']['no_op']:
+            result['preview']['changes'][0]['action'] = 'no-op'
     elif adapter == "kubernetes":
         for key in ("context", "namespace", "deployment", "container"):
             need(context.options, key)
@@ -411,23 +407,8 @@ def apply(context: Context, prepared: dict) -> dict:
             time.sleep(2)
         raise Refused("The requested Container Apps revision did not converge; inspect it without replaying")
     if adapter == "cloud-run":
-        before = json.loads(context.command(google(context, "services", "describe", need(context.options, "name")), capture=True))
-        if before.get("status", {}).get("latestReadyRevisionName") != prepared["previous_revision"] or before.get("status", {}).get("traffic") != prepared["previous_traffic"]:
-            raise Refused("Cloud Run service changed after planning. Prepare a fresh release")
-        service = json.loads(context.command(google(context, "deploy", need(context.options, "name"), "--image", image, "--no-traffic"),
-                                             capture=True))
-        state = service.get("status", {})
-        ready = any(item.get("type") == "Ready" and item.get("status") == "True" for item in state.get("conditions", []))
-        if not ready or not state.get("latestCreatedRevisionName") or state.get("latestReadyRevisionName") != state["latestCreatedRevisionName"]:
-            raise Refused("Cloud Run did not confirm the requested revision is ready")
-        # Move traffic only after the newly created revision is confirmed ready
-        traffic = json.loads(context.command(google(context, "services", "update-traffic", need(context.options, "name"),
-            "--to-revisions", state["latestReadyRevisionName"] + "=100"), capture=True))
-        serving = traffic.get("status", {}).get("traffic", [])
-        if not any(item.get("revisionName") == state["latestReadyRevisionName"] and item.get("percent") == 100 for item in serving):
-            raise Refused("Cloud Run traffic did not converge to the requested revision")
-        return {"revision": state["latestReadyRevisionName"], "image": image, "url": state.get("url", ""),
-                "previous_revision": prepared.get("previous_revision", "")}
+        from . import cloud_run
+        return cloud_run.apply(context, prepared)
     base = ["kubectl", "--context", need(context.options, "context"), "--namespace", need(context.options, "namespace")]
     deployment = "deployment/" + need(context.options, "deployment")
     # Use atomic test operations to reject concurrent Kubernetes changes

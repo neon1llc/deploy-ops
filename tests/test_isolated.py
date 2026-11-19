@@ -12,6 +12,9 @@ import sys
 import time
 
 import pytest
+
+from cloud_run_fixture import CloudRunFixture
+from deploy_ops.delivery.adapters import cloud_run
 from pydantic import ValidationError
 
 from deploy_ops.config import Target
@@ -198,23 +201,15 @@ def test_planning_apply_and_app_only_use_real_local_authority(setup, monkeypatch
     monkeypatch.setenv("DEPLOY_OPS_ISOLATED_GRANT_FILE", str(route.path))
     engine = Engine(path)
     engine.gate.route.broker = route.broker
-    calls = []
-    current = ["web-old"]
+    native = CloudRunFixture()
 
-    # Return ready native Cloud Run observations while invoking real lease callbacks
-    def command(self, argv, cwd, timeout=600, capture=False, input_text=None):
-        self.heartbeat()
-        assert self.env["CLOUDSDK_AUTH_ACCESS_TOKEN"] == TOKEN
-        assert "GOOGLE_APPLICATION_CREDENTIALS" not in self.env
-        calls.append(argv)
-        if "deploy" in argv:
-            current[0] = "web-" + str(len(calls))
-        revision = current[0]
-        return json.dumps({"status": {"latestReadyRevisionName": revision, "latestCreatedRevisionName": revision,
-            "conditions": [{"type": "Ready", "status": "True"}], "traffic": [{"revisionName": revision, "percent": 100}],
-            "url": "https://fixture.example.invalid"}})
+    # Invoke real lease heartbeats while verifying the isolated token stays in its intended context
+    def request(context, method, name, body=None, mask=None):
+        assert context.process.env["CLOUDSDK_AUTH_ACCESS_TOKEN"] == TOKEN
+        assert "GOOGLE_APPLICATION_CREDENTIALS" not in context.process.env
+        return native.request(context, method, name, body, mask)
 
-    monkeypatch.setattr(Process, "run", command)
+    monkeypatch.setattr(cloud_run, "request", request)
     for digest in ("a", "b"):
         release = engine.create("development", "web", False, image=OUTPUTS["image_repository"] + "@sha256:" + digest * 64,
                                 receipts={"foundation": receipt["id"]})
@@ -224,7 +219,7 @@ def test_planning_apply_and_app_only_use_real_local_authority(setup, monkeypatch
         result = engine.advance(release["id"])
         assert result["status"] == "succeeded", result.get("reason")
     assert route.runner.stages == ["plan", "apply"]
-    assert len([command for command in calls if "deploy" in command]) == 2
+    assert len([call for call in native.calls if call[0] == "PATCH"]) == 4
     assert TOKEN not in json.dumps(route.controller.store.audit())
     assert all(request["manifest"]["source"]["kind"] == "local" for request in route.controller.list_requests())
 

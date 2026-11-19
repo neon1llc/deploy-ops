@@ -17,7 +17,7 @@
 | ARM/Bicep | Frozen JSON, public parameters, what-if review, incremental deployment, readback | Live Bicep creation and ARM tag update. No native destruction |
 | AWS ECS app | Existing service, frozen task definition, exact image, readback, revision check | Live infrastructure-to-app and second app-only update. Container health, image, and startup log verified |
 | Azure Container Apps | Single revision mode, one named container, revision health, mutation journal | Live image update and logs. Recovery journal checked with fixtures |
-| GCP Cloud Run | Existing single-traffic service, new revision, explicit 100% traffic switch | Mocked commands, no live GCP |
+| GCP Cloud Run | Existing single-container/untagged route, conditional candidate and traffic updates, durable native operations and actual revision-image readback | Native API fixtures; live workload qualification remains separate. See [Cloud Run](cloud-run.md) |
 | Kubernetes app | Existing Deployment, patch precondition, rollout and image checks | Real disposable kind cluster: rollout, app-only, promotion, rollback, stale-target refusal |
 | Promotion and rollback | Reuse a built static artifact or immutable image | Real static and local Kubernetes paths. Cloud runtime paths unqualified |
 | Generic tool integration | Trusted local prepare, apply, and verify argv, always manual | Implemented, no native tool guarantee |

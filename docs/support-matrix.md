@@ -15,7 +15,7 @@ These are bounded observations from the v0.10.0 baseline through v0.12.0 and lat
 | Kubernetes application | kind 0.31.0, Kubernetes/kubectl 1.35.0 | First rollout, app-only reuse, same-image promotion, rollback, stale-target refusal and reconciled retry | Managed clouds, admission controls, multi-node or multi-architecture behavior |
 | AWS ECS | AWS CLI 2.36.34, Fargate Linux/X86_64, us-east-1 | Live infrastructure-to-app and app-only image update; healthy task/digest/logs, unchanged infrastructure | No public HTTP endpoint, image publication or cross-worker live receipt |
 | Azure Container Apps | Azure CLI 2.91.0, Consumption, eastus | Live infrastructure-to-app and app-only update, revision health and version logs | No ingress HTTP proof; cleanup completed beyond the planned lifetime; new recovery journal only fixture-qualified |
-| GCP Cloud Run | Command fixtures | Exact command and selected refusal contracts | No live provider journey |
+| GCP Cloud Run | Native v2 API fixtures | Conditional candidate/traffic operations, actual image/readiness and read-only recovery | No live workload journey qualified |
 | Native IaC tooling | OpenTofu 1.10.0, Terraform 1.12.2 in isolated Linux VM | Offline init/validate/saved-plan/show of `terraform_data` | No cloud provider plan or apply |
 | OpenTofu receipt producer | 1.10.0 command/state fixtures | S3 backend binding, typed public outputs, receipt expiry/revocation and failed-apply invalidation | No live S3 or IaC apply |
 | CloudFormation | AWS CLI 2.36.34, us-east-1; additional command fixtures | Live private S3 create, tag update, no-change and owned deletion; independent bucket-absence check | Other resources, CDK assets and live rollback remain unqualified |

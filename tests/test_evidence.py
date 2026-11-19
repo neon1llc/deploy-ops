@@ -107,8 +107,8 @@ def test_completeness_and_missing_record(runner):
     release['nodes']['foundation']['adapter'] = 'cloud-run'
     engine.ledger.save(release)
     document = evidence.capture(engine.state, release['id'])
-    assert document['components'][0]['journal'] == 'not_applicable'
-    assert document['capture'] == 'complete'  # Only the explicitly supported extent
+    assert document['components'][0]['journal'] == 'unavailable'
+    assert document['capture'] == 'partial'  # Missing newly supported native journal remains unknown
 
 
 # Unsupported versions, extra data, altered extent and self-contradictory imports fail before rendering
@@ -118,7 +118,7 @@ def test_refuse_changed_or_unsupported_summary(runner, change):
     durable_record(folder / 'ecs-operation.json', record)
     document = evidence.capture(engine.state, release['id'])
     if change == 'version':
-        document['version'] = 2
+        document['version'] = 99
     elif change == 'extra':
         document['components'][0]['native']['credentials'] = 'PRIVATE-TOKEN-SENTINEL'
     elif change == 'hash':
@@ -194,3 +194,42 @@ def test_recipe_keeps_deployment_exit(tmp_path, outcome):
     assert upload['with']['path'] == 'inspection.json'
     assert upload['with']['if-no-files-found'] == 'error'
     assert upload['with']['retention-days'] == 1
+
+
+# Keep exact version 1 bytes readable without silently adding the version 2 project field
+def test_legacy_inspection_extent_is_not_reserialized(runner):
+    engine, release, folder, record = runner
+    durable_record(folder / 'ecs-operation.json', record)
+    document = evidence.capture(engine.state, release['id'])
+    document['version'] = 1
+    for component in document['components']:
+        if component['native']:component['native']['scope'].pop('project_id')
+    document['sha256'] = fingerprint({key:value for key,value in document.items() if key != 'sha256'})
+    assert evidence.validate(document) == document
+    assert 'project_id' not in evidence.validate(document)['components'][0]['native']['scope']
+
+
+# Portable Cloud Run evidence binds both write phases while excluding arbitrary service/credential data
+@pytest.mark.parametrize('phase', ['candidate-submitted', 'candidate-acknowledged', 'traffic-submitted', 'traffic-acknowledged'])
+def test_cloud_run_portable_scope_and_phase(runner, tmp_path, phase):
+    engine, release, folder, record = runner
+    release['nodes']['foundation']['adapter'] = 'cloud-run'
+    engine.ledger.save(release)
+    selected = {'release_id':release['id'],'component':'foundation','environment':'development',
+                'project_id':'fixture-project','region':'us-central1','name':'web',
+                'service':'projects/fixture-project/locations/us-central1/services/web'}
+    request = {'version':1,'scope':selected,'image':record['image'],'candidate':selected['service']+'/revisions/web-do-owned',
+               'baseline':{'route':selected['service']+'/revisions/web-old'},'operation_id':'c'*64,
+               'private_note':'PRIVATE-REQUEST-SENTINEL'}
+    value = {'request':request,'request_digest':fingerprint(request),'status':phase,
+             'observed':{'status':'baseline-serving','image':record['image'],'message':'PRIVATE-PROVIDER-SENTINEL'}}
+    durable_record(folder/'cloud-run-operation.json',value)
+    document = evidence.capture(engine.state,release['id'])
+    assert document['version']==2
+    native=document['components'][0]['native']
+    assert native['provider']=='gcp' and native['phase']==phase and native['scope']['project_id']=='fixture-project'
+    assert native['previous_revision']==request['baseline']['route'] and native['revision']==request['candidate']
+    assert 'PRIVATE-' not in json.dumps(document)
+    path=tmp_path/'portable.json';evidence.write(path,json.dumps(document))
+    shutil.rmtree(engine.path.parent)
+    assert evidence.inspect(path)==document

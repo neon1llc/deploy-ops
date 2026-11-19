@@ -522,10 +522,10 @@ async function show(id) {
       ["Local target", node.physical_target?.path], ["Target owner", node.physical_target?.owner?.join("/")]]);
     if (node.preview) reviewChanges(area, name, node.preview, expanded);
     for (const warning of node.warnings || []) text(area, "p", "Review: " + warning);
-    if (["cloudformation", "cdk", "arm", "bicep", "ecs", "container-apps"].includes(node.adapter) && (node.request_digest || node.status === "uncertain")) {
+    if (["cloudformation", "cdk", "arm", "bicep", "ecs", "container-apps", "cloud-run"].includes(node.adapter) && (node.request_digest || node.status === "uncertain")) {
       area.append(button("Read provider status", async () => {
         const observed = await api("/releases/" + id + "/provider/inspect", "POST", {component: name});
-        message("Provider readback: " + (observed.status || observed.stack_status || observed.operation || "recorded") + ". No deployment was replayed.");
+        message(observed.reason || ("Provider readback: " + (observed.status || observed.stack_status || observed.operation || "recorded") + ". No deployment was replayed."));
         await refresh();
       }, "provider-" + name));
       if (["cloudformation", "cdk"].includes(node.adapter) && release.status === "waiting") {

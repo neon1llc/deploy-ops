@@ -209,7 +209,7 @@ function control(key) {
   assert.match(nodes.get("message").textContent, /register-submitted/);
 
   // Both journal-backed application adapters expose readback without enabling unsupported adapters
-  for (const [adapter, visible] of [["container-apps", true], ["cloud-run", false], ["kubernetes", false]]) {
+  for (const [adapter, visible] of [["container-apps", true], ["cloud-run", true], ["kubernetes", false]]) {
     context.fixture.release.nodes.web.adapter = adapter;
     await vm.runInContext('show("release-fixture")', context);
     assert.equal(Boolean(control("provider-web")), visible);

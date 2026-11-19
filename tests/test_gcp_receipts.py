@@ -6,6 +6,9 @@ import json
 import subprocess
 
 import pytest
+
+from cloud_run_fixture import CloudRunFixture
+from deploy_ops.delivery.adapters import cloud_run
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -155,22 +158,8 @@ def test_two_native_engines_feed_app_only_cloud_run_without_reapplying(setup, mo
 
     engine.gate.client = Transport()
     engine.gate.credentials = lambda _: {}
-    calls, current = [], ["web-old"]
-
-    # Model a ready revision and traffic convergence without invoking gcloud
-    def command(self, argv, cwd, timeout=600, capture=False, input_text=None):
-        self.heartbeat()
-        calls.append(argv)
-        assert argv[0] == "gcloud"
-        assert argv[argv.index("--project") + 1] == OUTPUTS["project"]
-        assert argv[argv.index("--region") + 1] == OUTPUTS["region"]
-        if "deploy" in argv:
-            current[0] = "web-new-" + str(len(calls))
-        return json.dumps({"status": {"latestReadyRevisionName": current[0], "latestCreatedRevisionName": current[0],
-            "conditions": [{"type": "Ready", "status": "True"}],
-            "traffic": [{"revisionName": current[0], "percent": 100}], "url": "https://fixture.example.invalid"}})
-
-    monkeypatch.setattr(Process, "run", command)
+    native = CloudRunFixture()
+    monkeypatch.setattr(cloud_run, 'request', native.request)
     for run in ("app-run", "app-only-run"):
         source.run_id = run
         release = engine.advance(engine.create("development", "web", False, image=IMAGE,
@@ -181,7 +170,8 @@ def test_two_native_engines_feed_app_only_cloud_run_without_reapplying(setup, mo
         assert result["status"] == "succeeded", result.get("reason")
         assert result["nodes"]["web"]["outputs"]["image"] == IMAGE
     assert len([r for r in controller.list_requests() if r["manifest"]["target"] == "infrastructure"]) == 1
-    assert len([argv for argv in calls if "deploy" in argv]) == 2
+    assert len([call for call in native.calls if call[0] == "PATCH"]) == 2
+    assert result["nodes"]["web"]["outputs"]["no_op"] is True
 
 
 # A later write invalidates the old receipt even when its apply fails and is reconciled

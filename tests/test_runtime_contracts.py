@@ -70,12 +70,6 @@ def test_compose_named_volume_admission(tmp_path, declaration):
         {"services": [{"taskDefinition": "old"}]}, {"taskDefinition": {"taskDefinitionArn": "new"}}, {}, "",
         {"services": [{"taskDefinition": "new", "deployments": [{"rolloutState": "COMPLETED"}]}]},
     ]),
-    ("cloud-run", "gcp", {"name": "app", "project_id": "project", "region": "us-central1"}, [
-        {"status": {"latestReadyRevisionName": "old", "traffic": [{"revisionName": "old", "percent": 100}]}},
-        {"status": {"latestReadyRevisionName": "old", "traffic": [{"revisionName": "old", "percent": 100}]}},
-        {"status": {"latestCreatedRevisionName": "new", "latestReadyRevisionName": "new", "conditions": [{"type": "Ready", "status": "True"}]}},
-        {"status": {"traffic": [{"revisionName": "new", "percent": 100}]}},
-    ]),
     ("kubernetes", "local", {"context": "test", "namespace": "app", "deployment": "app", "container": "web"}, [
         {"metadata": {"resourceVersion": "123"}, "spec": {"template": {"spec": {"containers": [{"name": "web", "image": "old"}]}}}},
         "", "", {"spec": {"template": {"spec": {"containers": [{"name": "web", "image": IMAGE}]}}}},
