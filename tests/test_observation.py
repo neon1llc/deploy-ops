@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from deploy_ops.console import create_app
+from deploy_ops.config import fingerprint
 from deploy_ops.delivery.demo import finish
 from deploy_ops.delivery.engine import Engine
 from deploy_ops.delivery.files import digest_tree
@@ -34,7 +35,9 @@ def test_complete_local_observation_records_no_repair_or_release_mutation(deploy
     assert result['repairs'] is False
     assert engine.ledger.get(release['id']) == release
     assert digest_tree(engine.deployments) == before
-    assert engine.ledger.events(release['id'])[-1]['detail'] == result
+    event = engine.ledger.events(release['id'])[-1]
+    assert event['detail'] == {key: value for key, value in result.items() if key != 'reference'}
+    assert result['reference'] == {'sequence': event['sequence'], 'digest': fingerprint(event['detail'])}
     assert engine.ledger.store.verify()['events'] > 0
 
 

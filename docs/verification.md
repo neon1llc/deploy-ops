@@ -1,5 +1,24 @@
 # Verification
 
+## Later evidence and responder handoff, 2026-11-05
+
+A real local directory deployment succeeded before its marker was changed and observed as drifted.
+Shared-owner and authenticated API checks opened an incident bound to that saved observation, held
+native pages, reviewed the active route and queued one explicit handoff. A local sender fixture accepted
+one request. Delivery success stayed byte-for-byte unchanged. Quiet expiry produced no automatic page.
+Changed routes, stale versions and different observation sources refused without opening another binding.
+A reproduced late-fallback race now rechecks local eligibility before starting a new native page.
+These checks do not establish actual remote acceptance, responder identity, acknowledgement or recovery.
+
+The bounded installed v0.28.0 desktop review exercised recorded backend/output details, selected-file
+search, public-key fingerprint and safe missing-report refusal with keyboard navigation. It found unclear
+release labels and lost search focus. Current source adds component names with a legacy fallback and
+restores search focus only when its own control was displaced. An installed local browser journey also exercised observation-origin incident opening, held native
+pages, route preview, Escape cancellation with retained note, explicit queued handoff and local resolution.
+The one obligation was superseded at zero attempts. File search retained focus on Find, then Tab reached
+the results selection. This is bounded local browser evidence, with no actual destination contact.
+Broad accessibility, assistive technology, every workflow and human acceptance remain open.
+
 ## Kubernetes connection and object identity, 2026-11-05
 
 Actual kubectl v1.36.1 against an owned loopback TLS API fixture retained the original connection when

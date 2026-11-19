@@ -107,6 +107,7 @@ class Ledger:
             connection.execute("INSERT INTO notifications(payload) VALUES (?)", (
                 canonical({"release_id": release_id, "event": name, "time": now}),
             ))
+        return cursor.lastrowid
 
 
     # Give standalone delivery events their own transaction

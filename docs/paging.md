@@ -47,11 +47,13 @@ GoAlert and notification endpoints can allow private CIDRs in `allowed_networks`
 
 ## Routing and worker behavior
 
-Routes match exact project, environment, component, event, and severity values, and empty lists match all. The first matching route wins and fans out to its destinations. With no match, `default_destinations` applies. Native destinations page only for `incident.opened`, and release success stays a notification.
+Routes match exact project, environment, component, event, and severity values, and empty lists match all. The first matching route wins and fans out to its destinations. With no match, `default_destinations` applies. Native destinations page only for `incident.opened` or a separately reviewed `incident.handoff_requested`, which uses the same route filters, and release success stays a notification.
 
-The route preview explains selected, disabled, quiet, and unsupported destinations. `quiet_until` takes an ISO date and time with a timezone offset and suppresses new routed events until then. Recurring quiet hours aren't implemented. Critical incidents follow the configured policy.
+The route preview explains selected, disabled, quiet, and unsupported destinations. `quiet_until` takes an ISO date and time with a timezone offset and suppresses new routed events until then. Recurring quiet hours aren't implemented. Critical incidents follow the configured policy. Expiry sends no catch-up pages. A local incident opened from an exact later observation holds native pages until an explicit [responder handoff](incidents.md#track-a-later-observation-and-review-responder-handoff).
 
-An optional route `fallback` picks a different destination after a definite final transport failure, never after an unknown outcome. There is no fallback chain.
+Preview shows the evaluated source (`active`, `saved-draft`, or `unsaved-draft`), its revision when available, the configuration digest, the evaluation time, and the exact context. Saving or previewing a draft doesn't activate it. Recorded routing decisions stay historical evidence even if a current preview differs.
+
+An optional route `fallback` picks a different destination after a definite final transport failure, never after an unknown outcome. There is no fallback chain. Before a new native fallback, the worker rechecks the incident version, open state, and handoff eligibility in one transaction. A late ordinary notification failure after local acknowledgement or resolution can't start a new native page. Historical notification results, existing binding supersession, and unknown in-flight outcomes stay visible.
 
 ```bash
 # Inspect state without sending

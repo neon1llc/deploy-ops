@@ -14,11 +14,17 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from .errors import Refused
+from .config import fingerprint
 
 
 # Bound console input without granting authority through unknown fields
 class Input(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    # Bind later incidents and explicit handoff to displayed immutable references
+    observation_sequence: int | None = Field(default=None, ge=1, strict=True)
+    observation_digest: str = Field(default="", pattern=r"^(|[0-9a-f]{64})$")
+    route_digest: str = Field(default="", pattern=r"^(|[0-9a-f]{64})$")
 
     # Release selection and authority windows contain no provider credential values
     environment: str = "development"
@@ -543,7 +549,8 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     @app.post("/api/incidents", dependencies=[Depends(operator)])
     def open_incident(data: Input):
         from .delivery.incidents import open_incident
-        return open_incident(engine.ledger, data.release_id, data.owner, data.note, data.interval_seconds, data.limit)
+        return open_incident(engine.ledger, data.release_id, data.owner, data.note, data.interval_seconds, data.limit,
+                             data.observation_sequence, data.observation_digest)
 
 
     # Advance only the explicitly configured escalation schedule
@@ -553,10 +560,19 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         return tick(engine.ledger)
 
 
+    # Preview current routing separately from a recorded opening decision or a dispatch
+    @app.get("/api/incidents/{incident_id}/handoff", dependencies=[Depends(operator)])
+    def incident_handoff_preview(incident_id: str):
+        from .delivery.incidents import handoff_preview
+        return handoff_preview(engine.ledger, incident_id)
+
+
     # Apply a versioned incident decision through the shared owner
     @app.post("/api/incidents/{incident_id}/{action}", dependencies=[Depends(operator)])
     def incident_action(incident_id: str, action: str, data: Input):
-        from .delivery.incidents import transition
+        from .delivery.incidents import handoff, transition
+        if action == 'handoff':
+            return handoff(engine.ledger, incident_id, data.version, data.route_digest, data.note)
         return transition(engine.ledger, incident_id, action, data.version, data.note)
 
 
@@ -651,9 +667,13 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
                     rollout_requests[kind] = {key: current.get(key) for key in ('status', 'digest', 'timing')}
                 except Exception:
                     rollout_requests[kind] = {'status': 'unavailable', 'digest': None}
+        events = engine.ledger.events(release_id)
+        for event in events:
+            if event['name'] == 'release.observed':
+                event['reference'] = {'sequence': event['sequence'], 'digest': fingerprint(event['detail'])}
         return {"serving_sessions": [item for item in sessions if item["release"] == release_id
                                       or (item['mode'] == 'target' and item.get('active_release') == release_id)],
-                "release": release, "events": engine.ledger.events(release_id),
+                "release": release, "events": events,
                 "request_statuses": request_statuses,
                 "recovery": engine.recovery_status(release),
                 "cleanup_recovery": cleanup_recovery_status(engine, release) if cleanup else None,

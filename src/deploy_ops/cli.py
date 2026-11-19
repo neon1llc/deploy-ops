@@ -210,6 +210,15 @@ def parser():
     opening.add_argument("--note", required=True)
     opening.add_argument("--interval-seconds", type=int, default=900)
     opening.add_argument("--limit", type=int, default=3)
+    opening.add_argument('--observation-sequence', type=int, help='Exact saved adverse observation sequence; deployment outcome is unchanged')
+    opening.add_argument('--observation-digest', default='', help='Digest returned with the saved observation reference')
+    handoff_preview = actions.add_parser('handoff-preview', help='Review active route and quiet/not-handed-off history without dispatch')
+    handoff_preview.add_argument('incident')
+    handoff_action = actions.add_parser('handoff', help='Explicitly queue the exact reviewed incident responder route')
+    handoff_action.add_argument('incident')
+    handoff_action.add_argument('--version', type=int, required=True)
+    handoff_action.add_argument('--route-digest', required=True)
+    handoff_action.add_argument('--note', required=True)
     for name in ("acknowledge", "resolve"):
         action = actions.add_parser(name)
         action.add_argument("incident")
@@ -548,13 +557,18 @@ def dispatch(args):
 
     # Notification delivery cannot acknowledge or resolve an incident
     if args.command == "incidents":
-        from .delivery.incidents import list_incidents, open_incident, tick, transition
+        from .delivery.incidents import handoff, handoff_preview, list_incidents, open_incident, tick, transition
         if args.incident_action == "list":
             return list_incidents(engine.ledger)
         if args.incident_action == "tick":
             return tick(engine.ledger)
         if args.incident_action == "open":
-            return open_incident(engine.ledger, args.release, args.owner, args.note, args.interval_seconds, args.limit)
+            return open_incident(engine.ledger, args.release, args.owner, args.note, args.interval_seconds, args.limit,
+                                 args.observation_sequence, args.observation_digest)
+        if args.incident_action == 'handoff-preview':
+            return handoff_preview(engine.ledger, args.incident)
+        if args.incident_action == 'handoff':
+            return handoff(engine.ledger, args.incident, args.version, args.route_digest, args.note)
         return transition(engine.ledger, args.incident, args.incident_action, args.version, args.note)
     if args.command == "notify":
         from .delivery.notify import flush, status

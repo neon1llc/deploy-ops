@@ -194,3 +194,16 @@ backup format1 admits this known journal while excluding credential homes; older
 refuse that added extent. Deployment inspection format2 explicitly refuses the new operation scope;
 legacy summaries retain their meaning. No database migration, automatic namespace/resource adoption,
 cluster creation, kubeconfig edit, permission or host trust change is introduced. See [Kubernetes](kubernetes.md).
+
+## Later observations and responder handoff in v0.29.0
+
+Saved observations gain a returned sequence/digest reference without changing their stored detail or
+original delivery outcome. New observation-origin incidents initially hold native pages. Explicit
+handoff binds the active route and incident version, then queues a distinct event. Existing incidents
+retain their opening behavior. There is still one incident per release, with no replacement or replay
+of resolved episodes. Old quiet decisions never become automatic catch-up work.
+
+Use one matching runtime version for all writers and stop older paging workers before upgrading.
+There is no cross-version writer lock. Older workers do not enforce the new handoff/fallback admission
+rules. Existing outbox rows are not rewritten or backfilled, and existing in-flight remote outcomes
+still require inspection. Back up state first and retain the matching package for read-only recovery.
