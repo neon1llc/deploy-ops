@@ -2,7 +2,7 @@
 
 ## Private Cloud Run traffic qualification, 2026-11-05
 
-The installed v0.39.0 package completed one bounded, nonproduction Cloud Run journey using an
+The installed local build completed one bounded, nonproduction Cloud Run journey using an
 existing identity and API. A separately provisioned official sample service used internal ingress,
 IAM protection, zero minimum instances and two small revisions at most. The CLI prepared an exact
 change; actual browser approval left it waiting until a separate CLI resume. Both native operations
@@ -105,7 +105,7 @@ approval. Current fixtures preserve all normalized review text over bounded plai
 or audit state. Wrong identity/digests/pages and changed review content refuse. Final-page approval
 uses the existing controller and leaves execution unclaimed. Existing incompatible evidence has no
 new approval shortcut. A later supported isolated-IaC planning request exposed a missing public packet
-in the first renderer. The v0.30.1 correction renders all existing public manifest bindings, including
+in the first renderer. The correction renders all existing public manifest bindings, including
 the generated module and lock/tool/provider digests. Registered Terraform/OpenTofu planning cases
 verify complete packet text without broker/runner use or private registration references. These are local protocol checks, not a live Slack workspace, mobile/desktop Slack
 rendering or human-review qualification. No Slack message was sent.
@@ -120,7 +120,7 @@ Changed routes, stale versions and different observation sources refused without
 A reproduced late-fallback race now rechecks local eligibility before starting a new native page.
 These checks do not establish actual remote acceptance, responder identity, acknowledgement or recovery.
 
-The bounded installed v0.28.0 desktop review exercised recorded backend/output details, selected-file
+The bounded installed-build desktop review exercised recorded backend/output details, selected-file
 search, public-key fingerprint and safe missing-report refusal with keyboard navigation. It found unclear
 release labels and lost search focus. Current source adds component names with a legacy fallback and
 restores search focus only when its own control was displaced. An installed local browser journey also exercised observation-origin incident opening, held native
@@ -200,7 +200,7 @@ controls, keyboard/layout/AT and human acceptance remain unqualified after the e
 
 ## Separate local blue-green operations, 2026-11-05
 
-The v0.24.0 source domain/API journey staged an independent static app without a foundation, measured
+The source domain/API journey staged an independent static app without a foundation, measured
 candidate HTTP, held a separate switch approval, explicitly changed the active-target URL, measured
 the actual new route and retained the old fixed revision. A fresh manual retirement request removed
 only reviewed unchanged old files. Modified and unknown data stayed. An unclaimed request could be
@@ -225,7 +225,7 @@ separate rollout snapshot remains inspection-only and has no offline HTML render
 
 ## Active-target local serving, 2026-11-05
 
-The v0.23.0 domain/API journey used real loopback HTTP for a fixed revision and active-target listener.
+The domain/API journey used real loopback HTTP for a fixed revision and active-target listener.
 Preparation and approval-and-hold preserved the original bytes; separate execution activated new bytes
 on the same target URL while the fixed URL retained the original. Repeated starts from a later release
 returned the same owned target session. Foreign, malformed, missing and externally reverted pointers,
@@ -240,7 +240,7 @@ readiness, separate switch authority, post-check or explicit previous-capacity r
 
 ## Retained static artifact observations, 2026-11-05
 
-The v0.22.0 collector's domain/API checks cover a real artifact waiting for approval, exact byte and
+The collector's domain/API checks cover a real artifact waiting for approval, exact byte and
 prepared identity, invalid current configuration, restored frozen bytes without execution admission,
 unavailable tools, no supported packages, explicit advisory DB consent, changed subjects before/during
 measurement, preserved existing paths and changed/unsupported offline reports. The client contract
@@ -267,7 +267,7 @@ not OCI verification, trusted-signature enforcement or a release-policy gate.
 
 ## Cloud Run native boundary, 2026-11-05
 
-The v0.21.0 candidate's v2 API fixtures exercise separate conditional candidate/traffic writes,
+The Cloud Run candidate's v2 API fixtures exercise separate conditional candidate/traffic writes,
 lost acknowledgements at both boundaries, exact actual image/readiness, etag conflict, external
 route/configuration/UID changes, no-op and read-only inspection. Existing receipt and isolated-owner
 journeys use that same adapter with native responses replaced by fixtures. Inspection format 2 adds
@@ -295,7 +295,7 @@ traffic/no-op and mounted review/readback path. HTTP and the broader cloud journ
 
 ## Private backup candidate and desktop browser, 2026-11-05
 
-The v0.20.0 candidate's existing Edge connection exercised interrupted Save inspection, Escape
+The candidate build's existing Edge connection exercised interrupted Save inspection, Escape
 cancellation with focus return, current-file reconciliation while retaining an unsaved TOML comment,
 and a separate warned reload that cleared the token. A coherent backup captured 20 files and 39 audit
 events. Cancelled restore left its target absent; confirmed relocated restore verified the same audit
@@ -607,14 +607,14 @@ node --check src/deploy_ops/ui/app.js
 
 Use a new demo directory each time. The command refuses to overwrite an existing workspace.
 
-## v0.15.0 local target and configuration increment
+## Local target and configuration increment
 
 On 2026-11-05, the local source suite passed 711 tests. Target regressions cover directory/static aliases,
 symlink changes after approval, repeated same-owner updates, ordinary foundation/application composition,
 two actual reservation processes and nested independent state roots. Pure local configuration validation
 rejects the same malformed fields, paths, references and empty executables through the schema, CLI and API
 without running commands. Native equal pin/reset preserves sibling settings and authored comments.
-A real pending request created by the installed v0.14.0 runtime was refused before claim by v0.15.0; its
+A real pending request created by the installed v0.14.0 runtime was refused before claim by the new runtime; its
 approval remained approved and no local target was created.
 
 Real Edge exercised retained local name and ordered build conflicts, untouched check refresh, refusal
