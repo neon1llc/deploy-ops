@@ -365,6 +365,23 @@ function control(key) {
   await control("serving-stop-web").onclick();
   assert.equal(calls.length, 1); assert.equal(calls[0].path, "/serving/stop");
   assert.equal(calls[0].body.id, "owned-session");
+  // The distinct target control shares the same endpoint and never deploys or changes a pointer
+  context.fixture.release.nodes.web.physical_target = {owner: ["hello", "development", "web"]};
+  context.fixture.serving_sessions = [];
+  await vm.runInContext('show("release-fixture")', context);
+  calls.length = 0;
+  await control("serving-start-target-web").onclick();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), {path: "/serving/start", method: "POST", body: {release: "release-fixture", component: "web", mode: "target"}});
+  assert.equal(calls.length, 1);
+  context.fixture.serving_sessions = [{id: "target-session", component: "web", mode: "target", url: "http://127.0.0.1:18001", status: "evidence-unavailable"}];
+  await vm.runInContext('show("release-fixture")', context);
+  calls.length = 0;
+  await control("serving-stop-target-web").onclick();
+  assert.equal(calls[0].body.id, "target-session");
+  context.fixture.release.preview = {owner: "review"};
+  await vm.runInContext('show("release-fixture")', context);
+  assert(!nodes.get("detail").querySelectorAll("[data-key]").some(node => node.dataset.key === "serving-start-target-web"));
+  delete context.fixture.release.preview;
   // A delayed earlier response for the same release cannot overwrite a newer observation
   const pending = [];
   context.delayed = () => new Promise(resolve => pending.push(resolve));

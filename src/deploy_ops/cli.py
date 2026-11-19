@@ -164,6 +164,7 @@ def parser():
     preview.add_argument("--component", required=True)
     preview.add_argument("--port", type=int, default=8000)
     preview.add_argument('--retained', action='store_true', help='Read a retained original-path artifact without loading workspace or execution authority')
+    preview.add_argument('--active-target', action='store_true', help='Follow successful approved activations of this owned local target on one URL; default stays on the selected revision')
 
     # Incident decisions remain independent of transport delivery and release status
     incidents = commands.add_parser("incidents", help="Track local incidents separately from deployment outcomes")
@@ -252,7 +253,7 @@ def advance(engine, release, wait_seconds):
 
 
 # Serve through the same owned listener for normal and explicitly retained read-only artifact inspection
-def serve_preview(owner, release, component, port):
+def serve_preview(owner, release, component, port, active_target=False):
     import signal
     from .delivery.serving import Sessions
     sessions = Sessions()
@@ -264,8 +265,8 @@ def serve_preview(owner, release, component, port):
 
     signal.signal(signal.SIGTERM, terminate)
     try:
-        session = sessions.start(owner, release, component, port)
-        print(f"Static release: {session['url']} | Ctrl-C stops this session", flush=True)
+        session = sessions.start(owner, release, component, port, 'target' if active_target else 'revision')
+        print(f"Static {session['mode']}: {session['url']} | Ctrl-C stops this session", flush=True)
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
@@ -304,7 +305,7 @@ def dispatch(args):
     if args.command == 'preview' and args.retained:
         from .delivery.retained import Retained
         state = (args.state or args.project.resolve().parent / '.deploy-ops').resolve()
-        return serve_preview(Retained(state), args.release, args.component, args.port)
+        return serve_preview(Retained(state), args.release, args.component, args.port, args.active_target)
     if args.command == "isolated":
         from .isolated import dispatch as isolated
         return isolated(args)
@@ -474,7 +475,7 @@ def dispatch(args):
             return execute_cleanup(engine, args.release)
         return reconcile_cleanup(engine, args.release, args.note, args.confirm_removed)
     if args.command == "preview":
-        return serve_preview(engine, args.release, args.component, args.port)
+        return serve_preview(engine, args.release, args.component, args.port, args.active_target)
 
     # Notification delivery cannot acknowledge or resolve an incident
     if args.command == "incidents":

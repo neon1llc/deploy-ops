@@ -202,9 +202,9 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         if not isinstance(body, dict):
             raise Refused("Invalid serving fields", 422)
         if action == "start":
-            if set(body) - {"release", "component", "port"} or not all(isinstance(body.get(key), str) for key in ("release", "component")):
+            if set(body) - {"release", "component", "port", "mode"} or not all(isinstance(body.get(key), str) for key in ("release", "component")):
                 raise Refused("Choose a release, component and optional port", 422)
-            return serving.start(engine, body["release"], body["component"], body.get("port", 0))
+            return serving.start(engine, body["release"], body["component"], body.get("port", 0), body.get('mode', 'revision'))
         if (action == "stop" and set(body) == {"id"} and isinstance(body["id"], str)
                 and len(body["id"]) == 32 and all(char in "0123456789abcdef" for char in body["id"])):
             return serving.stop(body["id"])
@@ -530,7 +530,9 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
                                           "reason": request.get("reason"), "timing": request.get("timing")}
             except Exception:
                 request_statuses[name] = {"status": "unavailable", "digest": None}
-        return {"serving_sessions": [item for item in serving.list() if item["release"] == release_id],
+        sessions = serving.list()
+        return {"serving_sessions": [item for item in sessions if item["release"] == release_id
+                                      or (item['mode'] == 'target' and item.get('active_release') == release_id)],
                 "release": release, "events": engine.ledger.events(release_id),
                 "request_statuses": request_statuses,
                 "recovery": engine.recovery_status(release),

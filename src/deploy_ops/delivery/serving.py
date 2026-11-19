@@ -2,6 +2,7 @@
 
 
 import hashlib
+import json
 import mimetypes
 import re
 import threading
@@ -13,7 +14,7 @@ from urllib.parse import unquote, urlsplit
 
 from ..config import fingerprint
 from ..errors import Refused
-from .observation import checked_path, read_regular, reviewed
+from .observation import activation, checked_path, read_regular, reviewed
 from .previews import _scan, active, namespace
 
 
@@ -49,11 +50,49 @@ class Sessions:
             raise Refused('Selected revision evidence is unavailable') from error
 
 
+    # Follow only this logical owner's reviewed physical target and successful activation
+    @classmethod
+    def target(cls, engine, release_id, component):
+        release, site, digest = cls.selection(engine, release_id, component)
+        envelope = reviewed(engine, release, component)
+        pointer = site.parent.parent / 'current.json'
+        binding = {'path': str(pointer), 'owner': [release['project'], release['environment'], component]}
+        if (release.get('preview') or envelope.get('adapter_contract_version', 1) < 2
+                or envelope.get('physical_target') != binding
+                or release['nodes'][component].get('physical_target') != binding
+                or release['nodes'][component]['outputs'].get('pointer') != str(pointer)):
+            raise Refused('Active-target serving requires a reviewed regular local target; use a fixed revision for previews or legacy evidence', 422)
+        return binding, site, digest
+
+
+    # Pointer bytes alone cannot admit a failed, foreign or externally reverted revision
+    @classmethod
+    def routed(cls, engine, anchor, component):
+        try:
+            binding, _, _ = cls.target(engine, anchor, component)
+            pointer = checked_path(engine.state, binding['path'])
+            current = json.loads(read_regular(pointer, 65536))
+            if (not isinstance(current, dict) or set(current) != {'release', 'path', 'digest'}
+                    or not isinstance(current['release'], str) or not re.fullmatch(r'[0-9a-f]{32}', current['release'])):
+                raise Refused('Active target has no exact revision pointer')
+            selected, site, digest = cls.target(engine, current['release'], component)
+            if (selected != binding or current != {'release': current['release'], 'path': str(site), 'digest': digest}
+                    or activation(engine, pointer) != current):
+                raise Refused('Active target differs from its successful owned activation')
+            return current['release'], site, digest
+        except (OSError, KeyError, TypeError, AttributeError, ValueError) as error:
+            raise Refused('Active target evidence is unavailable') from error
+
+
     # Read current lifetime separately from whether the listener still exists
     @staticmethod
     def status(handle):
         state = 'serving'
+        observed = {}
         try:
+            if handle['mode'] == 'target':
+                current, _, digest = Sessions.routed(handle['engine'], handle['release'], handle['component'])
+                observed = {'active_release': current, 'active_digest': digest}
             release = handle['engine'].ledger.get(handle['release'])
             if release.get('preview'):
                 namespace(handle['engine'], release)
@@ -63,10 +102,12 @@ class Sessions:
                     state = 'expired'
         except (Refused, OSError, KeyError, TypeError, AttributeError, ValueError):
             state = 'evidence-unavailable'
-        return {key: handle[key] for key in ('id', 'release', 'component', 'url', 'digest')} | {'status': state}
+        return {key: handle[key] for key in ('id', 'release', 'component', 'url', 'digest', 'mode')} | {'status': state} | observed
 
     # Repeated starts read back the same listener; failures leave no phantom handle
-    def start(self, engine, release, component, port=0):
+    def start(self, engine, release, component, port=0, mode='revision'):
+        if mode not in ('revision', 'target'):
+            raise Refused('Choose revision or target serving mode', 422)
         if (not isinstance(release, str) or not re.fullmatch(r'[0-9a-f]{32}', release)
                 or not isinstance(component, str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,47}', component)):
             raise Refused('Choose a release ID and registered component name', 422)
@@ -75,18 +116,21 @@ class Sessions:
         with self.lock:
             if self.closed:
                 raise Refused('This serving owner has shut down', 409)
+            binding = self.target(engine, release, component)[0] if mode == 'target' else None
             for handle in self.handles.values():
-                if (handle['release'], handle['component']) == (release, component):
+                if (handle['mode'] == mode and ((mode == 'target' and handle['binding'] == binding)
+                        or (mode == 'revision' and (handle['release'], handle['component']) == (release, component)))):
                     return self.status(handle)
             if len(self.handles) >= 8:
                 raise Refused('Stop an owned serving session before starting another', 409)
             try:
-                _, site, digest = self.selection(engine, release, component)
+                _, site, digest = (self.routed(engine, release, component) if mode == 'target'
+                                   else self.selection(engine, release, component))
                 inventory = _scan(site)['files']
                 actual = fingerprint(sorted([[name, value] for name, value in inventory.items()], key=lambda entry: Path(entry[0]).parts))
                 if actual != digest:
                     raise Refused('Deployed artifact changed after review')
-                handler = self.handler(engine, release, component, site, inventory)
+                handler = self.handler(engine, release, component, site, inventory, mode)
                 server = ThreadingHTTPServer(('127.0.0.1', port), handler)
                 if server.server_port == self.console_port:
                     server.server_close()
@@ -98,6 +142,7 @@ class Sessions:
             thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': .1}, daemon=True)
             handle = {'id': uuid.uuid4().hex, 'release': release, 'component': component,
                       'url': f'http://127.0.0.1:{server.server_port}', 'digest': digest,
+                      'mode': mode, 'binding': binding,
                       'engine': engine, 'server': server, 'thread': thread}
             thread.start()
             self.handles[handle['id']] = handle
@@ -105,7 +150,28 @@ class Sessions:
 
     # Limit content to the reviewed file inventory with fresh ownership and safe reads
     @classmethod
-    def handler(cls, engine, release, component, site, inventory):
+    def handler(cls, engine, release, component, site, inventory, mode='revision'):
+        inventories = {str(site): inventory}
+        inventory_lock = threading.Lock()
+
+        # Keep at most two digest-only inventories; every requested file is still read and hashed
+        def selection():
+            if mode == 'revision':
+                cls.selection(engine, release, component)
+                return site, inventory
+            _, selected, digest = cls.routed(engine, release, component)
+            with inventory_lock:
+                key = str(selected)
+                if key not in inventories:
+                    files = _scan(selected)['files']
+                    actual = fingerprint(sorted([[name, value] for name, value in files.items()], key=lambda entry: Path(entry[0]).parts))
+                    if actual != digest:
+                        raise Refused('Active artifact changed after review')
+                    if len(inventories) >= 2:
+                        inventories.pop(next(iter(inventories)))
+                    inventories[key] = files
+                return selected, inventories[key]
+
         # Capture only this selected revision and its immutable file allowlist
         class Handler(BaseHTTPRequestHandler):
             # Bound slow header/body handling on this read-only content listener
@@ -122,7 +188,7 @@ class Sessions:
                 if self.headers.get('Host') != f'127.0.0.1:{self.server.server_port}':
                     self.send_error(403, 'Use the loopback content address'); return
                 try:
-                    cls.selection(engine, release, component)
+                    selected_site, selected_inventory = selection()
                 except (Refused, OSError, KeyError, ValueError):
                     self.send_error(410, 'Revision evidence unavailable, expired or retired'); return
                 try:
@@ -137,10 +203,10 @@ class Sessions:
                         name += 'index.html'
                     if any(part in {'prepared.json', 'operator.token', '.ownership.json', '.git', '.deploy-ops', '.deploy_ops'} for part in Path(name).parts):
                         self.send_error(404); return
-                    if name not in inventory:
+                    if name not in selected_inventory:
                         self.send_error(404); return
-                    data = read_regular(checked_path(site, site / name), 100_000_000)
-                    if hashlib.sha256(data).hexdigest() != inventory[name]:
+                    data = read_regular(checked_path(selected_site, selected_site / name), 100_000_000)
+                    if hashlib.sha256(data).hexdigest() != selected_inventory[name]:
                         self.send_error(410, 'Selected file changed'); return
                 except (Refused, OSError, ValueError):
                     self.send_error(410, 'Selected file unavailable'); return
