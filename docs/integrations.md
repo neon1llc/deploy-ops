@@ -42,7 +42,9 @@ Guarded `plan` and `execute` require the registered commit and unchanged tracked
 refuse untracked or ignored root `.tf`/`.tf.json` files, automatic variable files
 (`terraform.tfvars`, `terraform.tfvars.json`, `*.auto.tfvars`, `*.auto.tfvars.json`) and the provider
 lock file. OpenTofu additionally checks `.tofu`/`.tofu.json`, which can override the matching Terraform
-file. This check inspects filenames and Git membership, never variable values. Root native input
+file. Native configuration dotfiles/editor backups are ignored, and OpenTofu selects a matching
+`.tofu` alternative over `.tf`. Automatic variable files use their own naming rules: a hidden
+`.private.auto.tfvars` is still guarded, as is `.terraform.lock.hcl`. This check inspects filenames and Git membership, never variable values. Root native input
 symlinks and nonregular files refuse. It happens before credentials or native initialization.
 
 The refusal changes no files. Review public configuration through the normal commit workflow or use

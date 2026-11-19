@@ -1,5 +1,13 @@
 # Verification
 
+## Native configuration filename correction, 2026-11-05
+
+Independent installed review showed the original guard refused `.scratch.tf` although native
+Terraform accepted the same invalid scratch text as ignored. Root configuration selection now skips
+native hidden/editor names and respects OpenTofu extension precedence, while automatic variables
+and the hidden provider lock remain separate. Focused real-Git acceptance/refusal cases cover both
+boundaries; OpenTofu behavior is source/fixture coverage, not an installed native-tool qualification.
+
 ## Automatic root IaC inputs, 2026-11-05
 
 A provider-free native Terraform plan reproduced an ignored automatic variable file overriding the
