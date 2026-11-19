@@ -203,6 +203,20 @@ def reviewed(context, prepared):
     return native
 
 
+# Project only the frozen public request, never the service template or credential environment
+def review(context, prepared):
+    native = reviewed(context, prepared)
+    return {'service': native['scope']['service'], 'service_uid': native['baseline']['uid'],
+            'image': native['image'], 'baseline_revision': native['baseline']['route'],
+            'candidate_revision': native['candidate'], 'traffic_percent': 100,
+            'action': 'no-op' if native['no_op'] else 'update',
+            'native_request_digest': prepared['request_digest'],
+            'steps': ['Verify the exact serving image and route without a provider write'] if native['no_op'] else [
+                'Create the exact candidate while the baseline retains all traffic',
+                'Recheck candidate readiness, image and preserved configuration',
+                'Conditionally switch all traffic to the candidate and verify the observed route']}
+
+
 # Reuse the existing durable journal writer without creating a competing persistence owner
 def record(context, value):
     from .cloud import durable_record

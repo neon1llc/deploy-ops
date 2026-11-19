@@ -670,6 +670,9 @@ class Engine:
         node.update(status="prepared", request_id=request["id"], request_digest=request["digest"],
                     artifact_digest=proposal.artifact_digest, preview=prepared["preview"],
                     warnings=prepared.get("warnings", []))
+        if component.adapter == 'cloud-run':
+            from .adapters import cloud_run
+            node['cloud_run_review'] = cloud_run.review(context, prepared)
         if component.adapter == 'kubernetes':
             node['kubernetes_binding'] = {'connection': prepared['kubernetes_request']['connection'],
                                           'uid': prepared['kubernetes_request']['baseline']['uid']}

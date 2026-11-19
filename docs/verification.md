@@ -1,5 +1,23 @@
 # Verification
 
+## Private Cloud Run traffic qualification, 2026-11-05
+
+The installed v0.39.0 package completed one bounded, nonproduction Cloud Run journey using an
+existing identity and API. A separately provisioned official sample service used internal ingress,
+IAM protection, zero minimum instances and two small revisions at most. The CLI prepared an exact
+change; actual browser approval left it waiting until a separate CLI resume. Both native operations
+completed, the immutable candidate image matched and desired/observed traffic converged to it.
+Browser and CLI provider inspection observed the result without replaying deployment. A fresh exact
+approval and separate execution then verified a same-image no-op with no native write. Readback
+counted exactly two revisions. Owned deletion completed; the service returned 404 and no revisions
+remained. The local console and grant closed within the recorded lifetime.
+
+This qualifies that narrow candidate/traffic/readback/no-op path. It does not qualify application
+HTTP, external ingress, build/push, infrastructure-to-application execution, other runtime shapes,
+general cloud readiness or human acceptance. Actual billed cost was not measured. Earlier failed
+attempts and their cleanup remain separate evidence. The browser exposed a preparation-review gap:
+the prior UI showed a normalized update and digests without the target, image or planned route steps.
+
 ## Private-cache primary-state correction, 2026-11-05
 
 Independent native-owner scheduling on the first cache candidate completed a waiting release before
@@ -271,9 +289,9 @@ deletion; a separate native read confirmed deletion and zero revisions. Failed/u
 controller records, operation IDs and the actual version 2 offline inspection remain retained.
 No missing completion or success was fabricated. Actual billed cost was not measured.
 
-Traffic switching, same-image no-op, end-to-end native workload HTTP and the new mounted Cloud Run
-console control remain unqualified. Source/native evidence preceded final package binding. Fixture
-success and candidate acceptance do not qualify the full cloud journey, which remains open.
+At this earlier checkpoint, traffic switching, same-image no-op, native workload HTTP and the mounted
+console control were unqualified. The later private qualification above covers the narrow native
+traffic/no-op and mounted review/readback path. HTTP and the broader cloud journey remain open.
 
 ## Private backup candidate and desktop browser, 2026-11-05
 

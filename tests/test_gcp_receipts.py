@@ -165,6 +165,20 @@ def test_two_native_engines_feed_app_only_cloud_run_without_reapplying(setup, mo
         release = engine.advance(engine.create("development", "web", False, image=IMAGE,
                                  receipts={"foundation": receipt["id"]})["id"])
         assert release["status"] == "waiting", release.get("reason")
+        review = release['nodes']['web']['cloud_run_review']
+        assert review['service'] == 'projects/fixture-project/locations/us-central1/services/web'
+        assert review['image'] == IMAGE and review['service_uid'] == 'service-physical-uid'
+        assert review['action'] == ('update' if run == 'app-run' else 'no-op')
+        assert len(review['steps']) == (3 if run == 'app-run' else 1)
+        assert 'PRIVATE-TEMPLATE-SENTINEL' not in json.dumps(release)
+        assert engine.ledger.get(release['id'])['nodes']['web']['cloud_run_review'] == review
+        # The authenticated console returns the same retained projection without a native read.
+        from deploy_ops.console import create_app as console_app
+        calls = len(native.calls)
+        with TestClient(console_app(engine, 'x' * 43), base_url='http://127.0.0.1:8765') as console:
+            detail = console.get('/api/releases/' + release['id'], headers={'Authorization': 'Bearer ' + 'x' * 43})
+            assert detail.status_code == 200 and detail.json()['release']['nodes']['web']['cloud_run_review'] == review
+        assert len(native.calls) == calls
         engine.approve(release["id"], "web", release["nodes"]["web"]["request_digest"])
         result = engine.advance(release["id"])
         assert result["status"] == "succeeded", result.get("reason")
