@@ -71,6 +71,32 @@ class ArmOptions(PublicOptions):
 MODELS = {"cloudformation": CloudFormationOptions, "cdk": CdkOptions, "arm": ArmOptions, "bicep": ArmOptions}
 
 
+# Share literal target grammar with the native adapter while allowing whole authored references
+CLOUD_RUN_PROJECT = r"[a-z][a-z0-9-]{4,61}[a-z0-9]|[0-9]{6,20}"
+CLOUD_RUN_REGION = r"[a-z]+-[a-z]+[0-9]"
+CLOUD_RUN_SERVICE = r"[a-z][a-z0-9-]{0,47}[a-z0-9]|[a-z]"
+IMMUTABLE_IMAGE = r"[^\s]+@sha256:[0-9a-f]{64}"
+PUBLIC_REFERENCE = r"\$\{(?:env\.[^{}]+|outputs\.[^{}.]+\.[^{}.]+)\}"
+
+
+# Describe existing application inputs without admitting infrastructure creation or credential fields
+class CloudRunOptions(PublicOptions):
+    project_id: str = Field(pattern=rf"^(?:{CLOUD_RUN_PROJECT}|{PUBLIC_REFERENCE})$", title="GCP project",
+        description="Existing project ID/number or a whole environment/dependency output reference")
+    region: str = Field(pattern=rf"^(?:{CLOUD_RUN_REGION}|{PUBLIC_REFERENCE})$", title="Cloud Run region")
+    name: str = Field(pattern=rf"^(?:{CLOUD_RUN_SERVICE}|{PUBLIC_REFERENCE})$", title="Cloud Run service",
+        description="Existing service name; native preparation also checks revision suffix space")
+    image: str = Field(default="", pattern=rf"^(?:|{IMMUTABLE_IMAGE}|{PUBLIC_REFERENCE})$", title="Immutable image",
+        description="Image@sha256 digest or whole reference. Omit when selecting an image at release preparation; Image repository constrains that selection.")
+    image_repository: str = Field(default="", title="Image repository",
+        description="Public registry repository or whole dependency output reference used to constrain a separately supplied release image")
+
+
+# Form ownership includes application settings without changing infrastructure validation or old workspace contracts
+APPLICATION_MODELS = {"cloud-run": CloudRunOptions}
+FORM_MODELS = {**MODELS, **APPLICATION_MODELS}
+
+
 # Describe guided local inputs separately from native cloud provider assumptions
 class DirectoryOptions(PublicOptions):
     name: str = Field(pattern=r"^(?:[a-z][a-z0-9-]{0,47}|\$\{(?:env\.[^{}]+|outputs\.[^{}.]+\.[^{}.]+)\})$", title="Resource name")
@@ -122,9 +148,11 @@ LOCAL_MODELS = {"directory": DirectoryOptions, "static": StaticOptions, "compose
 
 # Supply defaults to forms while keeping omitted values out of saved TOML
 def form(adapter: str, values: dict) -> dict:
-    model = MODELS.get(adapter)
+    model = FORM_MODELS.get(adapter)
     if model is None:
         return {}
     schema = model.model_json_schema()
+    # Preserve unexposed historical application options in TOML rather than copying them into public forms
+    selected = {key: value for key, value in values.items() if key in model.model_fields} if adapter in APPLICATION_MODELS else values
     return {"fields": schema["properties"], "required": schema.get("required", []),
-            "values": model.model_validate(values).model_dump()}
+            "values": model.model_validate(selected).model_dump()}

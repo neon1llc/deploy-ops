@@ -670,3 +670,80 @@ def test_retained_local_field_conflicts():
         pytest.skip('Node is required for the local field UI contract')
     root = Path(__file__).resolve().parents[1]
     subprocess.run([node, str(root / 'tests' / 'local_settings_ui.cjs')], cwd=root, check=True, timeout=15)
+
+
+# Existing application settings gain forms without changing runtime-image selection or unknown authored options
+@pytest.fixture
+def cloud_run_source():
+    return '''# Keep the operator header
+name = "guided-cloud"
+[repositories.app]
+path = "application"
+allow_uncommitted = true
+[environments.development]
+provider = "gcp"
+[environments.staging]
+provider = "gcp"
+[components.web]
+repository = "app"
+kind = "application"
+adapter = "cloud-run"
+[components.web.options]
+project_id = "fixture-project"
+region = "us-central1"
+name = "web"
+# An image can come from the separately supplied release input
+image_repository = "${outputs.foundation.image_repository}"
+future_option = { keep = "authored-advanced" }
+[components.web.targets.staging]
+# Preserve the sibling pin
+name = "web-staging"
+'''
+
+
+# Equal environment pins remain intentional when the component default changes; reset is one-field inheritance
+def test_cloud_run_forms_preserve_optional_image_advanced_fields_and_equal_pins(cloud_run_source):
+    selected = inspect(cloud_run_source)['option_forms']['web/staging']
+    assert selected['required'] == ['project_id', 'region', 'name']
+    assert selected['values']['image'] == '' and 'future_option' not in selected['fields']
+    pinned = edit(cloud_run_source, 'web/staging', 'environment', {'region': 'us-central1'})
+    assert pinned['option_forms']['web/staging']['inheritance']['region']['override_authored']
+    changed = pinned['toml'].replace('region = "us-central1"', 'region = "us-east1"', 1)
+    assert inspect(changed)['option_forms']['web/staging']['values']['region'] == 'us-central1'
+    reset = edit(changed, 'web/staging', 'environment', {}, field='region')
+    assert reset['option_forms']['web/staging']['values']['region'] == 'us-east1'
+    assert reset['configuration']['components']['web']['targets']['staging']['name'] == 'web-staging'
+    options = reset['configuration']['components']['web']['options']
+    assert 'image' not in options and options['future_option'] == {'keep': 'authored-advanced'}
+    assert '# Keep the operator header' in reset['toml'] and '# Preserve the sibling pin' in reset['toml']
+    referenced = edit(reset['toml'], 'web/staging', 'environment', {'image': '${env.IMAGE}'})
+    assert referenced['option_forms']['web/staging']['values']['image'] == '${env.IMAGE}'
+
+
+# Draft edits use one native grammar and never contact the selected provider or save implicitly
+def test_cloud_run_draft_edit_cli_api_parity_without_provider(workspace, cloud_run_source, monkeypatch):
+    from deploy_ops.delivery.process import Process
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Provider command during configuration editing')
+    monkeypatch.setattr(Process, 'run', forbidden)
+    workspace.write_text(cloud_run_source)
+    values = {'name': 'web-preview', 'image': 'registry.example/app@sha256:' + 'a' * 64}
+    cli = dispatch(parser().parse_args(['--project', str(workspace), 'config', 'edit',
+        '--name', 'web/staging', '--scope', 'environment', '--values', json.dumps(values)]))
+    with TestClient(create_app(Engine(workspace), 't' * 40), base_url='http://127.0.0.1:8765') as client:
+        response = client.post('/api/config/edit', json={'configuration': cloud_run_source,
+            'name': 'web/staging', 'scope': 'environment', 'values': values},
+            headers={'Authorization': 'Bearer ' + 't' * 40})
+    assert response.status_code == 200 and response.json()['toml'] == cli['toml']
+    assert response.json()['option_forms'] == cli['option_forms']
+    assert workspace.read_text() == cloud_run_source
+
+
+# Literal target and artifact mistakes cannot be pinned; whole runtime references remain authored intent
+@pytest.mark.parametrize('values', [{'project_id': 'UPPER-PROJECT'}, {'region': 'https://foreign.invalid'},
+    {'name': 'service/foreign'}, {'image': 'registry.example/app:mutable'}, {'image': True}])
+def test_cloud_run_form_refuses_invalid_native_literals(cloud_run_source, values):
+    with pytest.raises(Refused) as error:
+        edit(cloud_run_source, 'web/staging', 'environment', values)
+    assert error.value.status == 422
+    assert all(value not in str(error.value) for value in values.values() if isinstance(value, str))

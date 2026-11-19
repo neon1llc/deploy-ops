@@ -11,6 +11,7 @@ import httpx
 from ...config import fingerprint
 from ...errors import Refused
 from ..files import read_regular
+from ..options import CLOUD_RUN_PROJECT, CLOUD_RUN_REGION, CLOUD_RUN_SERVICE, IMMUTABLE_IMAGE
 from .base import need
 
 
@@ -24,9 +25,9 @@ JOURNAL = 'cloud-run-operation.json'
 # Bind every native call and retained record to an explicit project, region, service and local attempt
 def scope(context):
     project, region, name = (need(context.options, key) for key in ('project_id', 'region', 'name'))
-    if (not re.fullmatch(r'[a-z][a-z0-9-]{4,61}[a-z0-9]|[0-9]{6,20}', project)
-            or not re.fullmatch(r'[a-z]+-[a-z]+[0-9]', region)
-            or not re.fullmatch(r'[a-z][a-z0-9-]{0,47}[a-z0-9]|[a-z]', name)):
+    if (not re.fullmatch(CLOUD_RUN_PROJECT, project)
+            or not re.fullmatch(CLOUD_RUN_REGION, region)
+            or not re.fullmatch(CLOUD_RUN_SERVICE, name)):
         raise Refused('Cloud Run needs an explicit supported project, region and service name', 422)
     return {'project_id': project, 'region': region, 'name': name,
             'service': f'projects/{project}/locations/{region}/services/{name}',
@@ -156,7 +157,7 @@ def revision_state(context, name, value):
     if not isinstance(containers, list) or len(containers) != 1:
         raise Refused('Cloud Run revision container identity is unavailable', 409)
     image = containers[0].get('image')
-    if not isinstance(image, str) or not re.fullmatch(r'[^\s]+@sha256:[0-9a-f]{64}', image):
+    if not isinstance(image, str) or not re.fullmatch(IMMUTABLE_IMAGE, image):
         raise Refused('Cloud Run did not expose an observed immutable revision image', 409)
     conditions = value.get('conditions', [])
     condition = next((item for item in conditions if item.get('type') == 'Ready'), {})

@@ -1224,6 +1224,13 @@ async function nativeOptionEdit(name, key, reset) {
     element("config-diff").textContent = result.diff || "No changes.";
     element("config-status").textContent = "Environment override updated in the draft. Review the diff before saving; nothing executed.";
     document.dispatchEvent(new CustomEvent("deployops:configuration", {detail: formContract}));
+  } catch (error) {
+    // Disabled native controls can blur to the body; return a refused edit to its field without taking another control's focus
+    if (element("config-section").value === "options" && element("config-name").value === name &&
+        element("config").value === source && formSource === source && document.activeElement === document.body) {
+      focusTarget = element("option-" + key);
+    }
+    throw error;
   } finally {
     element("config-controls").disabled = false; element("load-forms").disabled = false;
     focusTarget?.focus();
@@ -1235,7 +1242,7 @@ async function nativeOptionEdit(name, key, reset) {
 function fillOptionFields(name) {
   const root = element("config-fields"); root.replaceChildren();
   const contract = formContract.option_forms?.[name];
-  if (!contract) { text(root, "p", "No native infrastructure components in this workspace. Import a CloudFormation, CDK, ARM or Bicep example first."); return; }
+  if (!contract) { text(root, "p", "No native adapter settings are available in this workspace. Configure a CloudFormation, CDK, ARM, Bicep or Cloud Run component first."); return; }
   const current = formDrafts.get(formKey()) || structuredClone(contract.values);
   formDrafts.set(formKey(), current);
   text(root, "p", "Effective " + contract.adapter + " settings for " + contract.component + " in " + contract.environment + ". Changes become environment overrides. Public inputs only; credentials and live-test grants stay outside this workspace.");

@@ -16,6 +16,19 @@ application HTTP or establish broader provider readiness. See [verification](ver
 
 ## Review before approval
 
+Existing Cloud Run components also expose **Native adapter settings** in workspace controls. Choose
+the component/environment to edit its public project, region, service, immutable image or image
+repository. **Pin** writes only that environment override into the draft, including an intentional
+pin equal to the component value. **Use inherited** removes only the selected override. Review the
+diff, validate and explicitly Save. CLI `config inspect`, `config edit` and `config reset` and the
+authenticated configuration API use the same typed fields and preservation rules.
+
+Whole environment/dependency references remain unresolved until preparation. An image may remain
+omitted when the workflow supplies it with a configured image repository at release preparation.
+Inspection and unrelated edits do not author optional defaults or discard unexposed advanced options.
+These controls edit an existing component; guided Cloud Run creation, credential changes and live
+provider discovery are separate. Editing or saving does not execute a deployment.
+
 Fresh releases retain `cloud_run_review` in the same component record returned by CLI `run`/`status`
 and the authenticated release API. The console shows the frozen service and image before approval;
 expand **Reviewed Cloud Run target, revisions and traffic steps** for the service UID, baseline,
