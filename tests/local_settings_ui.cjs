@@ -14,6 +14,8 @@ class Node {
   append(...nodes) { this.children.push(...nodes); }
   // Replace a refreshed local panel
   replaceChildren(...nodes) { this.children = nodes; }
+  // Retain accessible help relationships on native controls
+  setAttribute(name, value) { this[name] = value; }
   // Build fields do not contain environment pin buttons
   querySelectorAll() { return []; }
   // Observe deliberate keyboard focus return
@@ -74,5 +76,24 @@ vm.runInContext(fs.readFileSync('src/deploy_ops/ui/local-settings.js', 'utf8'), 
   assert.equal(vm.runInContext('localBases.get(localKey()).command.source_hash', context), 'c'.repeat(64));
   assert.equal(element('config').value, 'applied source');
   assert.equal(document.activeElement, element('local-apply'));
+  // Reset a base option to its adapter default, even when a selected environment has a different pin.
+  // An unrelated dirty field must survive both the response and its configuration event.
+  const local = result.local_edit_forms.web;
+  local.fields = {activation: {title: 'Activation', default: 'direct', enum: ['direct', 'separate'], description: 'Activation mode'},
+    directory: {title: 'Artifact directory', default: '.'}};
+  local.required = []; local.base = {activation: 'separate', directory: 'dist'};
+  local.environments.development = {activation: {effective: 'separate', override_authored: true}, directory: {effective: 'dist'}};
+  element('local-scope').value = 'base'; vm.runInContext('localRender()', context);
+  assert.equal(element('local-field-activation').tagName, 'select');
+  assert.equal(element('local-field-activation')['aria-describedby'], 'local-field-activation-help');
+  element('local-field-directory').value = 'retained'; element('local-field-directory').oninput();
+  const resetResult = structuredClone(result); resetResult.toml = 'reset source'; resetResult.source_hash = 'd'.repeat(64);
+  delete resetResult.local_edit_forms.web.base.activation; context.result = resetResult;
+  await descendants(element('local-fields')).find(node => node.textContent === 'Use adapter default activation').onclick();
+  assert.equal(calls[1][0], '/config/reset');
+  assert.equal(calls[1][2].scope, 'base'); assert.equal(calls[1][2].field, 'activation');
+  assert.equal(element('local-field-activation').value, 'direct');
+  assert.equal(element('local-field-directory').value, 'retained');
+  assert.equal(document.activeElement.id, 'local-field-activation');
   console.log('Retained field conflict, exact base, ordered rebase and explicit resolution passed');
 })().catch(error => {console.error(error); process.exitCode = 1;});

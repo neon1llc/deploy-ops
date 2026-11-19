@@ -93,7 +93,8 @@ def local_forms(source: str, workspace: Workspace) -> dict:
             continue
         model = LOCAL_MODELS[component.adapter]
         base = authored["components"][name].get("options", {})
-        fields = model.model_json_schema()["properties"]
+        schema = model.model_json_schema()
+        fields = schema["properties"]
         environments = {}
         for environment in workspace.environments:
             effective = workspace.component(name, environment)
@@ -106,7 +107,7 @@ def local_forms(source: str, workspace: Workspace) -> dict:
                 "runtime_default": component.adapter == "static" and key == "destination" and key not in effective.options,
                 "source": "override" if key in override else "component" if key in base else "adapter default"}
                 for key, definition in fields.items()}
-        result[name] = {"fields": fields, "base": base, "environments": environments,
+        result[name] = {"fields": fields, "required": schema.get("required", []), "base": base, "environments": environments,
             "build": component.build.model_dump(),
             "build_authored": authored["components"][name].get("build", {}),
             "build_sources": {key: "component" if key in authored["components"][name].get("build", {}) else "adapter default"
@@ -126,8 +127,9 @@ def edit(source: str, name: str, scope: str, values: dict, environment: str = ""
     if (scope == "environment" and environment not in contract["environments"]) or (scope != "environment" and environment):
         raise Refused("Choose an applicable local environment only for environment scope", 422)
     allowed = {"checks", "command"} if scope == "build" else set(contract["fields"])
-    if not isinstance(values, dict) or set(values) - allowed or (field and (field not in allowed or values or scope != "environment")):
-        raise Refused("Choose supported fields; reset requires one environment field and no values", 422)
+    if not isinstance(values, dict) or set(values) - allowed or (field and (field not in allowed or values or
+            scope == "build" or (scope == "base" and field in contract["required"]))):
+        raise Refused("Choose supported fields; reset requires one optional component option or environment override and no values", 422)
     if not values and not field:
         raise Refused("Provide edited fields or one override to remove", 422)
     document = tomlkit.parse(source)
@@ -139,7 +141,9 @@ def edit(source: str, name: str, scope: str, values: dict, environment: str = ""
                 raise ValueError("Each command needs a nonempty executable; clear the whole list to disable it")
             target = component.setdefault("build", tomlkit.table())
         elif scope == "base":
-            target = component.setdefault("options", tomlkit.table())
+            target = component.get("options", {}) if field else component.setdefault("options", tomlkit.table())
+            if field and field in target:
+                del target[field]
         else:
             targets = component.get("targets", {})
             if field:
@@ -154,7 +158,7 @@ def edit(source: str, name: str, scope: str, values: dict, environment: str = ""
             if scope == "environment" or value != current:
                 target[key] = value
         group = "build" if scope == "build" else "options"
-        if scope in {"build", "base"} and not target and group not in tomllib.loads(source)["components"][name]:
+        if scope in {"build", "base"} and not field and not target and group not in tomllib.loads(source)["components"][name]:
             del component[group]
         revised = tomlkit.dumps(document)
         Workspace.model_validate(tomllib.loads(revised))

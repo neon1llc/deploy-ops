@@ -79,6 +79,22 @@ deploy-ops --project deploy-ops.toml config patch --section components --name we
 
 The JSON result has the updated `toml`, a unified `diff`, validated fields, and the contract digest. Save the draft through the console or your editor. Check configuration output for repository paths and options before publishing it.
 
+For directory/static components, **Local component settings** distinguishes component options from
+environment overrides. **Use adapter default** removes one optional component option; required settings
+such as the directory resource name cannot be removed. **Use inherited** removes one environment override.
+An explicit override remains pinned even when it equals the inherited value, and survives later component
+changes. Activation choices use a native dropdown. Both reset actions update only the draft, preserving
+other fields and comments until you explicitly save.
+
+The CLI uses these same scopes and returns a separate reviewable draft:
+
+```bash
+deploy-ops --project deploy-ops.toml config reset --name web --scope base \
+  --field activation --draft-out defaults-draft.toml
+deploy-ops --project deploy-ops.toml config reset --name web --scope environment \
+  --environment staging --field activation --draft-out inherited-draft.toml
+```
+
 Paging uses a separate versioned configuration, so edits don't invalidate deployment approvals. Use `deploy-ops paging` or the console. See [paging](paging.md).
 
 ## Retained history and reviewed inputs

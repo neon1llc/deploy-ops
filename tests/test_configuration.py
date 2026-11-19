@@ -571,6 +571,47 @@ def test_local_edit_omission_and_explicit_clear(workspace):
     assert 'destination' not in cleared['local_edit_forms']['web']['base']
 
 
+# Optional component resets restore adapter defaults without discarding deliberate environment pins
+def test_optional_base_reset_preserves_equal_pin_and_adapter_default(workspace):
+    source = workspace.read_text() + '\n# Preserve operator note\n'
+    assert edit(source, 'web', 'base', {'activation': 'direct'})['toml'] == source
+    pinned = edit(source, 'web', 'environment', {'activation': 'direct'}, 'development')
+    changed = edit(pinned['toml'], 'web', 'base', {'activation': 'separate'})
+    environments = changed['local_edit_forms']['web']['environments']
+    assert environments['development']['activation']['effective'] == 'direct'
+    assert environments['development']['activation']['override_authored']
+    assert environments['staging']['activation']['effective'] == 'separate'
+    reset = edit(changed['toml'], 'web', 'base', {}, field='activation')
+    assert 'activation' not in reset['local_edit_forms']['web']['base']
+    assert reset['local_edit_forms']['web']['environments']['development']['activation']['override_authored']
+    inherited = edit(reset['toml'], 'web', 'environment', {}, 'development', 'activation')
+    assert inherited['local_edit_forms']['web']['environments']['development']['activation']['source'] == 'adapter default'
+    assert inherited['local_edit_forms']['web']['environments']['development']['activation']['effective'] == 'direct'
+    assert '# Preserve operator note' in inherited['toml']
+    assert edit(inherited['toml'], 'web', 'base', {}, field='activation')['toml'] == inherited['toml']
+    assert reset['configuration']['components']['web']['options']['destination'] == '${outputs.foundation.path}'
+    for name, scope, field in [('foundation', 'base', 'name'), ('web', 'base', 'unknown'), ('web', 'build', 'command')]:
+        with pytest.raises(Refused):
+            edit(source, name, scope, {}, field=field)
+    assert workspace.read_text() + '\n# Preserve operator note\n' == source
+
+
+# CLI and authenticated API share optional base reset without saving or running a release
+def test_optional_base_reset_cli_api_parity(workspace, tmp_path):
+    source = edit(workspace.read_text(), 'web', 'base', {'activation': 'separate'})['toml']
+    draft = tmp_path / 'edited.toml'
+    draft.write_text(source)
+    cli = dispatch(parser().parse_args(['--project', str(workspace), 'config', 'reset', '--file', str(draft),
+        '--name', 'web', '--scope', 'base', '--field', 'activation']))
+    client = TestClient(create_app(Engine(workspace), 't' * 40), base_url='http://127.0.0.1:8765')
+    response = client.post('/api/config/reset', json={'configuration': source, 'name': 'web',
+        'scope': 'base', 'field': 'activation'}, headers={'Authorization': 'Bearer ' + 't' * 40})
+    assert response.status_code == 200
+    assert response.json() == cli
+    assert draft.read_text() == source
+    assert 'activation' not in workspace.read_text()
+
+
 # Environment resets preserve sibling overrides, comments and explicit adapter selection
 def test_local_edit_preserves_target_siblings_and_authored_sources(workspace):
     import tomlkit
