@@ -276,7 +276,8 @@ def parser():
     # Isolated local infrastructure shares its core methods with the operator console
     from .isolated import arguments
     arguments(commands.add_parser("isolated", help="Approve and run one registered isolated GCP recipe"))
-    gate = commands.add_parser("gate", help="Use the independent approval controller and IaC worker")
+    gate = commands.add_parser("gate", help="Use the independent approval controller and IaC worker", add_help=False)
+    gate.add_argument('-h', '--help', dest='gate_help', action='store_true')
     gate.add_argument("--url", help="Controller HTTPS URL, otherwise DEPLOY_OPS_URL")
     gate.add_argument("args", nargs=argparse.REMAINDER)
     return root
@@ -390,6 +391,8 @@ def dispatch(args):
         from . import gate_cli
         # Forward the leading option before the delegated command without duplicating URL validation
         forwarded = ["--url", args.url] if args.url is not None else []
+        if args.gate_help:
+            forwarded.insert(0, '--help')
         return gate_cli._dispatch(gate_cli.parser().parse_args(forwarded + args.args))
     if args.command == "init":
         from .delivery.scaffold import create
