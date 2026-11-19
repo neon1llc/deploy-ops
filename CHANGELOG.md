@@ -3,6 +3,41 @@
 DeployOps releases use `v0.MINOR.PATCH` until the first complete release, v1.0.0, following neon1's [versioning standard](https://neon1.tech/knowledge/standards/versioning/). Each version has an annotated tag on the commit it names. Tags v0.2.0 to v0.13.0 were made when those versions shipped; this changelog was written from them on 2026-11-11. The release workflow adds missing tags and never moves one.
 
 
+## v0.15.0 - 2026-11-19
+
+This release adds local delivery, recovery, and inspection features, with fixes. Several prepared formats changed. Finish or reconcile pending work with the version that prepared it, and prepare a fresh release afterward. [Migration](docs/migration.md) lists each case.
+
+### Added
+- Local deployments bind each directory or static target to one owner, and a stable preview URL follows an approved target. See [Local serving](docs/local-serving.md).
+- Local blue-green rollout stages a static candidate, measures it, and switches the route and retires the previous files under separate approvals. See [Local blue-green](docs/local-rollouts.md).
+- [Frozen file signatures](docs/file-signatures.md) check one file of a reviewed static artifact against a local public key with Cosign.
+- [Artifact observations](docs/artifact-observations.md) collect a package inventory and optional vulnerability results for a frozen static artifact.
+- [Portable inspection](docs/inspection.md) exports readable, source-free evidence from retained releases. [Source captures](docs/source-captures.md) show copying that stopped before a release existed.
+- [Private backups](docs/backups.md) capture the ledger and its owned files, and restore them as inspection copies.
+- [Save recovery](docs/save-recovery.md) reconciles an interrupted configuration save without replacing current work.
+- Cloud Run delivery records the candidate and traffic updates as separate, conditional operations with readback, and shows the frozen target and traffic steps before approval. See [Cloud Run delivery](docs/cloud-run.md).
+- A [local Docker profile](docs/local-docker.md) selects the Docker tools and endpoint. The console edits Compose and Cloud Run settings, and can reset a field to its default or inherited value.
+- An incident can start from a saved later observation, and a reviewed handoff queues native responder pages.
+- Release history shows command outcomes with exit codes and elapsed time, can be browsed with filters and paging, and can be read from a retained store without loading current grants.
+- Worker ownership is recorded for local releases, and recovery is limited to the runtime that holds it. Private cache outcomes are reported separately.
+
+### Changed
+- Slack review cards list every normalized change, finding, and public binding, in bounded pages. **Approve this plan** appears on the last page.
+- Terraform and OpenTofu preparation reviews the effective backend and checks selected outputs in the saved plan before approval.
+- The README lists the new pages and updates the GCP status row.
+- The docs describe checks by change, not by build number.
+
+### Fixed
+- Kubernetes updates pin the reviewed connection and the Deployment's identity.
+- Guarded Terraform and OpenTofu plans refuse untracked or ignored root `.tf` files, automatic variable files, and the provider lock file. The runner also follows each tool's ignored-file names.
+- Terminal commands enforce one combined output limit.
+- Approvals show the complete native effects, including CloudFormation stack deletion and snapshots, which need explicit grants.
+- Slack review keeps public review packets and forwards the controller URL.
+- Configuration conflicts keep the exact source identity.
+- A waiting approval emits one event per new request, reloads its identity under worker ownership, and can be cancelled after the controller already failed the request.
+- Console fixes: accessible in-page dialogs, direct reconnect on Controls, and retained inspection errors tied to the current selection.
+- `gate --help` comes from the native command parser.
+
 ## v0.14.4 - 2026-11-19
 
 ### Added
