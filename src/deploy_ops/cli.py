@@ -31,6 +31,21 @@ def parser():
     commands.add_parser("doctor")
     commands.add_parser("catalog")
     commands.add_parser("schema")
+    backup = commands.add_parser('backup', help='Capture or restore private state; restored copies remain inspection-only')
+    backup_actions = backup.add_subparsers(dest='backup_action', required=True)
+    backup_actions.add_parser('options', help='Suggest new private targets and report capture bounds without creating files')
+    backup_capture = backup_actions.add_parser('capture')
+    backup_capture.add_argument('--out', type=Path, required=True, help='New private directory outside workspace and state')
+    backup_inspect = backup_actions.add_parser('inspect')
+    backup_inspect.add_argument('directory', type=Path)
+    backup_restored = backup_actions.add_parser('inspect-restored', help='Verify a restored copy using its retained receipt and manifest')
+    backup_restored.add_argument('directory', type=Path, help='Restored workspace directory')
+    backup_restored.add_argument('--state-directory', type=Path, help='Restored state directory when separate from the workspace')
+    backup_restore = backup_actions.add_parser('restore')
+    backup_restore.add_argument('directory', type=Path)
+    backup_restore.add_argument('--workspace-out', type=Path, required=True, help='New workspace directory; existing work is preserved')
+    backup_restore.add_argument('--state-out', type=Path, help='New state directory; default is .deploy-ops inside the new workspace')
+    backup_restore.add_argument('--digest', help='Exact backup manifest digest from inspect; refuse a changed extent')
     evidence = commands.add_parser("evidence", help="Save or inspect source-free operation facts; never execute imported evidence")
     evidence_actions = evidence.add_subparsers(dest="evidence_action", required=True)
     capture = evidence_actions.add_parser("capture", help="Read one retained release without loading its workspace or credentials")
@@ -135,6 +150,7 @@ def parser():
     preview.add_argument("release")
     preview.add_argument("--component", required=True)
     preview.add_argument("--port", type=int, default=8000)
+    preview.add_argument('--retained', action='store_true', help='Read a retained original-path artifact without loading workspace or execution authority')
 
     # Incident decisions remain independent of transport delivery and release status
     incidents = commands.add_parser("incidents", help="Track local incidents separately from deployment outcomes")
@@ -222,8 +238,50 @@ def advance(engine, release, wait_seconds):
         time.sleep(min(5, max(0, deadline - time.monotonic())))
 
 
+# Serve through the same owned listener for normal and explicitly retained read-only artifact inspection
+def serve_preview(owner, release, component, port):
+    import signal
+    from .delivery.serving import Sessions
+    sessions = Sessions()
+    previous = signal.getsignal(signal.SIGTERM)
+
+    # Termination closes only this foreground process's owned listener
+    def terminate(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, terminate)
+    try:
+        session = sessions.start(owner, release, component, port)
+        print(f"Static release: {session['url']} | Ctrl-C stops this session", flush=True)
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sessions.close()
+        signal.signal(signal.SIGTERM, previous)
+    return {'status': 'preview-stopped'}
+
+
 # Route every entry point through the shared deployment owners
 def dispatch(args):
+    if args.command == 'backup':
+        from .delivery import backup
+        if args.backup_action == 'options':
+            state = (args.state or args.project.resolve().parent / '.deploy-ops').resolve()
+            return backup.options(args.project, state)
+        if args.backup_action == 'inspect':
+            return backup.inspect(args.directory)
+        if args.backup_action == 'inspect-restored':
+            return backup.inspect_restored(args.directory, args.state_directory)
+        if args.backup_action == 'restore':
+            return backup.restore(args.directory, args.workspace_out, args.state_out, expected_digest=args.digest)
+        state = (args.state or args.project.resolve().parent / '.deploy-ops').resolve()
+        return backup.capture(args.project, state, args.out)
+    if args.command == 'preview' and args.retained:
+        from .delivery.retained import Retained
+        state = (args.state or args.project.resolve().parent / '.deploy-ops').resolve()
+        return serve_preview(Retained(state), args.release, args.component, args.port)
     if args.command == "isolated":
         from .isolated import dispatch as isolated
         return isolated(args)
@@ -393,28 +451,7 @@ def dispatch(args):
             return execute_cleanup(engine, args.release)
         return reconcile_cleanup(engine, args.release, args.note, args.confirm_removed)
     if args.command == "preview":
-        import signal
-        import time
-        from .delivery.serving import Sessions
-        sessions = Sessions()
-        previous = signal.getsignal(signal.SIGTERM)
-
-        # Termination closes only this foreground process's owned listener
-        def terminate(signum, frame):
-            raise KeyboardInterrupt
-
-        signal.signal(signal.SIGTERM, terminate)
-        try:
-            session = sessions.start(engine, args.release, args.component, args.port)
-            print(f"Static release: {session['url']} | Ctrl-C stops this session", flush=True)
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            pass
-        finally:
-            sessions.close()
-            signal.signal(signal.SIGTERM, previous)
-        return {"status": "preview-stopped"}
+        return serve_preview(engine, args.release, args.component, args.port)
 
     # Notification delivery cannot acknowledge or resolve an incident
     if args.command == "incidents":

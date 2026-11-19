@@ -1,5 +1,26 @@
 # Verification
 
+## Private backup candidate and desktop browser, 2026-11-05
+
+The v0.20.0 candidate's existing Edge connection exercised interrupted Save inspection, Escape
+cancellation with focus return, current-file reconciliation while retaining an unsaved TOML comment,
+and a separate warned reload that cleared the token. A coherent backup captured 20 files and 39 audit
+events. Cancelled restore left its target absent; confirmed relocated restore verified the same audit
+head and displayed execution not admitted. Inspect restored copy returned the verified receipt.
+
+A fresh local two-component release passed workflow preview, exact approval followed by separate
+execution for each component, and successful delivery. Controller timing and authority limits were
+visible. The retained static revision opened in a separate loopback tab and its listener was closed
+after Stop serving. The browser produced the offline HTML inspection file; the download-event helper
+timed out, so the actual named file was verified separately. Its visual rendering was not checked in
+this pass. Desktop screenshots covered the restored receipt and delivered application.
+
+These observations used candidate source, not an independently installed final wheel. Current narrow
+viewport/reflow, assistive technology, human acceptance, cloud browser operations, promotion and
+rollback were not qualified by this pass. No browser permissions or security settings were changed.
+Original-location readback and relocated refusal also have real local HTTP coverage in the backup
+domain checks; writable restored execution remains deliberately unavailable.
+
 ## Waiting transition identity, 2026-11-05
 
 Actual Engine/LocalGate/SQLite fixtures reproduced four waiting events and both outbox obligations

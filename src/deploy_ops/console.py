@@ -40,6 +40,9 @@ class Input(BaseModel):
     values: dict = Field(default_factory=dict)
     source_hash: str = ""
     operation_id: str = ""
+    backup_directory: str = Field(default='', max_length=4096)
+    workspace_directory: str = Field(default='', max_length=4096)
+    state_directory: str = Field(default='', max_length=4096)
     scope: str = ""
     edit_environment: str = ""
     field: str = ""
@@ -207,7 +210,7 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     @app.get("/assets/{name}")
     @app.get("/{name}")
     def asset(name: str):
-        if name not in ("app.js", "shell.js", "operator.js", "local-settings.js", "paging.js", "isolated.js", "style.css", "appearance.mjs", "theme.mjs"):
+        if name not in ("app.js", "shell.js", "operator.js", "local-settings.js", "paging.js", "isolated.js", "backups.js", "style.css", "appearance.mjs", "theme.mjs"):
             raise HTTPException(404)
         return FileResponse(assets / name)
 
@@ -287,6 +290,46 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         return {**inspect(source), "toml": source,
                 "cloud_access": getattr(engine.gate, "access_error", "Remote controller owns authentication"),
                 "mode": "remote-controller" if engine.gate.__class__.__name__ == "RemoteGate" else "local-operator"}
+
+
+    # Offer private paths and bounds without opening a backup or changing local state
+    @app.get('/api/backups/options', dependencies=[Depends(operator)])
+    def backup_options():
+        from .delivery import backup
+        return backup.options(engine.path, engine.state)
+
+
+    # Share CLI capture/inspection/restore semantics; imported state never gains execution authority
+    @app.post('/api/backups/{action}', dependencies=[Depends(operator)])
+    def backups(action: str, data: Input):
+        from .delivery import backup
+
+        # A browser has no filesystem working-directory context; require an absolute or home-based selection
+        def selected(value):
+            path = Path(value)
+            if not value or (not path.is_absolute() and not value.startswith('~/')):
+                raise Refused('Choose an absolute directory or a path beginning with ~/', 422)
+            return backup.location(path)
+
+        try:
+            if action == 'inspect-restored':
+                return backup.inspect_restored(selected(data.workspace_directory), selected(data.state_directory) if data.state_directory else None)
+            target = selected(data.backup_directory)
+            if action == 'inspect':
+                return backup.inspect(target)
+            if action == 'restore':
+                if not data.digest:
+                    raise Refused('Inspect the backup and provide its exact manifest digest before restoring', 422)
+                return backup.restore(target, selected(data.workspace_directory), selected(data.state_directory) if data.state_directory else None,
+                                      expected_digest=data.digest)
+            if action == 'capture':
+                with mutex:
+                    if workers:
+                        raise Refused('Wait for current workers before coherent private capture')
+                    return backup.capture(engine.path, engine.state, target)
+            raise Refused('Unknown backup action', 404)
+        except OSError:
+            raise Refused('Backup operation could not finish. Preserve any incomplete new directory; existing targets were not overwritten', 422) from None
 
 
     # Read interrupted Save facts even when an existing console's current TOML was externally damaged

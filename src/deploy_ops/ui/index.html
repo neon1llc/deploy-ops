@@ -15,6 +15,7 @@
     <script src="operator.js" defer></script>
     <script src="local-settings.js" defer></script>
     <script src="isolated.js" defer></script>
+    <script src="backups.js" defer></script>
   </head>
   <body>
     <!-- Keep workspace navigation available without replacing unsaved forms -->
@@ -606,6 +607,43 @@
                 <p>Inspect an interrupted Save before preparing another release. Recovery keeps the current file.</p>
                 <button id="inspect-save" class="secondary">Inspect Save state</button>
                 <div id="save-recovery" role="status" aria-live="polite"></div>
+              </details>
+              <details id="backup-panel" data-setting="private backup restore state audit inventory inspection">
+                <summary>Private state backups</summary>
+                <p>Capture the local ledger, exact configuration and owned source/artifact/data files. Backups can contain sensitive data; they stay in your chosen private directory and are never uploaded automatically.</p>
+                <p id="backup-limits"></p>
+                <button id="backup-options" type="button" class="secondary">Suggest paths for empty fields</button>
+                <form id="backup-form" action="/api/backups/inspect" method="post">
+                  <fieldset>
+                    <legend>Capture or inspect</legend>
+                    <label for="backup-directory">Backup directory (required)</label>
+                    <input id="backup-directory" name="backup_directory" type="text" required maxlength="4096" pattern="(/.*|~/.+)" autocorrect="off" autocapitalize="off" spellcheck="false" aria-describedby="backup-directory-help" />
+                    <p id="backup-directory-help">Use an absolute path or ~/. Choose a new folder outside your workspace/state for capture, or an existing backup folder for inspection.</p>
+                    <div class="controls">
+                      <button type="submit" name="action" value="inspect" class="secondary">Inspect backup</button>
+                      <button type="submit" name="action" value="capture" formaction="/api/backups/capture">Capture new private backup</button>
+                    </div>
+                  </fieldset>
+                </form>
+                <form id="restore-form" action="/api/backups/restore" method="post">
+                  <fieldset>
+                    <legend>Restore the inspected extent</legend>
+                    <label for="restore-backup">Selected inspected backup</label>
+                    <input id="restore-backup" name="backup_directory" type="text" readonly />
+                    <input id="restore-digest" name="digest" type="hidden" />
+                    <label for="restore-workspace">Workspace directory (required; new for restore)</label>
+                    <input id="restore-workspace" name="workspace_directory" type="text" required maxlength="4096" pattern="(/.*|~/.+)" autocorrect="off" autocapitalize="off" spellcheck="false" aria-describedby="restore-help" />
+                    <label for="restore-state">New state directory (optional)</label>
+                    <input id="restore-state" name="state_directory" type="text" maxlength="4096" pattern="(/.*|~/.+)" autocorrect="off" autocapitalize="off" spellcheck="false" aria-describedby="restore-help" />
+                    <p id="restore-help">Leave state blank for .deploy-ops inside the new workspace. Existing directories are refused. Original absolute references are preserved; relocated copies are inspection-only.</p>
+                    <div class="controls">
+                      <button type="submit" name="action" value="inspect-restored" class="secondary" formaction="/api/backups/inspect-restored">Inspect restored copy</button>
+                      <button type="submit" name="action" value="restore">Restore for inspection</button>
+                    </div>
+                  </fieldset>
+                </form>
+                <p id="backup-status" role="status" aria-live="polite"></p>
+                <div id="backup-detail"></div>
               </details>
               <details data-setting="local autonomy delegation permission hours uses">
                 <summary>Local autonomy</summary>

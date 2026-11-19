@@ -82,3 +82,12 @@ Retained readers still default to read-only; the explicit existing-state audit w
 or initializes a database. Legacy pending files without verified intent require manual inspection.
 Finish or reconcile new pending Saves with this matching runtime; an older writer does not enforce
 the new guard. See [Save recovery](save-recovery.md) for current-file, ownership and relocation limits.
+
+## Private backup and restore
+
+Backup format 1 adds a coherent SQLite snapshot and exact owned-file manifest without changing the
+database schema or historical rows. Restored state and backup payloads are inspection-only; use the
+matching runtime to enforce that boundary. Older runtimes do not understand it and must not be used
+to bypass admission. Original absolute references remain unchanged. `preview --retained` permits
+only compatible, reviewed static readback. There is no automatic writable restore or provider-resume
+procedure. See [private backups](backups.md) for scope, bounds and original-location exercises.
