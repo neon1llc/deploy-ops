@@ -63,3 +63,9 @@ Local cloud grants allow CloudFormation, frozen CDK assemblies, ECS, Cloud Run, 
 Local grants never enable delegation or production. Every credentialed command checks the active grant. Revocation or expiry stops further commands but can't undo work a provider already accepted, so inspect uncertain results before retrying. Credential references stay out of workspace forms and manifests. Declare only public outputs, and review source first, since a plaintext template can hold sensitive material.
 
 This is a trusted local worker. File permissions, identity checks, and a clean subprocess environment don't isolate hostile same-user processes or restrict an administrator key at IAM level. The grant doesn't enforce account-wide spend, remote deadlines, or automatic cleanup. Use an isolated worker and provider-side controls for those.
+
+CloudFormation/CDK stack deletion requires `AWS::CloudFormation::Stack` in `resource_types`, including
+empty shells and retained-only stacks. Snapshot fates also need explicit `snapshot` in `actions` and
+the original resource type. Stack delete, original resource delete and snapshot count separately toward
+`max_changes`. These additions do not update an existing grant or authorize a new test batch. Native
+fates and unverified retained capacity/cost are explained in [native infrastructure](native-infrastructure.md).

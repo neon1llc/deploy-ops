@@ -11,7 +11,7 @@ Commit = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
 Slug = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9-]{0,62}$")]
 Engine = Literal["terraform", "opentofu", "manifest", "delivery"]
 Cloud = Literal["aws", "azure", "gcp", "local"]
-Action = Literal["create", "update", "delete", "replace", "read", "no-op", "import", "move"]
+Action = Literal["create", "update", "delete", "replace", "read", "no-op", "import", "move", "snapshot"]
 
 
 # Apply strict field validation to every authority message

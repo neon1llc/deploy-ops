@@ -169,13 +169,14 @@ function isolatedRender(force = false) {
     const planning = request.manifest.engine === "manifest";
     text(card, "h3", `${planning ? "Planning" : "Saved plan"} ${request.id.slice(0, 8)} · ${request.status}`);
     text(card, "p", request.reason || "");
+    if (request.execution_blocker) text(card, "p", request.execution_blocker).className = "isolated-warning";
     if (request.worker_error && request.worker_error !== request.reason) {
       text(card, "p", "Last worker error: " + request.worker_error);
     }
     isolatedReview(card, request, expanded);
 
     // Native submission forms keep approval and cloud execution as distinct decisions
-    if (request.status === "pending" || request.status === "approved") {
+    if (!request.execution_blocker && (request.status === "pending" || request.status === "approved")) {
       const action = request.status === "pending" ? "approve" : "execute";
       const form = document.createElement("form");
       form.action = "/api/isolated/requests/" + encodeURIComponent(request.id) + "/" + action;

@@ -140,7 +140,10 @@ def test_create_output_and_owned_destroy(tmp_path):
     assert removal["retained"] == ["Registry"]
     assert removal["preview"]["findings"] == []
     assert removal["warnings"]
-    assert cfn.apply(ctx, removal)["status"] == "DELETE_COMPLETE"
+    result = cfn.apply(ctx, removal)
+    assert result["status"] == "DELETE_COMPLETE"
+    assert result["snapshots_requested"] == ""
+    assert "not independently verified" in result["retention_observation"]
     assert "--force-delete-stack" not in str(ctx.process.calls)
 
 
@@ -252,7 +255,8 @@ def test_failed_preview_readback_recovers_owned_shell(tmp_path):
     assert cfn.owner_path(ctx).exists()
     ctx.options["operation"] = "destroy"
     removal = cfn.prepare(ctx)
-    assert removal["review_shell"] and not removal["preview"]["changes"]
+    assert removal["review_shell"]
+    assert removal["preview"]["changes"] == [{"address": STACK, "resource_type": "AWS::CloudFormation::Stack", "action": "delete"}]
     assert cfn.apply(ctx, removal)["status"] == "DELETE_COMPLETE"
 
 

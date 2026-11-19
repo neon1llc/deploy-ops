@@ -565,6 +565,9 @@ class Engine:
         if (envelope['adapter'] == 'static' and envelope['prepared'].get('activation') == 'separate'
                 and envelope.get('adapter_contract_version') != 3):
             raise Refused('Separate activation requires a newly reviewed adapter contract 3')
+        if envelope["adapter"] in {"cloudformation", "cdk"}:
+            from .adapters.cloudformation import require_destroy_contract
+            require_destroy_contract(envelope["prepared"])
         if envelope["config_digest"] != self.spec.digest or digest_tree(folder / "source") != envelope["source_digest"]:
             raise Refused("Reviewed source or workspace changed")
         if digest_tree(folder / "artifacts") != envelope["artifact_tree"]:

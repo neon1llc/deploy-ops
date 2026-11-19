@@ -372,6 +372,7 @@ async function refresh() {
 
 // Use known observed limits for affordances while leaving current authority to the controller
 function observedClaimWindow(request) {
+  if (request?.execution_blocker) return false;
   const timing = request?.timing;
   return !Number.isFinite(timing?.provisional_remaining_seconds) || !Number.isFinite(timing?.minimum_claim_seconds)
     || timing.provisional_remaining_seconds >= timing.minimum_claim_seconds;
@@ -688,14 +689,16 @@ async function show(id) {
     const request = data.request_statuses?.[name];
     if (node.request_id) {
       if (request?.reason) text(area, "p", "Controller: " + request.reason);
+      if (request?.execution_blocker) text(area, "p", request.execution_blocker).className = "isolated-warning";
       reviewTiming(area, request?.timing);
     }
     const matchingRequest = request?.digest === node.request_digest && Boolean(node.request_digest);
     if (node.status === "waiting") {
       text(area, "p", matchingRequest ? "Approval: " + request.status + (request.status === "approved"
-        ? (observedClaimWindow(request) ? ". Ready for separate execution." : ". Observed execution budget is below the minimum; prepare fresh evidence.") : ".") : "Approval status unavailable or changed. Refresh before acting.");
+        ? (request.execution_blocker ? ". Fresh compatible evidence required." : observedClaimWindow(request)
+          ? ". Ready for separate execution." : ". Observed execution budget is below the minimum; prepare fresh evidence.") : ".") : "Approval status unavailable or changed. Refresh before acting.");
     }
-    if (node.status === "waiting" && matchingRequest && request.status === "pending") area.append(button("Approve this exact change", async () => {
+    if (node.status === "waiting" && matchingRequest && !request.execution_blocker && request.status === "pending") area.append(button("Approve this exact change", async () => {
       if (!await confirmAction("Approve the displayed change for " + name + "?")) return;
       await api("/releases/" + id + "/approve", "POST", { component: name, digest: node.request_digest });
       message("Exact change approved. Execution is a separate action."); await refresh();

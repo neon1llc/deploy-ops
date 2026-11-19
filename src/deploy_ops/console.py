@@ -629,7 +629,8 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
             try:
                 request = engine.gate.status(node["request_id"])
                 request_statuses[name] = {"status": request["status"], "digest": request["digest"],
-                                          "reason": request.get("reason"), "timing": request.get("timing")}
+                                          "reason": request.get("reason"), "timing": request.get("timing"),
+                                          "execution_blocker": request.get("execution_blocker")}
             except Exception:
                 request_statuses[name] = {"status": "unavailable", "digest": None}
         sessions = serving.list()

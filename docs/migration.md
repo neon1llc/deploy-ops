@@ -146,3 +146,21 @@ See [file signatures](file-signatures.md).
 Preview cleanup reconciliation now uses a native namespace-state selection after the descriptive note.
 It no longer asks for blank or `removed` through a dialog that requires ten-character notes. The note
 constraint, cancellation and all backend cleanup checks remain intact.
+
+## Complete migration and stack-deletion effects in v0.26.0
+
+New Terraform/OpenTofu migration manifests carry `native_effects_version = 2` alongside caller schema 2.
+Their change rows preserve native actions plus import/move. Existing manifest bytes, digests and audit
+remain unchanged. The new writer refuses a legacy migration claim before execution admission and
+shows a fresh-plan blocker in CLI/API and UI projections. Read, rejection, pause and historical
+resolution remain available. Legacy caller-schema-1 migration submissions require a current caller
+submission; nonmigration schema-1 history and claims remain supported. There is no database migration.
+
+New CloudFormation/CDK destruction prepares `destroy_contract_version = 2`. The application runner
+refuses old deletion envelopes before claim; the native adapter also refuses before any native read
+or write. Old inspection stays available. Prepare fresh evidence to review stack removal and all
+resource fates. Local grants must explicitly include the stack type, delete and any snapshot action;
+they are never edited automatically. New snapshot rows require the current reader; an older typed
+reader may refuse them. Older writers do not acquire these new enforcement guarantees by reading a
+new report. Use the current writer consistently for mutations; no cross-version writer lock or
+historical backfill is introduced. See [native infrastructure](native-infrastructure.md).

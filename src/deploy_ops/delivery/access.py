@@ -24,7 +24,7 @@ class Grant(BaseModel):
     identity: dict[str, str]
     adapters: list[Literal["cloudformation", "cdk", "ecs", "cloud-run", "arm", "bicep", "container-apps"]] = Field(min_length=1)
     resource_types: list[str] = Field(min_length=1)
-    actions: list[Literal["create", "update", "delete", "replace", "read", "no-op"]]
+    actions: list[Literal["create", "update", "delete", "replace", "read", "no-op", "snapshot"]]
     max_changes: int = Field(ge=1, le=100)
 
 
