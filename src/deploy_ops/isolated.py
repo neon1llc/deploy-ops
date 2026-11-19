@@ -19,7 +19,7 @@ import uuid
 
 from .config import Policy, ReceiptPolicy, Settings, Target, canonical, fingerprint
 from .delivery.access import private_file
-from .delivery.files import private_directory
+from .delivery.files import native_tool, private_directory
 from .delivery.gate import LocalGate
 from .errors import Refused
 from .isolated_recipe import HELPER, IsolatedGrant, VERSIONS
@@ -41,24 +41,6 @@ def load_grant(path: Path, allow_expired: bool = False) -> IsolatedGrant:
     if not allow_expired and time.time() >= grant.expires_at:
         raise Refused("Isolated operator grant expired", 403)
     return grant
-
-
-# Reject writable shared tools before they can consume operator credentials
-def native_tool(value: str):
-    path = Path(value).resolve()
-    if not path.is_file() or not os.access(path, os.X_OK):
-        raise Refused("Registered native tool is not executable", 422)
-    for item in (path, *path.parents):
-        info = item.stat()
-        # macOS administrators already control the trusted host and Homebrew's shared Cellar
-        administrative_group = False
-        if sys.platform == "darwin":
-            import grp
-            administrative_group = grp.getgrgid(info.st_gid).gr_name in {"admin", "wheel"}
-        if (info.st_uid not in {0, os.getuid()} or info.st_mode & 0o002
-                or info.st_mode & 0o020 and not administrative_group):
-            raise Refused("Native tool or its directory has untrusted ownership", 403)
-    return str(path)
 
 
 # Keep executable and lock files owned by the operator and outside source control

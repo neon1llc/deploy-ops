@@ -330,10 +330,18 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     @app.get("/api/workspace", dependencies=[Depends(operator)])
     def workspace():
         from .delivery.configuration import inspect, read_source
+        from .delivery.docker import readiness
         source = read_source(engine.path)
         return {**inspect(source), "toml": source,
                 "cloud_access": getattr(engine.gate, "access_error", "Remote controller owns authentication"),
+                "docker_readiness": readiness(engine.path),
                 "mode": "remote-controller" if engine.gate.__class__.__name__ == "RemoteGate" else "local-operator"}
+
+    # Read selected tool/socket metadata only; this endpoint never contacts a daemon
+    @app.get('/api/docker/readiness', dependencies=[Depends(operator)])
+    def docker_readiness():
+        from .delivery.docker import readiness
+        return readiness(engine.path)
 
 
     # Explicit native collection reads only the selected frozen subject; it cannot deploy or approve

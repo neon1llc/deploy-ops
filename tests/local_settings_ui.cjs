@@ -29,7 +29,7 @@ const descendants = node => [node, ...node.children.flatMap(descendants)];
 const element = id => nodes.get(id) || [...nodes.values()].flatMap(descendants).find(node => node.id === id);
 for (const id of ['local-component', 'local-scope', 'local-environment', 'local-fields', 'local-apply',
   'local-environment-label', 'local-edit-fields', 'local-reload', 'local-edit-form', 'local-status',
-  'config', 'config-diff', 'local-settings']) nodes.set(id, new Node('div'));
+  'config', 'config-diff', 'local-settings', 'docker-readiness', 'docker-readiness-status']) nodes.set(id, new Node('div'));
 element('local-component').value = 'web'; element('local-scope').value = 'build';
 element('local-environment').value = 'development'; element('config').value = 'original source';
 const listeners = new Map();
