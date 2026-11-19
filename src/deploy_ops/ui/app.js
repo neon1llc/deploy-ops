@@ -550,6 +550,20 @@ async function show(id) {
     }
     reviewEvidence(root, "observation", "Observation evidence", observation, expanded);
   }
+  // Keep command outcomes in committed order without treating local process exit as provider state
+  const commands = data.events.filter(event => ["command.finished", "command.failed"].includes(event.name));
+  if (commands.length) {
+    text(root, "h3", "Command outcomes");
+    text(root, "p", "Local process results only. Interrupted provider operations still need target inspection before retrying.");
+    const history = document.createElement("ol"); root.append(history);
+    for (const event of commands) {
+      const detail = event.detail;
+      const outcome = event.name === "command.finished" ? "finished" : detail.outcome || "failed";
+      const elapsed = Number.isFinite(detail.elapsed_ms) ? ` · ${detail.elapsed_ms} ms` : " · duration unavailable";
+      const exit = Number.isInteger(detail.exit_code) ? ` · exit ${detail.exit_code}` : "";
+      text(history, "li", `${detail.component || "Release"} · ${detail.operation || detail.tool} · ${outcome}${elapsed}${exit}`);
+    }
+  }
   reviewEvidence(root, "events", `Event history (${data.events.length})`, data.events, expanded);
   // Polling preserves expanded evidence, scroll and keyboard position without changing drafts
   for (const node of root.querySelectorAll("[data-review-scroll]")) {

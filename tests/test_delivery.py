@@ -192,6 +192,8 @@ def test_native_azure_failure_labels_do_not_expose_diagnostics(tmp_path, known):
     assert "secret-sentinel" not in evidence
     assert events[-1][0] == "command.failed"
     assert events[-1][1]["exit_code"] == 7
+    assert events[-1][1]["elapsed_ms"] >= 0
+    assert events[-1][1]["outcome"] == "failed"
     assert ("azure.deployment.group.what-if" in evidence) is known
 
 
@@ -203,8 +205,35 @@ def test_native_azure_success_labels_keep_captured_output_private(tmp_path):
     events = []
     process = Process(tmp_path, lambda event, detail: events.append((event, detail)))
     assert process.run([str(executable), "account", "show"], tmp_path, capture=True) == "captured-secret-sentinel"
-    assert events == [("command.started", {"tool": "az", "operation": "azure.account.show"}),
-                      ("command.finished", {"tool": "az", "operation": "azure.account.show"})]
+    assert events[0] == ("command.started", {"tool": "az", "operation": "azure.account.show"})
+    assert events[-1][0] == "command.finished"
+    assert events[-1][1]["elapsed_ms"] >= 0
+    assert "captured-secret-sentinel" not in json.dumps(events)
+
+
+# An interrupted command leaves a durable local outcome without suggesting external rollback
+def test_command_deadline_records_interruption(tmp_path):
+    events = []
+    process = Process(tmp_path, lambda event, detail: events.append((event, detail)))
+    with pytest.raises(Refused, match="deadline"):
+        process.run([sys.executable, "-c", "import time; time.sleep(30)"], tmp_path, timeout=0)
+    terminal = [detail for event, detail in events if event == "command.failed"]
+    assert len(terminal) == 1
+    assert terminal[0]["outcome"] == "interrupted"
+    assert terminal[0]["elapsed_ms"] >= 0
+    assert terminal[0]["exit_code"] is None
+
+
+# Failed startup records a safe actionable result without leaking the host working directory
+def test_command_launch_failure_records_no_execution(tmp_path):
+    events = []
+    process = Process(tmp_path, lambda event, detail: events.append((event, detail)))
+    with pytest.raises(Refused, match="could not start") as failure:
+        process.run([sys.executable, "argument-secret-sentinel"], tmp_path / "missing-secret-sentinel")
+    assert events[-1][1]["outcome"] == "not-started"
+    assert events[-1][1]["exit_code"] is None
+    assert events[-1][1]["elapsed_ms"] >= 0
+    assert "secret-sentinel" not in json.dumps(events) + str(failure.value)
 
 
 # Require loopback and token boundaries while reusing the shared graph

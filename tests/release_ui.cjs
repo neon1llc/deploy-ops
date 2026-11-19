@@ -111,12 +111,24 @@ function control(key) {
 
 // Confirm approval never submits execution and readback never submits a deployment
 (async () => {
+  // Explain current and legacy command outcomes without adding an execution control or raw HTML
+  context.fixture.events = [
+    {name: "command.finished", detail: {component: "web", tool: "python3", elapsed_ms: 250}},
+    {name: "command.failed", detail: {component: "web", tool: "<script>literal</script>", outcome: "interrupted", elapsed_ms: 500, exit_code: null}},
+    {name: "command.failed", detail: {component: "web", tool: "az", exit_code: 7}},
+  ];
   context.fixture.release.nodes.web.preview = {changes: [
     {address: "fixture.web", resource_type: "application_revision", action: "update"},
     {address: "fixture.keep", resource_type: "fixture_type", action: "no-op"}],
     manual_only: true, findings: ["Inspect <script>literal fixture</script> values"]};
   await vm.runInContext('show("release-fixture")', context);
   const content = nodes.get("detail").querySelectorAll("*");
+  const outcomes = content.find(node => node.tagName === "ol");
+  assert.deepEqual(outcomes.children.map(node => node.textContent), [
+    "web · python3 · finished · 250 ms",
+    "web · <script>literal</script> · interrupted · 500 ms",
+    "web · az · failed · duration unavailable · exit 7",
+  ]);
   assert(content.some(node => node.tagName === "th" && node.scope === "row" && node.textContent === "fixture.web"));
   assert(content.some(node => node.textContent === "1 update · 1 no-op"));
   assert(content.some(node => node.tagName === "li" && node.textContent === "Inspect <script>literal fixture</script> values"));
