@@ -21,6 +21,14 @@ IGNORED = {".git", ".deploy-ops", ".terraform", ".venv", "venv", "node_modules",
 MAX_READ_BYTES = 2 * 1024 * 1024
 
 
+# Make operator-selected filesystem locations explicit while supporting native home shorthand
+def location(path: Path) -> Path:
+    try:
+        return path.expanduser().resolve()
+    except (OSError, RuntimeError, ValueError):
+        raise Refused('Choose a valid filesystem location; no path was created or repaired', 422) from None
+
+
 # Read one bounded ordinary file without following its final link or accepting an in-place write
 def read_regular(path: Path, limit: int = MAX_READ_BYTES) -> bytes:
     try:
@@ -96,6 +104,11 @@ def inside(root: Path, relative: str) -> Path:
     return path
 
 
+# Keep the existing canonical path ordering when reusing a bounded file inventory
+def tree_fingerprint(entries):
+    return fingerprint(sorted(entries, key=lambda item: Path(item[0]).parts))
+
+
 # Bind every retained file while rejecting links and oversized snapshots
 def digest_tree(root: Path, *, source_exclusions: bool = False) -> str:
     entries = []
@@ -113,7 +126,7 @@ def digest_tree(root: Path, *, source_exclusions: bool = False) -> str:
             if size > 100_000_000 or len(entries) >= 10000:
                 raise Refused("Source snapshot exceeds the 100 MB or 10,000-file limit", 422)
             entries.append([str(relative), hashlib.sha256(path.read_bytes()).hexdigest()])
-    return fingerprint(entries)
+    return tree_fingerprint(entries)
 
 
 # Copy immutable source bytes into a newly owned directory

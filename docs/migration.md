@@ -92,7 +92,7 @@ to bypass admission. Original absolute references remain unchanged. `preview --r
 only compatible, reviewed static readback. There is no automatic writable restore or provider-resume
 procedure. See [private backups](backups.md) for scope, bounds and original-location exercises.
 
-## Cloud Run native operations in v0.21.0
+## Cloud Run native operations
 
 New Cloud Run preparation carries a version 1 native request inside the existing approved envelope.
 The former CLI-only preparation lacks this identity and cannot be executed by the new writer. Retain
@@ -102,3 +102,12 @@ native credentials and service etags, records both operation boundaries and neve
 write. It supports one existing container and an untagged single route. Portable inspection format 2
 adds this native scope/phase; the reader preserves exact format 1 extents. Private backups additionally
 include `cloud-run-operation.json`. No database schema migration or implicit grant change is supplied.
+
+## Artifact observations
+
+The optional explicit collector writes a version 1 report outside workspace/state. It changes no
+workspace schema, digest, approved envelope, authority or database schema. Legacy reviewed static
+artifacts can be measured when their existing format and exact retained bytes validate. The shared
+canonical tree helper preserves prior ordering and digest meaning; file/byte inventory remains separate
+from package detection. Unknown report versions refuse offline inspection. Collected results neither
+backfill a historical approval nor enforce a new release policy. See [artifact observations](artifact-observations.md).

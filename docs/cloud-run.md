@@ -38,7 +38,7 @@ Remote operations can outlive a local interruption or deadline.
 ## Inspect an interrupted operation
 
 ```bash
-deploy-ops --project /path/deploy-ops.toml provider inspect RELEASE_ID --component web
+deploy-ops --project /path/deploy-ops.toml provider inspect RELEASE_ID web
 ```
 
 The console exposes **Read provider status** on the same release detail. Both routes read the exact

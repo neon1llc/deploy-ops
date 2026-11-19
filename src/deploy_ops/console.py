@@ -68,6 +68,17 @@ class Input(BaseModel):
     confirm_removed: bool = False
 
 
+# Keep native artifact observation options strict and separate from deployment authority
+class ArtifactInput(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    component: str = Field(min_length=1, max_length=48)
+    output_directory: str = Field(min_length=1, max_length=4096)
+    inventory: bool = True
+    vulnerabilities: bool = False
+    allow_network: bool = False
+    timeout_seconds: int = Field(default=60, ge=10, le=300)
+
+
 # Share one engine behind authenticated loopback routes and worker coordination
 def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     if len(token) < 32:
@@ -210,7 +221,7 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     @app.get("/assets/{name}")
     @app.get("/{name}")
     def asset(name: str):
-        if name not in ("app.js", "shell.js", "operator.js", "local-settings.js", "paging.js", "isolated.js", "backups.js", "style.css", "appearance.mjs", "theme.mjs"):
+        if name not in ("app.js", "shell.js", "operator.js", "local-settings.js", "paging.js", "isolated.js", "backups.js", "artifacts.js", "style.css", "appearance.mjs", "theme.mjs"):
             raise HTTPException(404)
         return FileResponse(assets / name)
 
@@ -290,6 +301,29 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         return {**inspect(source), "toml": source,
                 "cloud_access": getattr(engine.gate, "access_error", "Remote controller owns authentication"),
                 "mode": "remote-controller" if engine.gate.__class__.__name__ == "RemoteGate" else "local-operator"}
+
+
+    # Explicit native collection reads only the selected frozen subject; it cannot deploy or approve
+    @app.get('/api/artifacts/options', dependencies=[Depends(operator)])
+    def artifact_options():
+        from .delivery import artifacts
+        return artifacts.options()
+
+
+    @app.post('/api/releases/{identifier}/artifacts/{action}', dependencies=[Depends(operator)])
+    def artifact_collect(identifier: str, action: str, body: ArtifactInput):
+        from .delivery import artifacts
+        if not (body.output_directory.startswith('/') or body.output_directory.startswith('~/')):
+            raise Refused('Choose an absolute private output path or ~/', 422)
+        if action == 'inspect':
+            result = artifacts.inspect(Path(body.output_directory))
+            if result['report']['release_id'] != identifier or result['report']['component'] != body.component:
+                raise Refused('This report belongs to another release or component; keep its original identity', 409)
+            return result
+        if action != 'collect':
+            raise Refused('Choose collect or inspect for artifact evidence', 422)
+        profile = artifacts.Profile(**body.model_dump(exclude={'component', 'output_directory'}))
+        return artifacts.collect(engine.state, identifier, body.component, Path(body.output_directory), profile, engine.path.parent)
 
 
     # Offer private paths and bounds without opening a backup or changing local state
