@@ -1,7 +1,7 @@
 # Security
 
 DeployOps is a local developer preview, not production-supported. It has not had an independent security audit, and its cloud paths are only partly live-checked. See the [support matrix](docs/support-matrix.md).
-Keep account-owner credentials and untrusted agent control outside the controller, policy files, deployment workflow, runner host, and operator token. Trusted local qualification can use explicit native credential references under an expiring operator grant. That doesn't reduce the source identity's provider permissions, so administrator keys stay administrator keys. See [local cloud access](docs/local-cloud-access.md).
+Keep account-owner credentials and untrusted caller control outside the controller, policy files, deployment workflow, runner host, and operator token. Trusted local qualification can use explicit native credential references under an expiring operator grant. That doesn't reduce the source identity's provider permissions, so administrator keys stay administrator keys. See [local cloud access](docs/local-cloud-access.md).
 
 ## Boundaries that exist
 

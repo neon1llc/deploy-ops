@@ -6,7 +6,7 @@ A workspace joins repositories, environments, components, and dependency outputs
 
 ```mermaid
 flowchart TD
-  Human[Developer or identified agent] --> Trigger[CLI, local UI, or trusted GitHub workflow]
+  Human[Developer or authenticated automation] --> Trigger[CLI, local UI, or trusted GitHub workflow]
   Trigger --> Workspace[Operator-owned workspace contract]
   Workspace --> Graph[Dependency order and environment selection]
   Graph --> Source[Freeze separate repository inputs]

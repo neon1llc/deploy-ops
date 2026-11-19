@@ -15,6 +15,10 @@ on:
       receipts:
         type: string
         default: "{}"
+      caller_label:
+        type: string
+        default: ""
+      # Preserve older callers while new workflows use neutral labels
       agent_label:
         type: string
         default: ""
@@ -35,7 +39,7 @@ jobs:
       DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
       DEPLOY_IMAGE: ${{ inputs.image }}
       DEPLOY_RECEIPTS: ${{ inputs.receipts }}
-      AGENT_LABEL: ${{ inputs.agent_label }}
+      CALLER_LABEL: ${{ inputs.caller_label || inputs.agent_label }}
     steps:
       # The caller's source is snapshotted, not executed in this credential-bearing job
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -73,7 +77,7 @@ jobs:
           set -euo pipefail
           deploy-ops --project workspace/deploy-ops.toml run "$DEPLOY_ENVIRONMENT" \
             --component web --only --image "$DEPLOY_IMAGE" --receipts "$DEPLOY_RECEIPTS" \
-            --agent "$AGENT_LABEL" --wait-seconds 1800
+            --caller-label "$CALLER_LABEL" --wait-seconds 1800
       # Use an allowlist. Interrupted stages may leave cloud login caches in their private home
       # Retain evidence for reconciliation, not source, credentials, or an automatically replayable deployment
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

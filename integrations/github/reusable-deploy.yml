@@ -18,6 +18,10 @@ on:
       engine:
         type: string
         default: opentofu
+      caller_label:
+        type: string
+        default: ""
+      # Preserve older callers while new workflows use neutral labels
       agent_label:
         type: string
         default: ""
@@ -39,7 +43,7 @@ jobs:
       DEPLOY_OPS_URL: ${{ vars.DEPLOY_OPS_URL }}
       TARGET: ${{ inputs.target }}
       ENGINE: ${{ inputs.engine }}
-      AGENT_LABEL: ${{ inputs.agent_label }}
+      CALLER_LABEL: ${{ inputs.caller_label || inputs.agent_label }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -64,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           deploy-ops gate plan --target "$TARGET" --engine "$ENGINE" \
-            --agent-label "$AGENT_LABEL" --out .deploy_ops
+            --caller-label "$CALLER_LABEL" --out .deploy_ops
       - name: Wait for approval
         run: deploy-ops gate wait --ticket .deploy_ops/ticket.json --seconds 1800
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

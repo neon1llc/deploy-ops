@@ -16,7 +16,7 @@ import httpx
 from .client import Client, file_digest, github_token, private_json
 from .clouds import environment
 from .errors import Refused
-from .models import Agent, Proposal
+from .models import Agent, Caller, Proposal
 from .receipts import controlled_backend, verify_tool
 
 # Support only engines with a saved-plan execution contract
@@ -168,7 +168,7 @@ def execute(client: Client, lease: dict, artifact: Path, workspace: Path) -> int
 
 # Use separate planning authority to create and submit immutable evidence
 def plan(client: Client, target: str, engine: str, workspace: Path, output: Path,
-         agent: Agent, cost_file: Path | None = None) -> dict:
+         agent: Agent | Caller, cost_file: Path | None = None) -> dict:
     """Create a saved plan using the controller's separate planning identity."""
     context = client.call("GET", f"/v1/targets/{target}/plan-context")
     if engine not in context["engines"] or engine not in BINARIES:
@@ -212,7 +212,8 @@ def plan(client: Client, target: str, engine: str, workspace: Path, output: Path
     cost = cost_delta(json.loads(cost_file.read_text())) if cost_file else None
     proposal = Proposal(target=target, engine=engine, artifact_digest=file_digest(artifact),
                         preview=raw, tool_version=version, lock_digest=file_digest(lock),
-                        estimated_monthly_delta_cents=cost, agent=agent)
+                        estimated_monthly_delta_cents=cost,
+                        **({"agent": agent} if isinstance(agent, Agent) else {"caller": agent}))
     request = client.call("POST", "/v1/requests", proposal.model_dump())
     private_json(output / "ticket.json", {"id": request["id"], "digest": request["digest"]})
     return request

@@ -1,4 +1,4 @@
-# src/deploy_ops/policy.py - Decide scope without consulting the agent that requested it.
+# src/deploy_ops/policy.py - Decide scope without consulting the caller that requested it.
 
 
 from fnmatch import fnmatchcase

@@ -403,6 +403,14 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         release = engine.ledger.get(release_id)
         cleanup = release.get("cleanup", {})
 
+        # Optional current authority failure cannot hide retained retirement evidence
+        cleanup_request = None
+        if cleanup.get("request_id"):
+            try:
+                cleanup_request = engine.gate.status(cleanup["request_id"])
+            except Exception:
+                cleanup_request = {"status": "unavailable", "digest": None}
+
         # Read current approval without exposing controller identities or execution credentials
         request_statuses = {}
         for name, node in release["nodes"].items():
@@ -416,7 +424,7 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         return {"serving_sessions": [item for item in serving.list() if item["release"] == release_id],
                 "release": release, "events": engine.ledger.events(release_id),
                 "request_statuses": request_statuses,
-                "cleanup_request": engine.gate.status(cleanup["request_id"]) if cleanup.get("request_id") else None,
+                "cleanup_request": cleanup_request,
                 "artifact_actions": engine.artifact_actions(release)}
 
 

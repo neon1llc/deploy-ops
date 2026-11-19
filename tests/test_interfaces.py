@@ -22,6 +22,51 @@ from deploy_ops.slack import Slack, verify_signature
 ADMIN = "operator-test-secret-" + "x" * 43
 
 
+# Audit export verifies the saved extent even when the controller receives a concurrent append
+@pytest.mark.parametrize("altered", [False, True])
+def test_audit_export_binds_exact_authenticated_rows(system, monkeypatch, tmp_path, altered):
+    from deploy_ops import gate_cli
+    from deploy_ops.store import Store
+    controller = system[0]
+    client = TestClient(create_app(controller.settings, ADMIN))
+    output = tmp_path / 'audit.json'
+    output.write_text('previous-completed-export')
+
+    # Keep authentication real while controlling a deterministic read/append boundary
+    class Transport:
+        # Bind only the test controller rather than inherited connection settings
+        def __init__(self, url):
+            pass
+
+        # Append after reading the exact authenticated exported extent
+        def call(self, method, path, body=None, operator=False):
+            assert operator
+            response = client.request(method, path, headers={"Authorization": "Bearer " + ADMIN}, json=body)
+            assert response.status_code == 200
+            result = response.json()
+            with controller.store.transaction() as connection:
+                controller.store.event(connection, 1800000000, 'fixture', 'append', 'export', {})
+            if path.endswith('/verify'):
+                return result
+            if altered:
+                result.append({'sequence': 99, 'payload': '{}', 'previous_hash': '', 'hash': ''})
+            return result
+
+    monkeypatch.setattr(gate_cli, 'Client', Transport)
+    args = gate_cli.parser().parse_args(['audit', '--out', str(output)])
+    if altered:
+        with pytest.raises(Refused, match='Audit chain'):
+            gate_cli._dispatch(args)
+        assert output.read_text() == 'previous-completed-export'
+    else:
+        result = gate_cli._dispatch(args)
+        rows = json.loads(output.read_text())
+        assert {key: result[key] for key in ('events', 'head', 'format')} == Store.verify_rows(rows)
+        assert result['sha256'] == hashlib.sha256(output.read_bytes()).hexdigest()
+        assert controller.store.verify()['events'] > result['events']
+        assert output.stat().st_mode & 0o777 == 0o600
+
+
 # Use fresh fixture keys without contacting the identity provider
 @pytest.fixture
 def signing():

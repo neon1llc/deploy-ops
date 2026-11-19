@@ -56,7 +56,7 @@ async function operatorLoad() {
   const root = element("operator-requests"); root.replaceChildren();
   if (!requests.length) text(root, "p", "No controller requests yet.");
   for (const request of requests) {
-    const control = button(request.manifest.target + " · " + request.status + " · " + request.id.slice(0, 8), async () => {
+    const control = button((request.history_scope === "active" ? "Current · " : "Recent · ") + request.manifest.target + " · " + request.status + " · " + request.id.slice(0, 8), async () => {
       operatorReview(await api("/operator/request?identifier=" + encodeURIComponent(request.id)));
       element("operator-heading").focus();
     });

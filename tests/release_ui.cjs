@@ -281,5 +281,16 @@ function control(key) {
   await control("serving-stop-web").onclick();
   assert.equal(calls.length, 1); assert.equal(calls[0].path, "/serving/stop");
   assert.equal(calls[0].body.id, "owned-session");
+  // A delayed earlier response for the same release cannot overwrite a newer observation
+  const pending = [];
+  context.delayed = () => new Promise(resolve => pending.push(resolve));
+  vm.runInContext('api=delayed', context);
+  const earlier = vm.runInContext('show("release-fixture")', context);
+  const later = vm.runInContext('show("release-fixture")', context);
+  pending[1]({...context.fixture, release: {...context.fixture.release, status: "newer-observation"}});
+  await later;
+  pending[0]({...context.fixture, release: {...context.fixture.release, status: "older-observation"}});
+  await earlier;
+  assert(nodes.get("detail").children[0].textContent.includes("newer-observation"));
   console.log("PASS: readable review, exact actions, guided receipts, duplicate blocking, draft retention and isolated prefill");
 })().catch(error => { console.error(error); process.exitCode = 1; });

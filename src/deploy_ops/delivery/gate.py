@@ -129,10 +129,10 @@ class LocalGate:
         return self.controller.decide(request_id, Decision(digest=digest, decision=decision), "local-operator")
 
     # Consume approval for this release and artifact exactly once
-    def claim(self, request: dict, release: dict):
+    def claim(self, request: dict, release: dict, local_input_check=None):
         self.grant(request["manifest"]["target"])
         return self.controller.claim(request["id"], Claim(digest=request["digest"],
-            artifact_digest=request["manifest"]["artifact_digest"]), self.source(release, release["environment"]))
+            artifact_digest=request["manifest"]["artifact_digest"]), self.source(release, release["environment"]), local_input_check)
 
     # Recheck the lease before continued local execution
     def heartbeat(self, lease):

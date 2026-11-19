@@ -46,8 +46,9 @@ def card(request: dict) -> dict:
         f"Request: {request['id']}",
         f"Digest: {request['digest']}",
     ]
-    if manifest["agent"]["label"]:
-        lines.append(f"Agent label (self-reported): {manifest['agent']['label']}")
+    caller = manifest.get("caller", manifest.get("agent", {}))
+    if caller.get("label"):
+        lines.append(f"Caller label (self-reported): {caller['label']}")
     blocks = [{"type": "section", "text": {"type": "plain_text", "text": "\n".join(lines)[:2900]}}]
     if changes:
         detail = "\n".join(f"{item['action']}: {item['address']}" for item in changes[:20])
@@ -115,7 +116,7 @@ class Slack:
             if command == "show" and len(words) == 2:
                 return {"response_type": "ephemeral", **card(self.controller.get(words[1]))}
             if command == "pending" and len(words) == 1:
-                requests = [item for item in self.controller.list_requests() if item["status"] == "pending"]
+                requests = [item for item in self.controller.active_requests() if item["status"] == "pending"]
                 text = "\n".join(
                     f"{item['id']}  {item['manifest']['target']}" for item in requests[:20]
                 ) or "No pending requests"

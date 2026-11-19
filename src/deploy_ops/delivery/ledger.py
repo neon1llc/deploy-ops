@@ -16,6 +16,19 @@ from ..store import Store
 # Store delivery progress beside the shared authority ledger
 class Ledger:
 
+    # Retained history reading does not initialize delivery tables or current authority
+    @classmethod
+    def open_existing(cls, state: Path):
+        ledger = cls.__new__(cls)
+        ledger.store = Store.open_existing(state / 'state.db')
+        with ledger.store.connect() as connection:
+            for table, fields in {'releases': {'id', 'environment', 'status', 'data'},
+                                  'release_events': {'sequence', 'release_id', 'time', 'name', 'detail'}}.items():
+                if not fields.issubset({row['name'] for row in connection.execute(f'PRAGMA table_info({table})')}):
+                    raise Refused("Retained delivery state is uninitialized or uses an unsupported schema", 503)
+        return ledger
+
+
     # Create additive delivery tables without replacing controller state
     def __init__(self, store: Store):
         self.store = store
@@ -24,6 +37,7 @@ class Ledger:
                 CREATE TABLE IF NOT EXISTS releases (
                     id TEXT PRIMARY KEY, environment TEXT NOT NULL, status TEXT NOT NULL, data TEXT NOT NULL
                 );
+                CREATE INDEX IF NOT EXISTS release_environment ON releases(environment);
                 CREATE TABLE IF NOT EXISTS release_events (
                     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
                     release_id TEXT NOT NULL, time INTEGER NOT NULL, name TEXT NOT NULL, detail TEXT NOT NULL
@@ -50,6 +64,20 @@ class Ledger:
     # Persist release state and its event atomically
     def save(self, release: dict, event: str | None = None, detail: dict | None = None) -> dict:
         with self.store.transaction() as connection:
+            row = connection.execute('SELECT data FROM releases WHERE id=?', (release['id'],)).fetchone()
+            current = json.loads(row[0]) if row else None
+            if current and event == 'release.cancel_requested':
+                if current['status'] in {'succeeded', 'failed', 'uncertain', 'cancelled'}:
+                    raise Refused('This release finished before cancellation could be recorded; inspect its outcome')
+                requested = release['status']
+                release.update(current)
+                release['status'] = requested
+            elif current and current['status'] in {'cancel_requested', 'cancelled'}:
+                # A stale component copy may update its facts, never erase an accepted stop
+                if event == 'release.succeeded':
+                    release['status'], event = 'cancelled', 'release.cancelled'
+                elif release['status'] not in {'failed', 'uncertain', 'cancelled'}:
+                    release['status'] = current['status']
             connection.execute(
                 "INSERT INTO releases VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
                 "status=excluded.status, data=excluded.data",
@@ -148,10 +176,26 @@ class Ledger:
 
     # Reuse successful outputs only under the same workspace contract
     def latest_outputs(self, environment: str, component: str, config_digest: str) -> dict | None:
-        for release in self.list():
-            if release["environment"] != environment or release["config_digest"] != config_digest:
-                continue
-            node = release["nodes"].get(component, {})
-            if node.get("status") == "succeeded":
-                return {"outputs": node["outputs"], "receipt": release["id"], "source": node["source"]}
+        # Stream only this environment's retained evidence, independently of display pagination
+        with self.store.connect() as connection:
+            rows = connection.execute("SELECT data FROM releases WHERE environment=? ORDER BY rowid DESC", (environment,))
+            for row in rows:
+                release = json.loads(row[0])
+                if release["config_digest"] != config_digest:
+                    continue
+                node = release["nodes"].get(component, {})
+                if node.get("status") == "succeeded":
+                    # Any later claim may have changed the producer even if it ultimately failed
+                    request_id = node.get('request_id')
+                    request = self.store.request(connection, request_id) if request_id else None
+                    if not request or request['status'] != 'succeeded':
+                        return None
+                    latest = connection.execute(
+                        "SELECT r.id FROM requests r JOIN audit a ON json_extract(a.payload, '$.object_id')=r.id "
+                        "WHERE r.target=? AND json_extract(a.payload, '$.event')='execution.claimed' "
+                        "ORDER BY a.sequence DESC LIMIT 1", (request['manifest']['target'],)
+                    ).fetchone()
+                    if not latest or latest['id'] != request_id:
+                        continue
+                    return {"outputs": node["outputs"], "receipt": release["id"], "source": node["source"]}
         return None

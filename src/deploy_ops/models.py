@@ -23,7 +23,7 @@ class Model(BaseModel):
 
 # Retain the identity claims required to bind source and execution attempts
 class Source(Model):
-    """Keep issuer-verified identity separate from the agent's own labels."""
+    """Keep issuer-verified identity separate from self-reported caller labels."""
 
     kind: Literal["github", "local"] = "github"
     repository: str
@@ -52,10 +52,16 @@ class Source(Model):
 
 # Carry optional caller labels separately from authenticated claims
 class Agent(Model):
-    """Describe the caller without treating its self-report as authentication."""
+    """Read the version 1 caller contract without changing approved historical bytes."""
 
     label: str = Field(default="", max_length=120)
     model: str = Field(default="", max_length=120)
+    run: str = Field(default="", max_length=160)
+
+
+# New requests collect only neutral self-reported operation labels
+class Caller(Model):
+    label: str = Field(default="", max_length=120)
     run: str = Field(default="", max_length=160)
 
 
@@ -115,6 +121,7 @@ class IsolatedPacket(Model):
 
 # Bind the reviewed plan to artifact, tool and optional dependency evidence
 class Proposal(Model):
+    schema_version: Literal[1, 2] = 2
     target: Slug
     engine: Engine
     artifact_digest: Digest
@@ -122,10 +129,30 @@ class Proposal(Model):
     tool_version: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9._+-]+$")
     lock_digest: Digest | None = None
     estimated_monthly_delta_cents: int | None = Field(default=None, ge=-100000000, le=100000000)
-    agent: Agent = Field(default_factory=Agent)
+    caller: Caller | None = None
+    agent: Agent | None = None
     receipts: dict[str, ReceiptReference] = Field(default_factory=dict)
     planning_request: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
     isolated_packet: IsolatedPacket | None = None
+
+
+    # Legacy producers without a format marker retain the original manifest contract
+    @model_validator(mode="before")
+    @classmethod
+    def legacy_format(cls, value):
+        if isinstance(value, dict) and "schema_version" not in value and value.get("agent") is not None:
+            return {**value, "schema_version": 1}
+        return value
+
+
+    # Never silently drop caller fields or reinterpret a mixed-version request
+    @model_validator(mode="after")
+    def caller_contract(self):
+        if self.schema_version == 1 and self.caller is not None:
+            raise ValueError("Version 1 requests use the legacy caller contract")
+        if self.schema_version == 2 and self.agent is not None:
+            raise ValueError("Version 2 requests use caller labels only")
+        return self
 
 
     # Require dependency identity for saved-plan engines

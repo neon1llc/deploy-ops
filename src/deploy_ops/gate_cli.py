@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from .client import Client, file_digest, github_token, private_json
 from .config import load
 from .errors import Refused
-from .models import Agent, Proposal
+from .models import Caller, Proposal
 
 
 # Expose planning, review and execution as separate commands
@@ -42,7 +42,8 @@ def parser() -> argparse.ArgumentParser:
     plan.add_argument("--workspace", type=Path, default=Path.cwd())
     plan.add_argument("--out", type=Path, default=Path(".deploy_ops"))
     plan.add_argument("--cost-file", type=Path)
-    plan.add_argument("--agent-label", default="")
+    plan.add_argument("--caller-label", dest="caller_label", default="", help="Self-reported caller label, separate from verified identity")
+    plan.add_argument("--agent-label", dest="caller_label", help=argparse.SUPPRESS)
     prepare = commands.add_parser("prepare", help="Wrap a plan produced by an existing trusted pipeline")
     prepare.add_argument("--target", required=True)
     prepare.add_argument("--engine", choices=["terraform", "opentofu", "manifest"], required=True)
@@ -51,7 +52,8 @@ def parser() -> argparse.ArgumentParser:
     prepare.add_argument("--lock-file", type=Path)
     prepare.add_argument("--tool-version", required=True)
     prepare.add_argument("--cost-file", type=Path)
-    prepare.add_argument("--agent-label", default="")
+    prepare.add_argument("--caller-label", dest="caller_label", default="", help="Self-reported caller label, separate from verified identity")
+    prepare.add_argument("--agent-label", dest="caller_label", help=argparse.SUPPRESS)
     prepare.add_argument("--out", type=Path, required=True)
     submit = commands.add_parser("submit")
     submit.add_argument("proposal", type=Path)
@@ -134,7 +136,7 @@ def _dispatch(args):
     if args.command == "plan":
         from .runner import plan
         return plan(client, args.target, args.engine, args.workspace, args.out,
-                    Agent(label=args.agent_label), args.cost_file)
+                    Caller(label=args.caller_label), args.cost_file)
     if args.command == "prepare":
         from .plans import cost_delta
         cost = cost_delta(json.loads(args.cost_file.read_text())) if args.cost_file else None
@@ -142,7 +144,7 @@ def _dispatch(args):
                             artifact_digest=file_digest(args.artifact),
                             preview=json.loads(args.plan_json.read_text()), tool_version=args.tool_version,
                             lock_digest=file_digest(args.lock_file) if args.lock_file else None,
-                            estimated_monthly_delta_cents=cost, agent=Agent(label=args.agent_label))
+                            estimated_monthly_delta_cents=cost, caller=Caller(label=args.caller_label))
         private_json(args.out, proposal.model_dump())
         return {"written": str(args.out), "note": "Contains raw plan data. Do not commit this file"}
     if args.command == "submit":
@@ -211,11 +213,15 @@ def _dispatch(args):
         return client.call("POST", f"/v1/admin/requests/{args.request_id}/resolve",
                            {"outcome": args.outcome, "note": args.note}, operator=True)
     if args.command == "audit":
-        result = client.call("GET", "/v1/admin/audit/verify", operator=True)
         if args.out:
-            private_json(args.out, client.call("GET", "/v1/admin/audit", operator=True))
-            result["export"] = str(args.out)
-        return result
+            from .store import Store
+            rows = client.call("GET", "/v1/admin/audit", operator=True)
+            if not isinstance(rows, list):
+                raise Refused("Controller returned an invalid audit export", 503)
+            result = Store.verify_rows(rows)
+            private_json(args.out, rows)
+            return {**result, "export": str(args.out), "sha256": file_digest(args.out)}
+        return client.call("GET", "/v1/admin/audit/verify", operator=True)
     raise Refused("Unsupported command", 422)
 
 

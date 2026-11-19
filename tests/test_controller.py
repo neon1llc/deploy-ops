@@ -12,6 +12,68 @@ from deploy_ops.errors import Refused
 from deploy_ops.models import Claim, Completion, Decision, DelegationSpec, Resolution
 
 
+# Versioned caller labels preserve legacy approved digests and verified identity
+def test_neutral_caller_contract_preserves_legacy_requests(system, proposal, source):
+    from deploy_ops.config import canonical, fingerprint
+    from deploy_ops.models import Caller, Proposal
+    from deploy_ops.service import Controller
+    controller, target, _ = system
+    legacy_body = proposal.model_dump(exclude={'schema_version', 'caller', 'agent'})
+    legacy_body['agent'] = {'label': 'legacy-caller', 'model': 'retained-model-label', 'run': 'old-run'}
+    legacy = controller.submit(Proposal.model_validate(legacy_body), source)
+    assert 'schema_version' not in legacy['manifest']
+    assert fingerprint(legacy['manifest']) == legacy['digest']
+    approved = approve(controller, legacy)
+    old_bytes = canonical(approved['manifest'])
+    audit = controller.store.audit()
+    neutral = controller.submit(Proposal.model_validate({**proposal.model_dump(),
+                                'caller': Caller(label='release-job', run='build-1').model_dump()}), source)
+    assert neutral['manifest']['schema_version'] == 2
+    assert neutral['manifest']['caller']['label'] == 'release-job'
+    assert 'agent' not in neutral['manifest']
+    assert 'model' not in neutral['manifest']['caller']
+    assert neutral['manifest']['source'] == source.model_dump()
+    assert neutral['digest'] != legacy['digest']
+    reopened = Controller(controller.settings, controller.store, controller.now)
+    assert canonical(reopened.get(legacy['id'])['manifest']) == old_bytes
+    assert reopened.get(legacy['id'])['digest'] == approved['digest']
+    assert controller.store.audit()[:len(audit)] == audit
+    assert claim(reopened, target, approved)['request_id'] == legacy['id']
+
+
+# Mixed and unknown new caller fields are refused rather than silently discarded
+@pytest.mark.parametrize('change', [{'caller': {'model': 'unnecessary'}},
+    {'schema_version': 2, 'agent': {'label': 'legacy'}},
+    {'schema_version': 1, 'caller': {'label': 'new'}}])
+def test_caller_contract_refuses_mixed_metadata(proposal, change):
+    from pydantic import ValidationError
+    from deploy_ops.models import Proposal
+    with pytest.raises(ValidationError):
+        Proposal.model_validate({**proposal.model_dump(), **change})
+
+
+# Use a separate synthetic human for exact-digest approval
+@pytest.mark.parametrize('uncertain', [False, True])
+def test_active_blocker_outlives_bounded_history(system, proposal, source, uncertain):
+    controller, target, _ = system
+    first = approve(controller, controller.submit(proposal, source))
+    claim(controller, target, first)
+    if uncertain:
+        controller.pause(True, 'human')
+        controller.pause(False, 'human')
+    for index in range(105):
+        request = controller.submit(proposal.model_copy(update={'artifact_digest': f'{index + 1:064x}'}), source)
+        controller.decide(request['id'], Decision(digest=request['digest'], decision='reject'), 'human')
+    assert len(controller.list_requests()) == 100
+    assert first['id'] not in {item['id'] for item in controller.list_requests()}
+    assert first['id'] in {item['id'] for item in controller.active_requests()}
+    assert controller.active_requests(['other-target']) == []
+    last = approve(controller, controller.submit(proposal.model_copy(update={'artifact_digest': 'e' * 64}), source))
+    with pytest.raises(Refused, match=first['id']):
+        claim(controller, target, last)
+    assert controller.get(last['id'])['status'] == 'approved'
+
+
 # Use a separate synthetic human for exact-digest approval
 def approve(controller, request):
     return controller.decide(request["id"], Decision(digest=request["digest"], decision="approve"), "human")

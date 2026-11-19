@@ -31,6 +31,223 @@ def engine(tmp_path):
     return Engine(create(tmp_path / "workspace"))
 
 
+# Retained dependency discovery is independent of the operator's recent-history page
+def test_dependency_outputs_survive_long_unrelated_history(engine):
+    first = finish(engine, engine.create("development", "foundation"))
+    for _ in range(205):
+        engine.create("staging", "foundation")
+    assert first["id"] not in {item["id"] for item in engine.ledger.list()}
+    release = engine.advance(engine.create("development", "web", False)["id"])
+    assert release["status"] == "waiting"
+    assert release["nodes"]["web"]["dependency_receipts"] == {"foundation": first["id"]}
+    assert engine.ledger.latest_outputs("staging", "foundation", engine.spec.digest) is None
+    assert engine.ledger.latest_outputs("development", "foundation", "changed-contract") is None
+
+
+# Display clipping cannot remove context needed to recognize a synthetic credential
+def test_approved_local_inputs_cannot_silently_change_producer(engine):
+    first = finish(engine, engine.create('development', 'foundation'))
+    app = engine.advance(engine.create('development', 'web', False)['id'])
+    node = app['nodes']['web']
+    path = engine.state / 'releases' / app['id'] / 'web' / 'prepared.json'
+    original = path.read_bytes()
+    assert json.loads(original)['local_dependencies']['foundation']['release_id'] == first['id']
+    newer = finish(engine, engine.create('development', 'foundation'))
+    assert newer['id'] != first['id']
+    engine.approve(app['id'], 'web', node['request_digest'])
+    refused = engine.advance(app['id'])
+    assert refused['status'] == 'failed'
+    assert 'dependency changed' in refused['reason']
+    assert refused['nodes']['web']['dependency_receipts']['foundation'] == first['id']
+    assert path.read_bytes() == original
+    assert engine.gate.status(node['request_id'])['status'] == 'approved'
+
+
+# A later producer claim invalidates older outputs even when the attempted mutation fails
+def test_output_generation_follows_claim_order_instead_of_creation_order(engine):
+    older = engine.create('development', 'foundation')
+    newer = finish(engine, engine.create('development', 'foundation'))
+    applied_last = finish(engine, older)
+    receipt = engine.ledger.latest_outputs('development', 'foundation', engine.spec.digest)
+    assert receipt['receipt'] == applied_last['id']
+    assert receipt['receipt'] != newer['id']
+
+
+# A later producer claim invalidates older outputs even when the attempted mutation fails
+def test_interrupted_producer_blocks_predecessor_reuse(engine, monkeypatch):
+    from deploy_ops.delivery.adapters import local
+    finish(engine, engine.create('development', 'foundation'))
+    producer = engine.advance(engine.create('development', 'foundation')['id'])
+    node = producer['nodes']['foundation']
+    engine.approve(producer['id'], 'foundation', node['request_digest'])
+
+    # A lost result cannot prove that the provider made no change
+    def lost_result(*args):
+        raise Refused('Synthetic lost apply result')
+
+    monkeypatch.setattr(local, 'apply', lost_result)
+    assert engine.advance(producer['id'])['status'] == 'uncertain'
+    assert engine.ledger.latest_outputs('development', 'foundation', engine.spec.digest) is None
+    app = engine.advance(engine.create('development', 'web', False)['id'])
+    assert app['status'] == 'failed'
+    assert 'Deploy dependency foundation' in app['reason']
+    assert not app['nodes']['web'].get('request_id')
+
+
+# Components from one repository share a single frozen capture despite later working-file edits
+def test_release_freezes_each_repository_once(engine, monkeypatch):
+    from deploy_ops.delivery import engine as engine_module
+    from deploy_ops.delivery.configuration import add
+    source = add(engine.path.read_text(), 'components', 'other', {
+        'repository': 'application', 'kind': 'application', 'adapter': 'static',
+        'options': {'directory': '.'}})['toml']
+    engine.path.write_text(source)
+    engine = Engine(engine.path)
+    snapshot = engine_module.snapshot
+    calls = []
+
+    # Move the original input after capture; both component copies must retain the captured bytes
+    def capture(repository, base, destination):
+        calls.append(repository.path)
+        result = snapshot(repository, base, destination)
+        if repository.path == 'application':
+            (base / 'application' / 'later.txt').write_text('After the repository freeze')
+        return result
+
+    monkeypatch.setattr(engine_module, 'snapshot', capture)
+    release = engine.create('development')
+    assert calls.count('application') == 1
+    assert release['nodes']['web']['source'] == release['nodes']['other']['source']
+    assert not (engine.state / 'releases' / release['id'] / 'other' / 'source' / 'later.txt').exists()
+
+
+# Display clipping cannot remove context needed to recognize a synthetic credential
+@pytest.mark.parametrize("kind", ["registered", "assignment", "multibyte"])
+def test_command_redacts_before_display_clipping(engine, kind):
+    release = engine.create("development", "foundation")
+    secret = "synthetic-boundary-value-0123456789"
+    prefix = "password=" if kind == "assignment" else ""
+    suffix = "界" * 3980 if kind == "multibyte" else "x" * 3980
+    text = prefix + secret + " " + suffix
+    events = []
+
+    # Use the normal ledger so persisted diagnostics have the same privacy boundary
+    def emit(name, detail):
+        events.append((name, detail))
+        engine.ledger.event(release["id"], name, detail)
+
+    process = Process(engine.state, emit, {} if kind == "assignment" else {"TEST_TOKEN": secret})
+    returned = process.run([sys.executable, "-c", "print(" + repr(text) + ", end='')"], engine.state)
+    assert returned == text
+    display = next(detail["text"] for name, detail in events if name == "command.output")
+    assert len(display) <= 4000
+    assert "0123456789" not in display
+    headers = {"Authorization": "Bearer " + "t" * 40}
+    client = TestClient(create_app(engine, "t" * 40), base_url="http://127.0.0.1:8765")
+    response = client.get("/api/releases/" + release["id"], headers=headers)
+    assert response.status_code == 200
+    assert "0123456789" not in response.text
+    assert "0123456789" not in json.dumps(engine.ledger.store.audit())
+    assert engine.ledger.store.verify()["events"] > 0
+
+
+# Deliver and promote one artifact through the full local lifecycle
+def test_retained_history_needs_no_current_engine(engine, monkeypatch):
+    from deploy_ops.cli import dispatch, parser
+    from deploy_ops.delivery.ledger import Ledger
+    release = finish(engine, engine.create('development', 'foundation'))
+    audit = engine.ledger.store.audit()
+    engine.path.write_text('invalid = [ workspace')
+    monkeypatch.setenv('DEPLOY_OPS_ISOLATED_GRANT_FILE', '/missing/registration')
+
+    # Read construction must never consult current execution or grant configuration
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Engine construction during retained read')
+
+    monkeypatch.setattr(Engine, '__init__', forbidden)
+    args = ['--project', str(engine.path), '--state', str(engine.state)]
+    assert dispatch(parser().parse_args([*args, 'status', release['id']])) == release
+    assert dispatch(parser().parse_args([*args, 'events', release['id']]))
+    reader = Ledger.open_existing(engine.state)
+    assert reader.store.audit() == audit
+    with pytest.raises(Refused, match='cannot mutate'):
+        reader.save(release)
+
+
+# Mistyped locations and unsupported versions never create or modify retained state
+def test_retained_inspection_refuses_missing_and_unknown_state(engine, tmp_path):
+    from deploy_ops.delivery.ledger import Ledger
+    missing = tmp_path / 'missing' / 'state'
+    with pytest.raises(Refused, match='not found'):
+        Ledger.open_existing(missing)
+    assert not missing.parent.exists()
+    with engine.ledger.store.connect() as connection:
+        connection.execute('PRAGMA user_version=99')
+    database = engine.ledger.store.path
+    original = database.read_bytes()
+    with pytest.raises(Refused, match='Unsupported database version'):
+        Ledger.open_existing(engine.state)
+    assert database.read_bytes() == original
+
+
+# Read-only inspection includes committed live WAL data without checkpointing it away
+def test_retained_reader_sees_live_wal(engine):
+    from deploy_ops.delivery.ledger import Ledger
+    with engine.ledger.store.connect() as keeper:
+        keeper.execute('SELECT COUNT(*) FROM releases').fetchone()
+        release = engine.create('development', 'foundation')
+        assert engine.ledger.store.path.with_name('state.db-wal').stat().st_size > 0
+        assert Ledger.open_existing(engine.state).get(release['id']) == release
+
+
+# Deliver and promote one artifact through the full local lifecycle
+def test_recovery_preserves_controller_completion_after_process_death(engine):
+    release = engine.advance(engine.create('development', 'foundation')['id'])
+    node = release['nodes']['foundation']
+    engine.approve(release['id'], 'foundation', node['request_digest'])
+    script = '''
+import os, sys
+from pathlib import Path
+from deploy_ops.delivery.engine import Engine
+engine = Engine(Path(sys.argv[1]))
+save = engine.ledger.save
+# Exit after controller completion and before the release journal can retain outputs
+def cut(release, event=None, detail=None):
+    if event == 'component.succeeded':
+        os._exit(73)
+    return save(release, event, detail)
+engine.ledger.save = cut
+engine.advance(sys.argv[2])
+'''
+    result = subprocess.run([sys.executable, '-c', script, str(engine.path), release['id']],
+                            capture_output=True, timeout=20)
+    assert result.returncode == 73
+    assert engine.gate.status(node['request_id'])['status'] == 'succeeded'
+    assert engine.ledger.get(release['id'])['nodes']['foundation']['status'] == 'running'
+    audit = engine.ledger.store.audit()
+    recovered = Engine(engine.path).recover(release['id'], 'Inspected completed local directory after the stopped worker')
+    assert recovered['nodes']['foundation']['status'] == 'unverified'
+    assert recovered['nodes']['foundation']['controller_outcome'] == 'succeeded'
+    assert not recovered['nodes']['foundation'].get('outputs')
+    assert engine.gate.status(node['request_id'])['status'] == 'succeeded'
+    assert engine.ledger.store.audit()[:len(audit)] == audit
+    events = engine.ledger.events(release['id'])
+    assert Engine(engine.path).recover(release['id'], 'Repeated inspection of the same completed local directory') == recovered
+    assert engine.ledger.events(release['id']) == events
+    assert len(list(engine.deployments.rglob('resource.json'))) == 1
+
+
+# Deliver and promote one artifact through the full local lifecycle
+def test_overlapping_registered_values_preserve_no_display_fragments(tmp_path):
+    text = 'abcdefghijklmnopqrstuv abcdefghijklmnopqrstuv'
+    events = []
+    process = Process(tmp_path, lambda name, detail: events.append((name, detail)),
+                      {'FIRST_TOKEN': 'abcdefghijklmno', 'SECOND_TOKEN': 'klmnopqrstuv'})
+    assert process.run([sys.executable, '-c', 'print(' + repr(text) + ', end="")'], tmp_path) == text
+    display = next(detail['text'] for name, detail in events if name == 'command.output')
+    assert display == '[redacted] [redacted]'
+
+
 # Deliver and promote one artifact through the full local lifecycle
 def test_complete_delivery_and_promotion(tmp_path):
     result = run(tmp_path / "complete")
@@ -66,6 +283,39 @@ def test_changed_evidence_cannot_execute(engine, area):
     result = engine.advance(release["id"])
     assert result["status"] == "failed"
     assert not list(engine.deployments.glob("**/current.json"))
+
+
+# Cancellation invalidates pending and already approved local authority
+@pytest.mark.parametrize('last_component', [False, True])
+def test_cancellation_survives_component_completion(engine, monkeypatch, last_component):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    engine.gate.delegate('development', 1, 1)
+    release = engine.create('development', 'foundation' if last_component else None)
+    entered, proceed = threading.Event(), threading.Event()
+    save = engine.ledger.save
+
+    # Stop with the controller finished but the stale release copy still waiting to be saved
+    def completion_barrier(current, event=None, detail=None):
+        if event == 'component.succeeded' and detail['component'] == 'foundation':
+            entered.set()
+            assert proceed.wait(10)
+        return save(current, event, detail)
+
+    monkeypatch.setattr(engine.ledger, 'save', completion_barrier)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        worker = pool.submit(engine.advance, release['id'])
+        assert entered.wait(10)
+        try:
+            assert engine.cancel(release['id'])['status'] == 'cancel_requested'
+        finally:
+            proceed.set()
+        result = worker.result(timeout=10)
+    assert result['status'] == 'cancelled'
+    assert result['nodes']['foundation']['status'] == 'succeeded'
+    assert not any(event['name'] == 'component.preparing' and event['detail'].get('component') == 'web'
+                   for event in engine.ledger.events(release['id']))
+    assert not list(engine.deployments.rglob('current.json'))
 
 
 # Cancellation invalidates pending and already approved local authority

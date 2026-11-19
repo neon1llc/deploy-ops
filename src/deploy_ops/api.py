@@ -196,6 +196,13 @@ def create_app(settings: Settings, admin_token: str, verifier=None) -> FastAPI:
 
 
     # Require operator access for cross-target request history
+    @app.get("/v1/admin/requests/active")
+    def active_requests(request: Request):
+        admin(request)
+        return controller.active_requests()
+
+
+    # Require operator access for bounded cross-target request history
     @app.get("/v1/admin/requests")
     def list_requests(request: Request):
         admin(request)

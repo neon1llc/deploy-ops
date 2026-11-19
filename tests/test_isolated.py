@@ -118,6 +118,63 @@ image_repository = "${outputs.foundation.image_repository}"
 
 
 # Complete separate exact planning and apply approvals through the shared controller
+@pytest.mark.parametrize('drift', ['lock', 'expiry'])
+def test_generic_controls_use_isolated_action_owner(setup, monkeypatch, drift):
+    from deploy_ops.delivery.operator import Operator
+    route, path, data = setup
+    monkeypatch.setenv('DEPLOY_OPS_ISOLATED_GRANT_FILE', str(route.path))
+    engine = Engine(path)
+    operator = Operator(engine)
+    request = engine.gate.route.prepare()
+    if drift == 'lock':
+        Path(data['lock_file']).write_text('Changed provider lock')
+    else:
+        changed = json.loads(route.path.read_text())
+        changed['expires_at'] = int(time.time()) - 1
+        route.path.write_text(json.dumps(changed))
+    with pytest.raises(Refused):
+        operator.call('decision', request['id'], {'digest': request['digest'], 'decision': 'approve'})
+    assert operator.call('request', request['id'])['status'] == 'pending'
+    assert operator.call('decision', request['id'], {'digest': request['digest'], 'decision': 'reject'})['status'] == 'rejected'
+    assert operator.call('pause')['paused'] is True
+    assert operator.call('resume')['paused'] is False
+    assert operator.status()['mode'] == 'isolated-operator'
+
+
+# CLI, route and generic resolution share one durable isolated worker guard
+def test_running_isolated_worker_blocks_every_local_resolution(setup, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    from deploy_ops.delivery.operator import Operator
+    route, path, _ = setup
+    monkeypatch.setenv('DEPLOY_OPS_ISOLATED_GRANT_FILE', str(route.path))
+    operator = Operator(Engine(path))
+    request = route.prepare()
+    route.approve(request['id'], request['digest'])
+    entered, proceed = threading.Event(), threading.Event()
+    run = route.runner.run
+
+    # Hold the fake native boundary after real admission while another entry point attempts resolution
+    def barrier(*args):
+        entered.set()
+        assert proceed.wait(10)
+        return run(*args)
+
+    monkeypatch.setattr(route.runner, 'run', barrier)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        worker = pool.submit(route.execute, request['id'])
+        assert entered.wait(10)
+        try:
+            with pytest.raises(Refused, match='worker process still exists'):
+                operator.call('resolve', request['id'], {'outcome': 'failed', 'note': 'Cannot resolve a live fixture worker'})
+            with pytest.raises(Refused, match='worker process still exists'):
+                route.reconcile(request['id'], request['digest'], 'Cannot resolve a live fixture worker')
+        finally:
+            proceed.set()
+        assert worker.result(timeout=10)['status'] == 'pending'
+
+
+# Complete separate exact planning and apply approvals through the shared controller
 def produce(route):
     planning = route.prepare()
     assert planning["manifest"]["source"]["kind"] == "local"

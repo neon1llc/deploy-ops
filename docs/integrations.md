@@ -50,4 +50,4 @@ An adapter must own its real guarantees. Unsupported fields and action types mus
 
 The cloud exchange functions are in [clouds.py](../src/deploy_ops/clouds.py). The authority service never needs your cloud administrator credentials. AWS role sessions include the request ID, and the ledger keeps GitHub run and actor IDs.
 
-A distinct GitHub App or bot identity can initiate an agent's workflow. This release consumes that GitHub provenance. It doesn't create the App, issue installation tokens, merge PRs, or govern every agent tool call.
+A distinct GitHub App or bot identity can initiate an automated workflow. This release consumes that GitHub provenance. It doesn't create the App, issue installation tokens, merge PRs, or govern every caller operation.
