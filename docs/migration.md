@@ -118,3 +118,18 @@ The optional local listener follows the existing reviewed static target without 
 prepared-envelope, database or pointer formats. Fixed revision serving remains the default. Target
 mode requires physical ownership in adapter contract 2 and refuses isolated previews or legacy
 ownership evidence. Existing revisions and audit bytes are preserved. See [local serving](local-serving.md).
+
+## Separate local activation
+
+Static `activation = "separate"` prepares adapter contract 3; direct activation continues to prepare
+contract 2. Readers preserve contracts 1/2, and old approved bytes are not reserialized. A separate
+candidate needs an existing baseline and fresh matching dependency receipts after a workspace change.
+New manual route/retirement requests and per-operation `rollouts/` plans use the existing controller
+and release journal; there is no database schema migration or implicit listener adoption. Ordinary local
+static targets gain deletion authority only through this opt-in profile's manual retirement proposals;
+existing isolated-preview cleanup remains separate.
+
+The new version 1 rollout snapshot has its own offline reader and no execution authority. Deployment
+inspection formats 1/2 refuse separately activated releases because their component outcome does not
+represent routing completion. Required notices and existing history remain unchanged. See
+[local rollout](local-rollouts.md) for operation, interruption, backup and inspection behavior.

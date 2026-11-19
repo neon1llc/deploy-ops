@@ -121,14 +121,20 @@ async function api(path, method = "GET", body) {
 // Save only the backend's inspection projection; the offline report has no execution controls
 async function saveInspection(id, report) {
   const data = await api('/releases/' + id + '/inspection' + (report ? '?report=true' : ''));
-  const blob = new Blob([report ? data.html : JSON.stringify(data, null, 2) + '\n'],
-    {type: report ? 'text/html;charset=utf-8' : 'application/json'});
+  downloadInspection(report ? data.html : JSON.stringify(data, null, 2) + '\n',
+    report ? 'text/html;charset=utf-8' : 'application/json', 'deployment-inspection-' + id + (report ? '.html' : '.json'));
+  message('Inspection download requested. Open the report locally for offline review; it does not check current cloud health.');
+}
+
+
+// Share the existing browser download boundary without persisting credentials or state
+function downloadInspection(content, type, filename) {
+  const blob = new Blob([content], {type});
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a'); link.href = url;
-  link.download = 'deployment-inspection-' + id + (report ? '.html' : '.json');
+  link.download = filename;
   document.body.append(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
-  message('Inspection download requested. Open the report locally for offline review; it does not check current cloud health.');
 }
 
 
@@ -469,7 +475,105 @@ function reviewWorkflow(root, workflow) {
 // Keep local serving separate from activation, authority and preview cleanup
 function renderServing(area, release, name, sessions) {
   renderServingMode(area, release, name, sessions, "revision");
-  if (!release.preview && release.nodes[name].physical_target) renderServingMode(area, release, name, sessions, "target");
+  if (!release.preview && release.nodes[name].physical_target
+      && (release.nodes[name].outputs?.activation !== "candidate" || release.nodes[name].outputs?.pointer)) renderServingMode(area, release, name, sessions, "target");
+}
+
+
+// Retain the operator's unfinished inspection note across ordinary detail polling
+const rolloutNotes = new Map();
+
+
+// Keep candidate readiness, route authority, actual switching and old-file retirement visibly separate
+function renderRollout(area, release, name, data, expanded) {
+  const id = release.id;
+  const operation = release.rollout;
+  const timestamp = value => Number.isFinite(value) ? new Date(value * 1000).toLocaleString() : 'Not observed';
+  text(area, "h4", "Local blue-green rollout");
+  text(area, "p", "This deployment staged a candidate. The active route changes only through a separate reviewed switch. Static readiness measures HTTP and exact index bytes; it does not run browser scripts or verify artifact signatures.");
+  async function act(action, body, status) {
+    await api("/releases/" + id + "/rollout/" + action, "POST", body);
+    if (selected !== id || !token) return;
+    await show(id); message(status);
+    if (document.activeElement === document.body) element("detail-heading").focus({preventScroll: true});
+  }
+  if (!operation || operation.status === "reconciled") {
+    area.append(button("Measure candidate and prepare switch", () => act("prepare", {component: name}, "Readiness measured. Review the exact switch request before approving."), "rollout-prepare-" + name));
+  }
+  if (!operation || operation.component !== name) return;
+  reviewFacts(area, [["Route operation", operation.status], ["Last phase", operation.phase],
+    ["Candidate readiness", operation.plan?.readiness?.status], ["Readiness observed", timestamp(operation.plan?.readiness?.observed_at)],
+    ["Post-check", operation.post_check?.status || "Not observed"], ["Post-check observed", timestamp(operation.post_check?.observed_at)]]);
+  if (operation.reason) text(area, "p", "Inspection needed: " + operation.reason);
+  reviewEvidence(area, name + ":rollout-plan", "Exact baseline, candidate and switch plan", operation.plan, expanded);
+  const request = data.rollout_requests?.switch;
+  if (request) {
+    reviewFacts(area, [["Switch request", operation.request_id], ["Approval", request.status], ["Digest", request.digest]]);
+    reviewTiming(area, request.timing);
+  }
+  if (operation.status === "waiting" && request?.digest === operation.request_digest) {
+    if (["pending", "approved"].includes(request.status)) area.append(button("Withdraw unclaimed route switch", async () => {
+      if (!await confirmAction("Withdraw this exact unclaimed switch request? The active route and both revisions remain.")) return;
+      await act("cancel", {digest: request.digest}, "Unclaimed switch withdrawn. The route was not changed.");
+    }, "rollout-cancel-" + name));
+    if (request.status === "pending") area.append(button("Approve exact route switch", async () => {
+      if (!await confirmAction("Approve only this baseline-to-candidate route switch? The current route stays unchanged until separate execution. Previous capacity remains.")) return;
+      await act("approve", {digest: request.digest}, "Switch approved and held. Execute separately to change the route.");
+    }, "rollout-approve-" + name));
+    if (request.status === "approved" && observedClaimWindow(request)) area.append(button("Execute approved route switch", async () => {
+      if (!await confirmAction("Switch the displayed active target to the measured candidate now? A failed post-check will retain uncertainty and the previous files; it will not automatically roll back.")) return;
+      await act("switch", {}, "Switch completed. Inspect the measured post-check; previous capacity remains.");
+    }, "rollout-switch-" + name));
+  }
+  area.append(button("Inspect actual route and retained capacity", async () => {
+    const observed = await api("/releases/" + id + "/rollout");
+    if (selected !== id || !token) return;
+    message("Actual route: " + observed.route + " · candidate: " + observed.candidate + " · baseline: " + observed.baseline + " · controller: " + observed.controller_completion + ". No mutation replayed.");
+  }, "rollout-inspect-" + name));
+  const retirement = operation.retirement;
+  if (["succeeded", "switched-inspected"].includes(operation.status) && !["preparing", "waiting", "running", "uncertain"].includes(retirement?.status)) {
+    area.append(button("Measure active route again", () => act("check", {}, "Active route post-check recorded. Inspect its result before preparing retirement."), "rollout-check-" + name));
+    if (operation.post_check?.status === "matching" && (!retirement || retirement.status === "reconciled")) area.append(button("Prepare previous revision retirement", () => act("prepare-retirement", {component: name}, "Retirement prepared. Review exact removals and retained data; nothing was deleted."), "rollout-retirement-prepare-" + name));
+  }
+  if (retirement) {
+    text(area, "p", "Previous-capacity retirement: " + retirement.status + ". Source artifacts and audit remain.");
+    if (retirement.plan) text(area, "p", retirement.plan.delete.length + " reviewed files selected for deletion · " + retirement.plan.retain.length + " modified or unrecognized files retained.");
+    reviewEvidence(area, name + ":retirement-plan", "Exact deletion and retention plan", retirement.plan, expanded);
+    const approved = data.rollout_requests?.retirement;
+    if (approved) reviewFacts(area, [["Retirement request", retirement.request_id], ["Approval", approved.status], ["Digest", approved.digest]]);
+    if (retirement.status === "waiting" && approved?.digest === retirement.request_digest) {
+      if (["pending", "approved"].includes(approved.status)) area.append(button("Withdraw unclaimed retirement", async () => {
+        if (!await confirmAction("Withdraw this exact unclaimed retirement request? Previous files remain.")) return;
+        await act("cancel-retirement", {digest: approved.digest}, "Unclaimed retirement withdrawn. No files deleted.");
+      }, "rollout-retirement-cancel-" + name));
+      if (approved.status === "pending") area.append(button("Approve exact previous-file retirement", async () => {
+        if (!await confirmAction("Approve only the displayed previous-revision file deletions? Modified, unknown and listed retained data remain. Execution is separate.")) return;
+        await act("approve-retirement", {digest: approved.digest}, "Retirement approved and held. No files deleted.");
+      }, "rollout-retirement-approve-" + name));
+      if (approved.status === "approved" && observedClaimWindow(approved)) area.append(button("Retire approved previous files", async () => {
+        if (!await confirmAction("Delete only the approved unchanged previous-revision files now? The active candidate, source artifacts and audit remain. Partial outcomes require inspection.")) return;
+        await act("retire", {}, "Previous-capacity retirement recorded. Inspect retained data and outcome.");
+      }, "rollout-retire-" + name));
+    }
+  }
+  const recovery = data.rollout_recovery;
+  if (recovery?.available) {
+    const form = document.createElement("form"); form.method = "post";
+    const label = document.createElement("label"); label.htmlFor = "rollout-note-" + name; label.textContent = "Inspection note";
+    const note = document.createElement("textarea"); note.id = label.htmlFor; note.required = true; note.minLength = 10; note.maxLength = 500;
+    note.dataset.key = "rollout-note-" + name; note.value = rolloutNotes.get(id) || "";
+    note.oninput = () => rolloutNotes.set(id, note.value);
+    const submit = document.createElement("button"); submit.type = "submit"; submit.textContent = "Reconcile inspected rollout";
+    submit.dataset.key = "rollout-reconcile-" + name;
+    form.onsubmit = async event => {
+      event.preventDefault(); if (!form.reportValidity() || acting) return;
+      acting = true; submit.disabled = true;
+      try { await act("reconcile", {note: note.value}, "Inspection reconciled. Prior controller success was not fabricated; any fresh mutation needs new authority."); }
+      catch (error) { message(error.message); }
+      finally { acting = false; submit.disabled = false; }
+    };
+    form.append(label, note, submit); area.append(form);
+  } else if (recovery?.reason) text(area, "p", recovery.reason);
 }
 
 
@@ -521,7 +625,14 @@ async function show(id) {
   reviewEvidence(root, "release-binding", "Release identity and source binding",
     {release: release.id, contract_digest: release.config_digest, source_digest: release.source_digest}, expanded);
   const inspection = document.createElement('div'); inspection.className = 'controls'; root.append(inspection);
-  inspection.append(button('Save offline inspection report', () => saveInspection(id, true), 'inspection-report'),
+  if (Object.values(release.nodes).some(node => node.outputs?.activation === 'candidate')) {
+    inspection.append(button('Save rollout inspection JSON', async () => {
+      const snapshot = await api('/releases/' + id + '/rollout');
+      downloadInspection(JSON.stringify(snapshot, null, 2) + '\n', 'application/json', 'rollout-inspection-' + id + '.json');
+      message('Rollout snapshot download requested. It contains observations, not continuation authority; validate offline with rollout read.');
+    }, 'rollout-inspection-json'));
+    text(inspection, 'p', 'The component deployment format does not represent separate routing. This snapshot retains rollout observations and controller outcome separately.');
+  } else inspection.append(button('Save offline inspection report', () => saveInspection(id, true), 'inspection-report'),
     button('Save inspection JSON', () => saveInspection(id, false), 'inspection-json'));
   if (release.reason) text(root, "p", release.reason);
   if (release.preview) renderPreview(root, data);
@@ -573,6 +684,7 @@ async function show(id) {
     }, "approve-" + name));
     if (node.status === "succeeded" && node.adapter === "static") renderServing(area, release, name, data.serving_sessions || []);
     if (node.status === "succeeded") reviewEvidence(area, name + ":outputs", "Recorded deployment outputs", node.outputs, expanded);
+    if (node.status === "succeeded" && node.outputs?.activation === "candidate") renderRollout(area, release, name, data, expanded);
     const actions = data.artifact_actions.filter((action) => action.component === name);
     if (actions.length) {
       text(area, "p", "Reuse this exact artifact in a new reviewed release. Rollback restores the application artifact, not database changes.");

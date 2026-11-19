@@ -493,8 +493,11 @@ def save(engine, source: str, expected_hash: str, worker_active: bool = False) -
                 "SELECT 1 FROM releases WHERE json_extract(data, '$.cleanup.status') "
                 "IN ('preparing','waiting','running','uncertain') LIMIT 1"
             ).fetchone()
-            if worker_active or active or cleanup:
-                raise Refused("Finish, cancel, or reconcile outstanding releases and preview cleanup before changing configuration")
+            rollout = connection.execute("SELECT 1 FROM releases WHERE "
+                "json_extract(data, '$.rollout.status') IN ('preparing','waiting','running','post-check','uncertain') OR "
+                "json_extract(data, '$.rollout.retirement.status') IN ('preparing','waiting','running','uncertain') LIMIT 1").fetchone()
+            if worker_active or active or cleanup or rollout:
+                raise Refused("Finish, cancel, or reconcile outstanding releases, preview cleanup and rollout work before changing configuration")
 
             # Flush both authored versions and bind intent before touching the compatibility backup
             pending = engine.path.with_suffix(".pending")

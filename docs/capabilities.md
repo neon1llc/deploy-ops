@@ -8,6 +8,7 @@
 | Independent app deployment | Reuses infrastructure outputs | Live local and ECS paths. Cross-worker receipts use fixtures |
 | Environments and overrides | Provider, production flag, variables, target options | Schema and engine checks |
 | Local deployment | Directory infrastructure and versioned static artifact deployment; fixed revision and active-target loopback serving | Live filesystem/HTTP checks; target routing is not full blue-green |
+| Local static blue-green | Separate candidate staging, measured HTTP readiness, manual route switch, post-check, retained baseline and deliberate file retirement | Source CLI/API/real HTTP and real exited-worker recovery; mounted controls/AT/human and cloud/container routing unqualified |
 | Build and test | Trusted local argv checks and build hooks | Live Python example, no shell interpolation |
 | OCI build and publish | Docker Buildx metadata gives an immutable image reference | Command-contract checks only. Registry publish not exercised |
 | Docker Compose | Digest-pinned images, bounded host features, health wait | Real Docker first and app-only delivery, HTTP checks |

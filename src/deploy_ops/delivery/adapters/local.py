@@ -39,9 +39,7 @@ def prepare(context: Context) -> dict:
         shutil.copytree(directory, target)
         destination = context.options.get("destination", str(context.deployments / context.environment / context.name))
         inside(context.deployments, destination)
-        return {"preview": preview(context.name, "application_static", False),
-                "destination": destination, "site_digest": digest_tree(target),
-                "previous_pointer": pointer(context.deployments, destination)}
+        return static_prepared(context)
     # Render Compose once and reject host-level privileges before approval
     config = need(context.options, "file")
     file = inside(context.source, config)
@@ -90,6 +88,10 @@ def apply(context: Context, prepared: dict) -> dict:
         if path.exists():
             raise Refused("Release directory already exists. Reconcile before retrying")
         shutil.copytree(site, path)
+        if digest_tree(path) != prepared['site_digest']:
+            raise Refused('Copied static candidate differs from the reviewed artifact')
+        if prepared.get('activation') == 'separate':
+            return {'path': str(path), 'digest': prepared['site_digest'], 'activation': 'candidate'}
         # Replace only the small pointer after the entire release directory is ready
         private_json(destination / "current.json", {"release": context.release_id, "path": str(path),
                                                     "digest": prepared["site_digest"]})
@@ -104,3 +106,20 @@ def pointer(root: Path, destination: str):
     """Bind a static deployment to the previous active pointer as well as its new artifact."""
     path = inside(root, destination) / "current.json"
     return json.loads(path.read_text()) if path.exists() else None
+
+
+# Freeze identical target/activation semantics for source builds and promoted artifacts
+def static_prepared(context: Context) -> dict:
+    destination = context.options.get('destination', str(context.deployments / context.environment / context.name))
+    inside(context.deployments, destination)
+    previous = pointer(context.deployments, destination)
+    result = {'preview': preview(context.name, 'application_static', False), 'destination': destination,
+              'site_digest': digest_tree(context.stage / 'site'), 'previous_pointer': previous}
+    mode = context.options.get('activation', 'direct')
+    if mode not in {'direct', 'separate'}:
+        raise Refused('Choose direct or separate static activation', 422)
+    if mode == 'separate':
+        if previous is None:
+            raise Refused('Separate activation needs an existing baseline; deploy the first revision with direct activation', 422)
+        result['activation'] = 'separate'
+    return result

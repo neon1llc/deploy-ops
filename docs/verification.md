@@ -1,5 +1,30 @@
 # Verification
 
+## Separate local blue-green operations, 2026-11-05
+
+The v0.24.0 source domain/API journey staged an independent static app without a foundation, measured
+candidate HTTP, held a separate switch approval, explicitly changed the active-target URL, measured
+the actual new route and retained the old fixed revision. A fresh manual retirement request removed
+only reviewed unchanged old files. Modified and unknown data stayed. An unclaimed request could be
+withdrawn, changed candidates/baselines refused before claim, and a valid site missing the readiness
+entry produced no switch request. Checks cover separate controller outcomes, unavailable current
+request readback, invalid-current-TOML inspection and a strict offline allowlisted snapshot.
+
+Three actual exited subprocess boundaries cover pointer replacement before receipt, interruption
+before controller completion and controller completion before the final release update. Authoritative
+dead-owner inspection resolved incomplete authority without replay; an already successful controller
+record remained successful. A synthetic post-check failure retained an uncertain actual route and
+baseline capacity. Partial retirement required reconciliation and a new inventory rather than replay.
+Backup checks include exact rollout plans and inspection-only relocated state.
+
+The executed DOM harness checks the distinct prepare/approve/switch and retirement actions, fixed
+request identities, evidence-aware controls and inspection-note retention through polling. A missing
+renderer timestamp helper was found by this harness and corrected. These are source/DOM/HTTP checks,
+not mounted browser, keyboard/layout, AT or human acceptance. Those current controls remain unqualified
+after the earlier Edge debugger detachment. No cloud/container/weighted routing or artifact-policy
+enforcement follows. Deployment inspection formats 1/2 refuse this different completion scope; the
+separate rollout snapshot remains inspection-only and has no offline HTML renderer.
+
 ## Active-target local serving, 2026-11-05
 
 The v0.23.0 domain/API journey used real loopback HTTP for a fixed revision and active-target listener.

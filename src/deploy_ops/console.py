@@ -79,6 +79,14 @@ class ArtifactInput(BaseModel):
     timeout_seconds: int = Field(default=60, ge=10, le=300)
 
 
+# No browser input can select a route URL, host path, process or arbitrary native command
+class RolloutInput(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    component: str | None = Field(default=None, max_length=48)
+    digest: str = Field(default='', max_length=128)
+    note: str = Field(default='', max_length=500)
+
+
 # Share one engine behind authenticated loopback routes and worker coordination
 def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     if len(token) < 32:
@@ -504,6 +512,38 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         return {'html': evidence.report(document)} if report else document
 
 
+    # Read actual routing separately from deployment success and current controller initialization
+    @app.get('/api/releases/{release_id}/rollout', dependencies=[Depends(operator)])
+    def rollout_inspect(release_id: str):
+        from .delivery import rollouts
+        return rollouts.inspect(engine, release_id)
+
+
+    # Share all bounded local rollout actions with the foreground CLI
+    @app.post('/api/releases/{release_id}/rollout/{action}', dependencies=[Depends(operator)])
+    def rollout_action(release_id: str, action: str, data: RolloutInput):
+        from .delivery import rollouts
+        fields = ({'component'} if action in {'prepare', 'prepare-retirement'} else
+                  {'digest'} if action in {'approve', 'approve-retirement', 'cancel', 'cancel-retirement'} else {'note'} if action == 'reconcile' else set())
+        if data.model_fields_set - fields:
+            raise Refused('Fields do not match the selected rollout action', 422)
+        if action in {'prepare', 'prepare-retirement'}:
+            current_contract()
+            return rollouts.prepare(engine, release_id, data.component, action == 'prepare-retirement')
+        if action in {'approve', 'approve-retirement'}:
+            return rollouts.approve(engine, release_id, data.digest, action == 'approve-retirement')
+        if action in {'cancel', 'cancel-retirement'}:
+            return rollouts.cancel(engine, release_id, data.digest, action == 'cancel-retirement')
+        if action in {'switch', 'retire'}:
+            current_contract()
+            return rollouts.execute(engine, release_id, action == 'retire')
+        if action == 'check':
+            return rollouts.check(engine, release_id)
+        if action == 'reconcile':
+            return rollouts.reconcile(engine, release_id, data.note)
+        raise Refused('Unknown rollout action', 422)
+
+
     # Combine release evidence with currently available follow-up actions
     @app.get("/api/releases/{release_id}", dependencies=[Depends(operator)])
     def detail(release_id: str):
@@ -531,6 +571,15 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
             except Exception:
                 request_statuses[name] = {"status": "unavailable", "digest": None}
         sessions = serving.list()
+        rollout_requests = {}
+        from .delivery import rollouts
+        for kind, operation in (('switch', release.get('rollout', {})), ('retirement', release.get('rollout', {}).get('retirement', {}))):
+            if operation.get('request_id'):
+                try:
+                    current = engine.gate.status(operation['request_id'])
+                    rollout_requests[kind] = {key: current.get(key) for key in ('status', 'digest', 'timing')}
+                except Exception:
+                    rollout_requests[kind] = {'status': 'unavailable', 'digest': None}
         return {"serving_sessions": [item for item in sessions if item["release"] == release_id
                                       or (item['mode'] == 'target' and item.get('active_release') == release_id)],
                 "release": release, "events": engine.ledger.events(release_id),
@@ -538,6 +587,8 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
                 "recovery": engine.recovery_status(release),
                 "cleanup_recovery": cleanup_recovery_status(engine, release) if cleanup else None,
                 "cleanup_request": cleanup_request,
+                'rollout_requests': rollout_requests,
+                'rollout_recovery': rollouts.recovery_status(engine, release_id) if release.get('rollout') else None,
                 "artifact_actions": engine.artifact_actions(release)}
 
 

@@ -80,6 +80,8 @@ class DirectoryOptions(PublicOptions):
 class StaticOptions(PublicOptions):
     directory: str = Field(default=".", title="Artifact directory", description="Path inside the component source")
     destination: str = Field(default="", title="Destination", description="Deployment-relative path or whole dependency output reference; omit for the component default")
+    activation: Literal['direct', 'separate'] = Field(default='direct', title='Activation',
+        description='Direct activates during deployment. Separate stages a candidate for readiness and a fresh manual route-switch approval.')
 
 
     # References remain complete values and are checked against the workspace by the caller

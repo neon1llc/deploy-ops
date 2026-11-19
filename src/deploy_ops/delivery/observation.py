@@ -56,7 +56,7 @@ def activation(engine, pointer: Path):
     # Completion event order handles releases created earlier but applied later, without a listing limit
     with engine.ledger.store.connect() as connection:
         rows = connection.execute("SELECT e.sequence,e.detail,r.data FROM release_events e JOIN releases r "
-                                  "ON r.id=e.release_id WHERE e.name='component.succeeded' ORDER BY e.sequence DESC")
+                                  "ON r.id=e.release_id WHERE e.name IN ('component.succeeded','static.route.replaced','static.route.inspected') ORDER BY e.sequence DESC")
         for row in rows:
             release, name = json.loads(row['data']), json.loads(row['detail'])['component']
             node = release['nodes'].get(name, {})
@@ -105,9 +105,12 @@ def local_component(engine, release: dict, name: str) -> dict:
         artifact_status = 'matching' if observed == prepared['site_digest'] else 'drifted'
         pointer_status = 'matching' if actual == expected else 'drifted'
         status = 'drifted' if 'drifted' in (artifact_status, pointer_status) else 'matching'
-        if status == 'matching' and expected['release'] != release['id']:
+        candidate = envelope.get('adapter_contract_version') == 3 and not node['outputs'].get('pointer')
+        if status == 'matching' and expected['release'] != release['id'] and not candidate:
             status = 'superseded'
         return {'status': status, 'scope': 'selected artifact and active pointer',
+                'phase': 'candidate-staged' if candidate else 'activation-recorded',
+                'rollout_status': release.get('rollout', {}).get('status', 'not-prepared') if envelope.get('adapter_contract_version') == 3 else 'not-applicable',
                 'artifact': {'status': artifact_status, 'expected_digest': prepared['site_digest'], 'observed_digest': observed},
                 'activation': {'status': pointer_status, 'expected_release': expected['release'],
                                'selected_release_active': expected['release'] == release['id'] and pointer_status == 'matching',
