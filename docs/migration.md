@@ -133,3 +133,16 @@ The new version 1 rollout snapshot has its own offline reader and no execution a
 inspection formats 1/2 refuse separately activated releases because their component outcome does not
 represent routing completion. Required notices and existing history remain unchanged. See
 [local rollout](local-rollouts.md) for operation, interruption, backup and inspection behavior.
+
+## Selected-file signatures
+
+The optional verifier writes a separate version 1 `deploy-ops.file-signature-observation` report. It
+changes no approved artifact envelope, workspace digest, approval, store schema or existing collection
+report. Its raw extent includes a bounded selected-file copy plus the local public key and modern
+bundle; diagnostics/tool home stay outside that extent. Older inventory/vulnerability reports retain
+their original meaning. No imported signature result is turned into execution or policy authority.
+See [file signatures](file-signatures.md).
+
+Preview cleanup reconciliation now uses a native namespace-state selection after the descriptive note.
+It no longer asks for blank or `removed` through a dialog that requires ten-character notes. The note
+constraint, cancellation and all backend cleanup checks remain intact.

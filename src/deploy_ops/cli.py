@@ -59,6 +59,26 @@ def parser():
     artifact_collect.add_argument('--timeout-seconds', type=int, default=60, help='Maximum duration per native command, 10–300 seconds')
     artifact_inspect = artifact_actions.add_parser('inspect')
     artifact_inspect.add_argument('directory', type=Path)
+    artifact_actions.add_parser('signature-options', help='Show explicit selected-key signature scope and tool availability')
+    key_info = artifact_actions.add_parser('key-info', help='Read a local public-key file fingerprint; this does not establish trust')
+    key_info.add_argument('file', type=Path)
+    signature_inspect = artifact_actions.add_parser('signature-inspect', help='Check a retained signature report offline; no native verification or policy admission')
+    signature_inspect.add_argument('directory', type=Path)
+    artifact_files = artifact_actions.add_parser('files', help='Search reviewed frozen files without current configuration or tools')
+    artifact_files.add_argument('release')
+    artifact_files.add_argument('--component', required=True)
+    artifact_files.add_argument('--query', default='')
+    artifact_files.add_argument('--offset', type=int, default=0)
+    artifact_files.add_argument('--limit', type=int, default=100)
+    signature_verify = artifact_actions.add_parser('verify', help='Verify one frozen file with a local selected public key and modern bundle; not whole-artifact trust or release policy')
+    signature_verify.add_argument('release')
+    signature_verify.add_argument('--component', required=True)
+    signature_verify.add_argument('--file', required=True, help='Exact relative file inside the frozen static artifact')
+    signature_verify.add_argument('--key', type=Path, required=True, help='Independently selected local PEM PUBLIC KEY; no private keys, certificates or remote references')
+    signature_verify.add_argument('--bundle', type=Path, required=True)
+    signature_verify.add_argument('--key-sha256', help='Optional expected SHA-256 of the exact public-key file bytes')
+    signature_verify.add_argument('--out', type=Path, required=True, help='New private directory; includes a bounded copy of the selected file')
+    signature_verify.add_argument('--timeout-seconds', type=int, default=60)
     evidence = commands.add_parser("evidence", help="Save or inspect source-free operation facts; never execute imported evidence")
     evidence_actions = evidence.add_subparsers(dest="evidence_action", required=True)
     capture = evidence_actions.add_parser("capture", help="Read one retained release without loading its workspace or credentials")
@@ -303,6 +323,19 @@ def dispatch(args):
         return rollouts.inspect(owner, args.release) if args.rollout_action == 'inspect' else rollouts.recovery_status(owner, args.release)
     if args.command == 'artifact':
         from .delivery import artifacts
+        from .delivery import signatures
+        if args.artifact_action == 'signature-options':
+            return signatures.options()
+        if args.artifact_action == 'key-info':
+            return signatures.key_info(args.file)
+        if args.artifact_action == 'signature-inspect':
+            return signatures.inspect(args.directory)
+        if args.artifact_action in {'files', 'verify'}:
+            state = (args.state or args.project.resolve().parent / '.deploy-ops').resolve()
+            if args.artifact_action == 'files':
+                return signatures.files(state, args.release, args.component, args.query, args.offset, args.limit)
+            profile = signatures.Profile(expected_key_sha256=args.key_sha256, timeout_seconds=args.timeout_seconds)
+            return signatures.verify(state, args.release, args.component, args.file, args.key, args.bundle, args.out, profile, args.project.resolve().parent)
         if args.artifact_action == 'options':
             return artifacts.options()
         if args.artifact_action == 'inspect':
@@ -573,6 +606,9 @@ def main(argv=None):
                 return 3
             if result.get("status") in ("failed", "uncertain", "cancelled"):
                 return 1
+        if isinstance(result, dict) and args.command == 'artifact' and args.artifact_action == 'verify':
+            status = result['report']['status']
+            return 0 if status == 'verified' else 3 if status == 'unavailable' else 1
         return 0
     except (Refused, ValidationError, OSError, ValueError) as error:
         print(str(error), file=sys.stderr)

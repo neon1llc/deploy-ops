@@ -93,7 +93,7 @@ def options():
 
 
 # Authenticate the frozen artifact independently of current configuration, source or deployed pointer
-def subject(state, release_id, component):
+def subject(state, release_id, component, *, selected_file=None, include_files=False):
     try:
         if not re.fullmatch(r'[0-9a-f]{32}', release_id) or not re.fullmatch(r'[a-z][a-z0-9-]{0,47}', component):
             raise Refused('Choose an exact release and registered component name', 422)
@@ -115,7 +115,14 @@ def subject(state, release_id, component):
         digest = tree_fingerprint([[name, value['sha256']] for name, value in selected.items()])
         if digest != envelope['prepared'].get('site_digest'):
             raise Refused('Retained static subject differs from its reviewed digest', 409)
-        return site, node['artifact_digest'], digest, len(selected), sum(value['size'] for value in selected.values())
+        result = site, node['artifact_digest'], digest, len(selected), sum(value['size'] for value in selected.values())
+        if selected_file is not None:
+            if selected_file not in selected:
+                raise Refused('Selected file is absent from the authenticated frozen inventory', 422)
+            return (*result, selected[selected_file])
+        if include_files:
+            return (*result, selected)
+        return result
 
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         raise Refused('Reviewed artifact evidence is unavailable or unsupported; no source fallback or tool was started', 422) from None
@@ -210,19 +217,26 @@ def measure(process, target, out, profile, kind):
     return check
 
 
+# Share new private evidence-directory admission without overwriting current work or imported state
+def new_output(state, out, target, workspace=None):
+    state, out = location(state), location(out)
+    if (out.exists() or out.is_relative_to(state) or target.is_relative_to(out)
+            or (workspace is not None and out.is_relative_to(location(workspace)))):
+        raise Refused('Choose a new private evidence directory outside workspace and state; existing work is preserved', 422)
+    require_writable(out / 'report.json')
+    out.mkdir(parents=True, mode=0o700)
+    return out
+
+
 # Collect a truthful bounded observation without modifying immutable evidence or release/authority state
 def collect(state: Path, release_id: str, component: str, out: Path, profile: Profile, workspace: Path | None = None):
     if not profile.inventory and not profile.vulnerabilities:
         raise Refused('Select package inventory or vulnerability observation', 422)
     if profile.allow_network and not profile.vulnerabilities:
         raise Refused('Advisory network access applies only to the selected vulnerability observation', 422)
-    state, out = location(state), location(out)
+    state = location(state)
     target, prepared, digest, file_count, byte_count = subject(state, release_id, component)
-    if (out.exists() or out.is_relative_to(state) or target.is_relative_to(out)
-            or (workspace is not None and out.is_relative_to(location(workspace)))):
-        raise Refused('Choose a new private evidence directory outside workspace and state; existing work is preserved', 422)
-    require_writable(out / 'report.json')
-    out.mkdir(parents=True, mode=0o700)
+    out = new_output(state, out, target, workspace)
     home = out / 'tool-home'; home.mkdir(mode=0o700)
     events = []
     process = Process(home, lambda name, detail: events.append({'name': name, 'detail': detail}))
