@@ -3,6 +3,14 @@
 DeployOps releases use `v0.MINOR.PATCH` until the first complete release, v1.0.0, following neon1's [versioning standard](https://neon1.tech/knowledge/standards/versioning/). Each version has an annotated tag on the commit it names. Tags v0.2.0 to v0.13.0 were made when those versions shipped; this changelog was written from them on 2026-11-11. The release workflow adds missing tags and never moves one.
 
 
+## v0.14.4 - 2026-11-19
+
+### Added
+- [Where DeployOps fits](docs/adoption-fit.md) names the one job it narrows to, compares it with GitHub Actions environments, Terraform saved plans, Atlantis, Argo CD and Flux, release-orchestration products, and scripts, and says who should wait.
+
+### Changed
+- The README states the Python version it needs and says DeployOps is not a CI/CD platform.
+
 ## v0.14.3 - 2026-11-15
 
 ### Changed

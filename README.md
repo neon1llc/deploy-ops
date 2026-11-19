@@ -1,8 +1,12 @@
 # DeployOps
 
-**0.14.3 · local developer preview, not production-supported · by neon1 LLC**
+**0.14.4 · local developer preview, not production-supported · by neon1 LLC**
 
-DeployOps deploys infrastructure and applications from separate repositories. You choose an environment, review exact changes, and track the result through one CLI, a local browser console, and an audit history. It's for developers who want reviewed, approved releases on their own machine.
+DeployOps deploys infrastructure and applications from separate repositories. You choose an environment, review exact changes, and track the result through one CLI, a local browser console, and an audit history. Each approval covers one exact artifact, so a changed artifact or workspace can't reuse it.
+
+It's for developers who want reviewed, approved releases on their own machine. It isn't a CI/CD platform, and it doesn't replace GitHub Actions, Argo CD, or Atlantis. [Where it fits](docs/adoption-fit.md) compares them and says who should wait.
+
+You need Python 3.11 or later.
 
 ```bash
 python3 -m venv .venv
@@ -15,6 +19,7 @@ The demo builds, deploys, promotes, and HTTP-checks a real local application. No
 
 | Start here | Purpose |
 |---|---|
+| [Where it fits](docs/adoption-fit.md) | What it adds to existing tools, and who should wait |
 | [Setup](docs/setup.md) | Run the CLI and browser console |
 | [Workflows](docs/workflows.md) | Infrastructure, apps, promotion, recovery |
 | [Infrastructure receipts](docs/infrastructure-receipts.md) | Typed outputs for isolated app workers |
