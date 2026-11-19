@@ -218,6 +218,44 @@ function control(key) {
   await nodes.get("plan").onclick();
   assert.equal(nodes.get("plan-output").hidden, true);
   assert.match(nodes.get("message").textContent, /Selections changed/);
+  vm.runInContext("api=capture;", context);
+  // Interrupted states expose recovery only under matching current backend capability
+  for (const status of ["running", "uncertain", "cancel_requested"]) {
+    context.fixture.release.status = status;
+    for (const worker of ["live", "unknown", "stopped", "dead"]) {
+      context.fixture.recovery = {release_id: "release-fixture", worker, reason: "Observed worker: " + worker,
+        available: ["stopped", "dead"].includes(worker)};
+      await vm.runInContext('show("release-fixture")', context);
+      assert.equal(Boolean(control("recover-release")), ["stopped", "dead"].includes(worker));
+      assert(nodes.get("detail").querySelectorAll("*").some(node => node.textContent === "Observed worker: " + worker));
+    }
+  }
+  context.fixture.recovery = {release_id: "another-release", available: true};
+  await vm.runInContext('show("release-fixture")', context);
+  assert.equal(control("recover-release"), undefined);
+  delete context.fixture.recovery;
+  context.fixture.release.status = "waiting";
+
+  // Cleanup recovery uses its own operation identity and backend reason
+  vm.runInContext(source.slice(source.indexOf('function renderPreview(')), context);
+  context.fixture.release.preview = {owner: 'fixture-owner', expires_at: 1900000000, retain_data: true};
+  context.fixture.release.cleanup = {id: 'cleanup-fixture', status: 'uncertain'};
+  for (const available of [false, true]) {
+    context.fixture.cleanup_recovery = {release_id: 'release-fixture', cleanup_id: 'cleanup-fixture',
+      available, reason: 'Observed cleanup ownership'};
+    nodes.get('detail').replaceChildren();
+    vm.runInContext("renderPreview(element('detail'), fixture)", context);
+    assert.equal(Boolean(control('reconcile-cleanup')), available);
+    assert(nodes.get('detail').querySelectorAll('*').some(node => node.textContent === 'Observed cleanup ownership'));
+  }
+  context.fixture.cleanup_recovery.cleanup_id = 'earlier-cleanup';
+  nodes.get('detail').replaceChildren();
+  vm.runInContext("renderPreview(element('detail'), fixture)", context);
+  assert.equal(control('reconcile-cleanup'), undefined);
+  delete context.fixture.release.preview;
+  delete context.fixture.release.cleanup;
+  delete context.fixture.cleanup_recovery;
+
   // Guided rows offer actual infrastructure components and leave ID validation to the controller
   vm.runInContext('workspaceConfiguration={components:{foundation:{kind:"infrastructure"}, shared:{kind:"infrastructure"}, web:{kind:"application"}},environments:{development:{}}}; selection=selectionWithReceipts;', context);
   nodes.get("environment").value = "development";

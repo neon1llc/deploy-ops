@@ -307,9 +307,13 @@ def test_stale_lock_recovery_is_atomic(preview_engine, monkeypatch):
     release = deploy(engine)
     approve(engine, release)
     scope = 'release:' + release['id']
-    engine.ledger.lock(scope, release['id'])
-    with engine.ledger.store.transaction() as connection:
-        connection.execute('UPDATE release_lock_owners SET owner_pid=2147483647 WHERE scope=?', (scope,))
+    import os
+    import subprocess
+    import sys
+    script = "import sys; from pathlib import Path; from deploy_ops.delivery.engine import Engine; engine=Engine(Path(sys.argv[1])); engine.ledger.lock('release:'+sys.argv[2],sys.argv[2],kind='cleanup')"
+    subprocess.run([sys.executable, '-c', script, str(engine.path), release['id']],
+                   env={key: value for key, value in os.environ.items() if not key.startswith('DEPLOY_OPS_')},
+                   check=True, capture_output=True, timeout=10)
     entered, proceed = threading.Event(), threading.Event()
     original = engine.gate.status
 
@@ -333,9 +337,11 @@ def test_stale_lock_recovery_is_atomic(preview_engine, monkeypatch):
 def test_unattributed_legacy_lock_blocks_recovery(preview_engine):
     engine = preview_engine
     release = engine.create('development', preview_owner='ops')
+    release['status'] = 'running'
+    engine.ledger.save(release)
     with engine.ledger.store.transaction() as connection:
         connection.execute('INSERT INTO release_locks VALUES (?,?)', ('release:' + release['id'], release['id']))
-    with pytest.raises(Refused, match='ownership is unknown'):
+    with pytest.raises(Refused, match='ownership is unverified'):
         engine.recover(release['id'], 'Legacy owner has not been independently verified')
 
 
@@ -354,6 +360,9 @@ def test_cli_and_console_share_preview_contract(preview_engine):
     prepared = client.post('/api/previews/'+release['id']+'/prepare-cleanup',headers=headers,json={})
     assert prepared.status_code == 200
     assert client.get('/api/releases/'+release['id'],headers=headers).json()['cleanup_request']['status'] == 'pending'
+    detail = client.get('/api/releases/'+release['id'],headers=headers).json()
+    assert detail['cleanup_recovery']['available'] and detail['cleanup_recovery']['worker'] == 'stopped'
+    assert dispatch(parser().parse_args(['--project', str(engine.path), 'previews', 'recovery', release['id']])) == detail['cleanup_recovery']
     approved = client.post('/api/previews/'+release['id']+'/approve-cleanup',headers=headers,
                            json={'digest':prepared.json()['cleanup']['request_digest']})
     assert approved.status_code == 200
@@ -436,3 +445,21 @@ def test_serving_preview_cleanup_and_expiry(preview_engine, monkeypatch):
         assert sessions.list()[0]['status'] == 'retired'
     finally:
         sessions.close()
+
+
+# A refused second cleanup executor cannot manufacture stopped ownership for an older claim
+def test_old_cleanup_claim_stays_unknown_after_new_execution_attempt(preview_engine):
+    from deploy_ops.delivery.previews import recovery_status
+    engine = preview_engine
+    release = deploy(engine)
+    prepared = approve(engine, release)
+    cleanup = prepared['cleanup']
+    source = {**prepared, 'id': cleanup['id'], 'source_digest': cleanup['source']}
+    engine.gate.claim(engine.gate.status(cleanup['request_id']), source)
+    with pytest.raises(Refused):
+        execute_cleanup(engine, release['id'])
+    observed = recovery_status(engine, engine.ledger.get(release['id']))
+    assert observed['worker'] == 'unknown' and not observed['available']
+    with pytest.raises(Refused, match='no matching local worker admission'):
+        reconcile_cleanup(engine, release['id'], 'Inspected cleanup with an untracked original execution owner')
+    assert engine.gate.status(cleanup['request_id'])['status'] == 'running'

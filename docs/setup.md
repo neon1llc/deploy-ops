@@ -178,3 +178,28 @@ The contact timestamp and its age describe the server observation, not proof tha
 A known budget below the server's minimum hides Execute; the controller still rechecks every claim and
 heartbeat. Old controllers without this projection report timing unavailable. A component's longer
 command timeout cannot extend authority, and no countdown renews approval or retries an operation.
+
+## Inspect interrupted local recovery
+
+Use `deploy-ops recovery RELEASE_ID` to inspect current recovery availability before
+`deploy-ops recover RELEASE_ID --note "What was inspected after stopping the original worker"`.
+Retained `status` and `events` still work without current workspace initialization; the operational
+`recovery` check needs the current local workspace and owner.
+
+Release detail shows the same recovery reason for interrupted `running`, `cancel_requested` and
+`uncertain` records. It offers reconciliation only when supported current worker evidence permits it.
+The backend checks again when acting. Local worker admission and stop facts commit with their locks
+in the existing journal. A dead supervisor is insufficient while a tracked command group may still run.
+Unknown command ownership, legacy locks, and copied or foreign-host worker evidence remain unavailable.
+No process is killed or lock cleared by reading this view. Target inspection and the bounded note are
+still required; local process exit does not prove that an accepted provider operation stopped.
+
+Remote and isolated releases use their original operation owner. An old interrupted release cannot be
+made recoverable by starting another worker. Reconciliation records an inspected outcome without
+replaying deployment, restoring data or manufacturing verified outputs. If the controller completed
+before its worker died, that terminal outcome remains intact and missing outputs stay unverified.
+
+Preview cleanup exposes its separate check with `deploy-ops previews recovery RELEASE_ID` and in the
+release inspector. A completed provider readback cannot certify an older deployment or cleanup worker.
+New local claims bind their exact worker admission to the controller execution. If that correspondence
+is absent, a later local attempt cannot manufacture stopped ownership for the original execution.

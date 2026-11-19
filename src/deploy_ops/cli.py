@@ -94,6 +94,8 @@ def parser():
     grant.add_argument("environment")
     grant.add_argument("--hours", type=int, required=True)
     grant.add_argument("--uses", type=int, required=True)
+    recovery = commands.add_parser("recovery", help="Inspect current local worker evidence and recovery availability")
+    recovery.add_argument("release")
     recover = commands.add_parser("recover")
     recover.add_argument("release")
     recover.add_argument("--note", required=True)
@@ -108,7 +110,7 @@ def parser():
     previews = commands.add_parser("previews", help="Inspect isolated static previews and exact cleanup")
     preview_actions = previews.add_subparsers(dest="preview_action", required=True)
     preview_actions.add_parser("list")
-    for name in ("prepare-cleanup", "approve-cleanup", "cleanup", "reconcile"):
+    for name in ("prepare-cleanup", "approve-cleanup", "cleanup", "reconcile", "recovery"):
         command = preview_actions.add_parser(name)
         command.add_argument("release")
         if name == "approve-cleanup":
@@ -325,6 +327,8 @@ def dispatch(args):
         return engine.approve(args.release, args.component, args.digest)
     if args.command == "cancel":
         return engine.cancel(args.release)
+    if args.command == "recovery":
+        return engine.recovery_status(engine.ledger.get(args.release))
     if args.command == "recover":
         return engine.recover(args.release, args.note)
     if args.command == "delegate":
@@ -341,6 +345,9 @@ def dispatch(args):
         from .delivery.previews import list_previews, prepare_cleanup, approve_cleanup, execute_cleanup, reconcile_cleanup
         if args.preview_action == "list":
             return list_previews(engine)
+        if args.preview_action == "recovery":
+            from .delivery.previews import recovery_status
+            return recovery_status(engine, engine.ledger.get(args.release))
         if args.preview_action == "prepare-cleanup":
             return prepare_cleanup(engine, args.release)
         if args.preview_action == "approve-cleanup":

@@ -198,6 +198,7 @@ def prepare_cleanup(engine, release_id):
             previous = release.get("cleanup", {})
             if previous.get("status") not in (None, "reconciled"):
                 raise Refused("Inspect the existing cleanup operation before preparing another")
+            engine.ledger.start_worker(scope, release_id, 'cleanup')
             plan = inventory(engine, release)
             operation = uuid.uuid4().hex
             path = engine.state / "cleanup" / operation / "prepared.json"
@@ -289,7 +290,9 @@ def execute_cleanup(engine, release_id):
             request = engine.gate.status(cleanup["request_id"])
             source = {**release, "id": cleanup["id"], "source_digest": cleanup["source"]}
             # Persist cleanup ownership before performing any deletion
-            lease = engine.gate.claim(request, source)
+            engine.ledger.start_worker(scope, release_id, 'cleanup')
+            lease = engine.gate.claim(request, source,
+                local_input_check=lambda: engine.ledger.worker_binding(scope, release_id))
             cleanup.update(status="running", worker_pid=os.getpid())
             release["preview_retiring"] = True
             engine.ledger.save(release, "preview.cleanup.running", {"operation": cleanup["id"]})
@@ -327,12 +330,31 @@ def execute_cleanup(engine, release_id):
         engine.ledger.unlock(scope, release_id)
 
 
+# Explain cleanup recovery through its own admission evidence, independently of deployment or readback
+def recovery_status(engine, release):
+    result = {'release_id': release['id'], 'cleanup_id': release.get('cleanup', {}).get('id'),
+              'available': False, 'worker': 'unavailable'}
+    try:
+        _eligible(engine, release)
+    except Refused as error:
+        return {**result, 'reason': str(error)}
+    if release.get('cleanup', {}).get('status') not in {'preparing', 'waiting', 'running', 'uncertain'}:
+        return {**result, 'reason': 'No pending or interrupted cleanup requires reconciliation.'}
+    worker = engine.ledger.worker_status('release:' + release['id'], release['id'], kind='cleanup')
+    return {**result, 'available': worker['state'] in {'dead', 'stopped'},
+            'worker': worker['state'], 'reason': worker['reason']}
+
+
+
 # Inspect interrupted cleanup before preparing another deletion plan
 def reconcile_cleanup(engine, release_id, note, confirm_removed=False):
     if not isinstance(note, str) or not 10 <= len(note.strip()) <= 500:
         raise Refused("Record an inspection note of 10 to 500 characters", 422)
+    available = recovery_status(engine, engine.ledger.get(release_id))
+    if not available['available']:
+        raise Refused(available['reason'])
     scope = "release:" + release_id
-    engine.ledger.recovery_lock(scope, release_id)
+    engine.ledger.recovery_lock(scope, release_id, kind="cleanup")
     try:
         with boundary(engine):
             release = engine.ledger.get(release_id)

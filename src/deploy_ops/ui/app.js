@@ -570,11 +570,18 @@ async function show(id) {
   if (["waiting", "queued", "running"].includes(release.status)) root.append(button("Cancel", async () => {
     await api("/releases/" + id + "/cancel", "POST", {}); await refresh();
   }));
-  if (release.status === "uncertain") root.append(button("Reconcile inspected target", async () => {
-    const note = await promptAction("After stopping the worker and inspecting the target, record what you found:");
-    if (!note) return;
-    await api("/releases/" + id + "/recover", "POST", { note }); await refresh();
-  }));
+  // Recovery availability comes from current worker evidence, including interrupted nonterminal releases
+  if (["running", "uncertain", "cancel_requested"].includes(release.status)) {
+    text(root, "h3", "Recovery");
+    const recovery = data.recovery;
+    const matchingRecovery = recovery?.release_id === id;
+    text(root, "p", matchingRecovery ? recovery.reason : "Recovery availability is unavailable. Refresh or inspect with the original operation owner.");
+    if (matchingRecovery && recovery.available) root.append(button("Reconcile inspected target", async () => {
+      const note = await promptAction("After inspecting the target and confirming the original worker has stopped, record what you found. This records reconciliation without replaying a deployment:");
+      if (!note) return;
+      await api("/releases/" + id + "/recover", "POST", { note }); await refresh();
+    }, "recover-release"));
+  }
   if (["failed", "uncertain"].includes(release.status)) root.append(button("Track a local incident", async () => {
     element("incident-release").value = id;
     document.dispatchEvent(new CustomEvent("deployops:navigate", {detail: {view: "incidents"}}));
@@ -1226,7 +1233,10 @@ function renderPreview(root, data) {
     }, "execute-cleanup"));
   }
   if (["preparing", "waiting", "running", "uncertain"].includes(cleanup.status)) {
-    root.append(button("Inspect and reconcile cleanup", async () => {
+    const recovery = data.cleanup_recovery;
+    const matching = recovery?.release_id === id && recovery.cleanup_id === cleanup.id;
+    text(root, "p", matching ? recovery.reason : "Cleanup recovery availability is unavailable. Refresh or inspect with the original cleanup owner.");
+    if (matching && recovery.available) root.append(button("Inspect and reconcile cleanup", async () => {
       const note = await promptAction("Stop any worker, inspect the owned preview namespace, and describe what remains:");
       if (!note) return;
       const removed = await promptAction("Type removed only if you inspected and confirmed the entire owned namespace is absent. Leave blank to prepare a new plan for remaining files:", "");
