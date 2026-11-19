@@ -215,3 +215,8 @@ last page. Read-only continuation binds the request digest and displayed review 
 if its content changes. Upgrade the callback consumer with the renderer so new continuation actions are
 understood. Existing request bytes, audit rows, exact-digest decision buttons and the separate execution
 contract are unchanged. No reading-progress ledger or retroactive human-review claim is introduced.
+
+The v0.30.1 correction includes the registered public isolated-IaC planning packet, which the first
+bounded renderer omitted. Other public manifest fields now come from the existing controller contract
+rather than a second field list. Target identity stays visible on each page. Existing v0.30.0 source
+and review results remain historical. Restart an incomplete review after upgrading.

@@ -645,3 +645,27 @@ def test_console_review_preserves_evidence_and_exact_actions():
     root = Path(__file__).resolve().parents[1]
     subprocess.run([node, str(root / "tests" / "isolated_ui.cjs")], cwd=root,
                    check=True, capture_output=True, text=True, timeout=20)
+
+
+# The real registered planning request must expose its entire existing public packet without minting identity
+# Runtime/broker references remain outside that packet and outside the rendered review
+def test_slack_review_includes_registered_public_planning_packet(setup):
+    from deploy_ops.slack import card, review_text
+    route, _, data = setup
+    request = route.prepare()
+    packet = request['manifest']['isolated_packet']
+    before = route.controller.store.verify()
+    content, rendered, page = review_text(request), [], 0
+    while True:
+        result = card(request, page)
+        rendered.extend(block['text']['text'] for block in result['blocks'][1:] if block['type'] == 'section')
+        actions = [item for block in result['blocks'] for item in block.get('elements', [])]
+        if not any(item['action_id'] == 'review_next' for item in actions):
+            break
+        page += 1
+    assert ''.join(rendered) == content
+    assert json.dumps(packet, ensure_ascii=False, sort_keys=True) in content
+    for forbidden in (data['credentials_file'], data['broker_service_account'], data['gcloud'], data['limactl'], data['lock_file'], TOKEN):
+        assert forbidden not in content
+    assert route.controller.store.verify() == before
+    assert not route.broker.accounts and not route.runner.stages

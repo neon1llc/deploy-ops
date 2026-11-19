@@ -19,7 +19,7 @@ Start with a disposable development account or project. Keep your human administ
 
 ## 1. Run the local demo
 
-Follow the install commands in the [README](../README.md). `deploy-ops gate demo` needs no configuration or credentials. `deploy-ops gate --help` lists the commands. The demo calls the controller's domain layer with synthetic identity records. The HTTP service has no unauthenticated demo mode.
+Follow the install commands in the [README](../README.md). `deploy-ops gate demo` needs no configuration or credentials. `deploy-ops gate --help` lists the commands. Put the controller URL before the command, for example `deploy-ops gate --url http://127.0.0.1:8787 list`. It overrides `DEPLOY_OPS_URL`. HTTPS is required outside loopback, and operator commands still need the operator token. The demo calls the controller's domain layer with synthetic identity records. The HTTP service has no unauthenticated demo mode.
 
 ## 2. Start one controller
 
@@ -72,7 +72,7 @@ Create a Slack app from [manifest.yaml](../integrations/slack/manifest.yaml) wit
 
 Set `DEPLOY_OPS_SLACK_SIGNING_SECRET` and `DEPLOY_OPS_SLACK_BOT_TOKEN` in the controller's secret store or environment. Set the workspace ID, app ID, channel ID, and allowed Slack user IDs in the administrator-owned configuration, and map each approver to a numeric GitHub user ID.
 
-A pending request produces a plain-text review card. It lists every normalized change with its resource type and action, every finding, the manual-review flag, source claims, public artifact, tool, and policy bindings, and the decision reason. Native plan and artifact bytes are referenced, not embedded. Long reviews use bounded pages that show section and page extents and the exact request ID and digest on each page. **Continue review** and **Previous review page** only read state. If the request or review content changed, or a page is unavailable, show the request again. There is no new cursor store or deployment action.
+A pending request produces a plain-text review card. It lists every normalized change with its resource type and action, every finding, the manual-review flag, source claims, public artifact, tool, and policy bindings, and the decision reason. Registered isolated-IaC planning requests also show their complete public packet: the generated module and the lock, tool, and provider digests. Private broker and credential references are outside that public contract. Saved native plan and artifact bytes are referenced, not embedded. Long reviews use bounded pages that show section and page extents and the exact request ID and digest on each page. **Continue review** and **Previous review page** only read state. If the request or review content changed, or a page is unavailable, show the request again. There is no new cursor store or deployment action.
 
 New cards offer **Approve this plan** only at the end of the normalized review, and withhold it when an execution-compatibility blocker exists. **Reject** stays available on every pending page. Reaching a page doesn't prove a person read it. Existing signed decision buttons and operator CLI decisions keep their exact-digest authorization contract, with no server-side reading or progress requirement. Approval still waits for a separate authorized claim and execution, and never starts a deployment from chat.
 
