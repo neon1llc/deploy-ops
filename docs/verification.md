@@ -1,5 +1,13 @@
 # Verification
 
+## Waiting worker admission correction, 2026-11-05
+
+Independent installed scheduling showed that a markerless record loaded before the worker lock
+could emit a duplicate after another serialized worker migrated it. Advance now acquires its native
+lock, then reloads and validates the release before starting worker evidence. Narrow real-owner
+interleavings preserve one migration event/outbox set and prevent settled cancellation from being
+overwritten. Earlier sequential and desktop evidence remains separately scoped.
+
 ## Native configuration filename correction, 2026-11-05
 
 Independent installed review showed the original guard refused `.scratch.tf` although native
