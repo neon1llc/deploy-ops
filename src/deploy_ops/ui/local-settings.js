@@ -52,24 +52,25 @@ function localRender() {
   let draft = localDrafts.get(localKey());
   if (!draft) {
     draft = structuredClone(fresh); localDrafts.set(localKey(), draft);
-    localBases.set(localKey(), structuredClone(fresh));
+    localBases.set(localKey(), Object.fromEntries(Object.entries(fresh).map(([key, value]) =>
+      [key, {value: structuredClone(value), source_hash: formContract.source_hash}])));
   }
   const base = localBases.get(localKey()), conflicts = new Set();
   const equal = (left, right) => JSON.stringify(left) === JSON.stringify(right);
   // Rebase untouched fields; keep both versions of a changed field until an explicit decision
   for (const key of Object.keys(fresh)) {
-    if (equal(draft[key], base[key]) && !localDirty.get(localKey()).has(key)) draft[key] = structuredClone(fresh[key]);
-    if (!equal(fresh[key], base[key]) && !equal(draft[key], fresh[key])) conflicts.add(key);
-    else base[key] = structuredClone(fresh[key]);
+    if (equal(draft[key], base[key].value) && !localDirty.get(localKey()).has(key)) draft[key] = structuredClone(fresh[key]);
+    if (!equal(fresh[key], base[key].value) && !equal(draft[key], fresh[key])) conflicts.add(key);
+    else base[key] = {value: structuredClone(fresh[key]), source_hash: formContract.source_hash};
   }
   localConflicts.set(localKey(), conflicts);
   for (const key of conflicts) {
     const label = contract.fields[key]?.title || key;
-    text(root, "p", label + " changed in the TOML draft while your field edit was retained. Current: " + JSON.stringify(fresh[key]) + ". Your edit: " + JSON.stringify(draft[key]));
+    text(root, "p", label + " changed in the TOML draft while your field edit was retained. Current: " + JSON.stringify(fresh[key]) + ". Your edit: " + JSON.stringify(draft[key]) + ". Retained base: " + base[key].source_hash.slice(0, 12) + "; current draft: " + formContract.source_hash.slice(0, 12));
     for (const keep of [true, false]) {
       const button = text(root, "button", (keep ? "Keep my " : "Use current ") + label.toLowerCase()); button.type = "button";
       button.onclick = () => {
-        base[key] = structuredClone(fresh[key]);
+        base[key] = {value: structuredClone(fresh[key]), source_hash: formContract.source_hash};
         if (!keep) { draft[key] = structuredClone(fresh[key]); localDirty.get(localKey()).delete(key); }
         localRender(); (element("local-field-" + key) || element("local-apply")).focus();
       };
