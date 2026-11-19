@@ -10,8 +10,21 @@ This contract supports a completed, healthy service with one container and one u
 Split/tagged traffic, function/build configuration, missing native identities and unfinished provider
 reconciliation require a separate workflow. A service name must leave room for the release-bound
 revision suffix. There is no automatic creation, IAM change, image build or public-access change.
-Native qualification reached candidate creation with traffic retained on the baseline; the complete
-live traffic-switch journey remains open. See the exact limits in [verification](verification.md).
+One bounded native qualification completed candidate creation, conditional traffic switching, exact
+image/route readback and a separately reviewed no-op on a private disposable service. It did not test
+application HTTP or establish broader provider readiness. See [verification](verification.md).
+
+## Review before approval
+
+Fresh releases retain `cloud_run_review` in the same component record returned by CLI `run`/`status`
+and the authenticated release API. The console shows the frozen service and image before approval;
+expand **Reviewed Cloud Run target, revisions and traffic steps** for the service UID, baseline,
+candidate, native request digest, planned steps and 100% route. A no-op explicitly plans verification
+without a provider write. This projection contains no service template, environment or credentials.
+
+These are preparation facts, not current provider observations, application health or new authority.
+Approval and execution remain separate. Older records without this disclosure remain unchanged;
+prepare fresh evidence to obtain it. Read current state through **Read provider status**.
 
 ## Two separate native writes
 

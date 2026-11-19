@@ -271,6 +271,23 @@ function control(key) {
     assert.equal(Boolean(control("provider-web")), visible);
   }
 
+  // A frozen native request is readable before approval and distinct from provider observation
+  context.fixture.release.nodes.web.adapter = 'cloud-run';
+  context.fixture.release.nodes.web.cloud_run_review = {service: 'projects/fixture/locations/region/services/web',
+    image: 'registry.example/app@sha256:' + 'a'.repeat(64), action: 'update', baseline_revision: 'web-old',
+    candidate_revision: 'web-candidate', steps: ['Create candidate', 'Verify and switch']};
+  await vm.runInContext('show("release-fixture")', context);
+  let nativeReview = nodes.get('detail').querySelectorAll('*').find(node => node.dataset.review === 'web:cloud-run');
+  assert(nativeReview);
+  assert(nativeReview.children[1].children[0].textContent.includes('web-candidate'));
+  nativeReview.open = true;
+  context.fixture.release.reason = 'A later retained observation';
+  await vm.runInContext('show("release-fixture")', context);
+  nativeReview = nodes.get('detail').querySelectorAll('*').find(node => node.dataset.review === 'web:cloud-run');
+  assert(nativeReview.open);
+  delete context.fixture.release.nodes.web.cloud_run_review;
+  delete context.fixture.release.reason;
+
   // Expired, missing or mismatched observations never expose an execution shortcut
   for (const request of [{status: "approved", digest: "exact-fixture", execution_blocker: "Fresh complete effects required"},
     {status: "expired", digest: "exact-fixture"},

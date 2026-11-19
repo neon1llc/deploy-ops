@@ -773,6 +773,14 @@ async function show(id) {
     }
     reviewFacts(area, [["Adapter", node.adapter], ["Source revision", node.source?.revision],
       ["Local target", node.physical_target?.path], ["Target owner", node.physical_target?.owner?.join("/")]]);
+    if (node.cloud_run_review) {
+      const review = node.cloud_run_review;
+      reviewFacts(area, [["Cloud Run service", review.service], ["Reviewed image", review.image]]);
+      text(area, "p", "Frozen at preparation. Review the baseline, candidate and planned traffic steps before approval. This is not current provider status or application health; execution remains separate.");
+      reviewEvidence(area, name + ":cloud-run", "Reviewed Cloud Run target, revisions and traffic steps", review, expanded);
+    } else if (node.adapter === "cloud-run" && node.artifact_digest) {
+      text(area, "p", "This retained release has no native request disclosure. Preserve its original evidence; prepare a fresh release to review the target, image and traffic steps here.");
+    }
     if (node.kubernetes_binding) reviewEvidence(area, name + ":kubernetes", "Reviewed Kubernetes connection and object UID",
       node.kubernetes_binding, expanded);
     if (node.docker_target) {

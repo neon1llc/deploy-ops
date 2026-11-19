@@ -51,6 +51,14 @@ def test_two_conditional_boundaries_and_actual_readback(scene, parent, encoding,
         native.revision = short_revision
     prepared = cloud.prepare(context)
     assert 'PRIVATE-TEMPLATE-SENTINEL' not in json.dumps(prepared)
+    review = cloud_run.review(context, prepared)
+    assert review['candidate_revision'] == prepared['cloud_run_request']['candidate']
+    assert review['baseline_revision'] == prepared['previous_revision'] and review['traffic_percent'] == 100
+    assert review['native_request_digest'] == prepared['request_digest']
+    assert 'PRIVATE' not in json.dumps(review)
+    changed = copy.deepcopy(prepared)
+    changed['cloud_run_request']['image'] = 'other@sha256:' + 'd' * 64
+    with pytest.raises(Refused, match='supported reviewed'):cloud_run.review(context, changed)
     result = cloud.apply(context, prepared)
     assert result['image'] == IMAGE and result['revision'] == prepared['cloud_run_request']['candidate']
     writes = [call for call in native.calls if call[0] == 'PATCH']
