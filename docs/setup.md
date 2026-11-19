@@ -150,3 +150,24 @@ deploy-ops preview RELEASE_ID --component web --port 8000
 ```
 
 `--port 0` picks an OS-assigned port. Console shutdown closes its sessions, and the console can't stop a CLI session. At most eight sessions belong to a console process. Served content is read-only, bounded files from the retained reviewed revision. Keep secrets out of static artifacts, since other local processes can read loopback content and this isn't a sandbox. Serve it on its own origin, never through a proxy or iframe at the console origin.
+
+Native infrastructure forms also show each field's source. **Pin … for environment** explicitly authors
+its current value, including an equal inherited value. **Use inherited …** removes only that field's
+environment override. Unapplied sibling field edits remain in the form. The CLI uses the selected native
+form name, for example `foundation/staging`, with the same environment edit/reset operations:
+
+```bash
+deploy-ops config edit --file draft.toml --draft-out draft.toml --name foundation/staging --scope environment --values '{"region":"us-east-1"}'
+deploy-ops config reset --file draft.toml --draft-out draft.toml --name foundation/staging --scope environment --field region
+```
+
+Loading forms from revised TOML refreshes untouched local fields. If both the TOML and a retained field
+edit changed the same value, the local panel shows both versions and requires **Keep my …** or
+**Use current …** before applying. Ordered build arguments remain ordered. Field drafts stay in the tab's
+memory; reloading or locking the tab clears them.
+
+Validate reports the saved and proposed contract digests and explains the effect of Save on promotion,
+rollback, dependency output reuse, provider inspection and preview retirement. Comments alone do not
+change the contract. Exact historical gates remain in force. Save retains one previous workspace copy
+in local state; preserve that exact TOML separately before another Save replaces it. Returning to an old
+contract uses the normal validate, review and hash-guarded Save flow, without altering approvals.

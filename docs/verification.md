@@ -292,3 +292,20 @@ node --check src/deploy_ops/ui/app.js
 ```
 
 Use a new demo directory each time. The command refuses to overwrite an existing workspace.
+
+## v0.15.0 local target and configuration increment
+
+On 2026-11-05, the local source suite passed 711 tests. Target regressions cover directory/static aliases,
+symlink changes after approval, repeated same-owner updates, ordinary foundation/application composition,
+two actual reservation processes and nested independent state roots. Pure local configuration validation
+rejects the same malformed fields, paths, references and empty executables through the schema, CLI and API
+without running commands. Native equal pin/reset preserves sibling settings and authored comments.
+A real pending request created by the installed v0.14.0 runtime was refused before claim by v0.15.0; its
+approval remained approved and no local target was created.
+
+Real Edge exercised retained local name and ordered build conflicts, untouched check refresh, refusal
+before conflict resolution, both explicit resolution choices, save-impact review, native equal pin/reset,
+unapplied sibling retention, disclosure retention and focus return. At an actual 390-pixel viewport the
+page width remained 390 pixels. These were disposable draft operations without Save or provider execution.
+Task tabs were closed, viewport emulation cleared and the owned console stopped. Human comprehension,
+screen readers, all themes, live cloud behavior and complete program acceptance remain unqualified.

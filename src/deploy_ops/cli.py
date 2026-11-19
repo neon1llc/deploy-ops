@@ -40,7 +40,7 @@ def parser():
     config.add_argument("--source-hash", help="Exact saved workspace hash from inspect; required for save")
     config.add_argument("--section", choices=["repositories", "environments", "components", "options"])
     config.add_argument("--name")
-    config.add_argument("--scope", choices=["build", "base", "environment"], help="Existing local component edit scope")
+    config.add_argument("--scope", choices=["build", "base", "environment"], help="Local component or native environment edit scope")
     config.add_argument("--environment", help="Local environment for an override or reset")
     config.add_argument("--field", help="One environment override to remove with config reset")
     config.add_argument("--values", type=json.loads, default={})

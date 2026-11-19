@@ -32,3 +32,12 @@ first `release.waiting` event and outboxes. Existing history and delivery IDs st
 older waiting node without this binding records one current decision-needed transition on its next
 advance, then unchanged observations stay quiet. Stop old writers before upgrading; older writers
 do not enforce this deduplication. This adds no reminder scheduler or authority.
+
+## Local target ownership
+
+New directory/static preparations use adapter contract 2. Readers authenticate old evidence without
+rewriting it. Pending contract 1 local operations require fresh preparation before execution; finish
+or reconcile old work under its matching runtime before upgrading. Previously prepared ownership
+is derived from authenticated artifacts when checking another writer. Missing historical evidence
+requires inspection before assigning a different owner. Failed and cancelled reservations are retained.
+No database migration, automatic takeover or implicit cleanup is supplied.
