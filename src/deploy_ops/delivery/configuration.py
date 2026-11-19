@@ -22,7 +22,7 @@ from ..store import Store, require_writable
 from .files import read_regular
 from .ledger import Ledger
 from .spec import ADAPTERS, NAME, Build, Component, Environment, Repository, Workspace
-from .options import LOCAL_MODELS, MODELS, form
+from .options import FORM_MODELS, LOCAL_MODELS, form
 
 # Guided edits expose only fields owned by the workspace rather than controller authority
 FIELDS = {
@@ -69,15 +69,23 @@ def inspect(source: str) -> dict:
     for name in workspace.components:
         for environment in workspace.environments:
             component = workspace.component(name, environment)
-            if component.adapter in MODELS:
+            if component.adapter == 'cloud-run' and workspace.environments[environment].provider != 'gcp':
+                continue
+            if component.adapter in FORM_MODELS:
                 base = authored['components'][name].get('options', {})
                 override = authored['components'][name].get('targets', {}).get(environment, {})
+                try:
+                    selected_form = form(component.adapter, component.options)
+                except ValidationError as error:
+                    fields = sorted({item['loc'][0] for item in error.errors()
+                                     if item['loc'] and item['loc'][0] in FORM_MODELS[component.adapter].model_fields})
+                    raise Refused(f"Invalid {component.adapter} settings for {name}/{environment}; check {', '.join(fields)}", 422) from None
                 option_forms[name + "/" + environment] = {
-                    **form(component.adapter, component.options), "component": name,
+                    **selected_form, "component": name,
                     "environment": environment, "adapter": component.adapter,
                     'inheritance': {key: {'override_authored': key in override,
                         'source': 'environment override' if key in override else 'component' if key in base else 'adapter default'}
-                        for key in MODELS[component.adapter].model_fields},
+                        for key in FORM_MODELS[component.adapter].model_fields},
                 }
     return {"configuration": workspace.model_dump(), "forms": forms, "option_forms": option_forms,
             "creation_forms": creation_forms(forms), "local_edit_forms": local_forms(source, workspace), "digest": workspace.digest,
@@ -253,10 +261,10 @@ def patch(source: str, section: str, name: str, values: dict) -> dict:
     # Provider fields update only the chosen environment override
     if section == "options":
         if name not in before["option_forms"] or not isinstance(values, dict):
-            raise Refused("Choose a component with native infrastructure settings", 422)
+            raise Refused("Choose a component with native adapter settings", 422)
         selected = before["option_forms"][name]
         component = before["configuration"]["components"][selected["component"]]
-        model = MODELS[selected["adapter"]]
+        model = FORM_MODELS[selected["adapter"]]
         if set(values) - model.model_fields.keys():
             raise Refused("Unknown infrastructure setting", 422)
         try:

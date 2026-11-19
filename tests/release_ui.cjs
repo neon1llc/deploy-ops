@@ -575,5 +575,26 @@ function control(key) {
   pending[0]({...context.fixture, release: {...context.fixture.release, status: "older-observation"}});
   await earlier;
   assert(nodes.get("detail").children[0].textContent.includes("newer-observation"));
+  // A refused native pin returns to the field only when disabling controls left focus on the body
+  const formKeyStart = source.indexOf('function formKey()');
+  vm.runInContext(source.slice(formKeyStart, source.indexOf('\n', formKeyStart)) + '\n' +
+    source.slice(source.indexOf('// Pin or inherit one native field'), source.indexOf('// Render typed provider inputs')), context);
+  for (const id of ['config-controls', 'load-forms', 'config-section', 'config-name', 'config-fields', 'option-image', 'settings-search']) nodes.set(id, new Node('div'));
+  nodes.get('config-fields').querySelector = () => ({open: true});
+  context.structuredClone = structuredClone;
+  for (const mode of ['blurred', 'elsewhere', 'changed-form']) {
+    nodes.get('config').value = 'current draft'; nodes.get('config-section').value = 'options'; nodes.get('config-name').value = 'web/staging';
+    vm.runInContext('formSource="current draft"; formDrafts.set(formKey(), {image:"invalid image"});', context);
+    context.refusePin = async () => {
+      context.document.activeElement = mode === 'elsewhere' ? nodes.get('settings-search') : context.document.body;
+      if (mode === 'changed-form') nodes.get('config-name').value = 'web/development';
+      throw new Error('pin refused');
+    };
+    vm.runInContext('api=refusePin', context);
+    await assert.rejects(vm.runInContext('nativeOptionEdit("web/staging", "image", false)', context), /pin refused/);
+    assert.equal(context.document.activeElement, mode === 'blurred' ? nodes.get('option-image') : mode === 'elsewhere' ? nodes.get('settings-search') : context.document.body);
+    assert.equal(nodes.get('config').value, 'current draft');
+    assert.equal(nodes.get('config-controls').disabled, false);
+  }
   console.log("PASS: readable review, exact actions, guided receipts, duplicate blocking, draft retention and isolated prefill");
 })().catch(error => { console.error(error); process.exitCode = 1; });

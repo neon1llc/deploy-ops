@@ -11,10 +11,11 @@ import time
 from ...client import file_digest, private_json
 from ...config import fingerprint
 from ...errors import Refused
+from ..options import IMMUTABLE_IMAGE
 from .base import Context, need, preview
 
 # Require immutable image references before any runtime update
-IMAGE = re.compile(r"^[^\s]+@sha256:[0-9a-f]{64}$")
+IMAGE = re.compile(rf"^{IMMUTABLE_IMAGE}$")
 # Copy only fields accepted when registering a new ECS task revision
 ECS_FIELDS = {
     "family", "taskRoleArn", "executionRoleArn", "networkMode", "containerDefinitions",
