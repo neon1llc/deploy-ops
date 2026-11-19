@@ -698,7 +698,10 @@ def test_remote_delivery_refuses_repository_build_hooks(engine):
 def test_image_promotion_requires_a_destination_that_consumes_the_artifact(engine, target_adapter):
     config = engine.spec.model_dump()
     config["components"]["web"]["adapter"] = "ecs"
+    config["components"]["web"]["options"] = {}
     config["components"]["web"]["targets"]["staging"] = {"adapter": target_adapter}
+    if target_adapter == 'compose':
+        config["components"]["web"]["targets"]["staging"]["file"] = 'compose.yaml'
     engine.spec = Workspace.model_validate(config)
     origin = {"config_digest": engine.spec.digest, "environment": "development",
               "nodes": {"web": {"adapter": "ecs", "status": "succeeded"}}}

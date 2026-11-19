@@ -136,7 +136,7 @@ function releasesLoaded(event) {
   const records = event.detail;
   shellElement("release-count").textContent = String(records.length);
   const attention = records.filter((release) => ["failed", "uncertain", "waiting"].includes(release.status)).length;
-  shellElement("release-summary").textContent = records.length ? `${attention} waiting, failed or uncertain` : "No releases yet. Prepare your first change.";
+  shellElement("release-summary").textContent = records.length ? `${attention} waiting, failed or uncertain among these newest ${records.length} (up to 200). Browse Releases for all retained history.` : "No releases yet. Prepare your first change.";
 }
 
 

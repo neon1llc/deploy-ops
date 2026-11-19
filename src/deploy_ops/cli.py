@@ -157,6 +157,13 @@ def parser():
             command.add_argument("--wait-seconds", type=int, default=0)
     status = commands.add_parser("status")
     status.add_argument("release", nargs="?")
+    status.add_argument('--history', action='store_true', help='Browse all retained history with bounded pages; no execution')
+    status.add_argument('--query', default='', help='Literal project, component or release-ID search')
+    status.add_argument('--environment', default='', help='Exact recorded environment filter')
+    status.add_argument('--component', default='', help='Exact recorded component filter')
+    status.add_argument('--outcome', default='', help='Exact recorded release outcome, such as waiting, failed or succeeded')
+    status.add_argument('--limit', type=int, help='History page size from 1 to 100; default20')
+    status.add_argument('--cursor', default='', help='Next history cursor returned by the same filters/store; not execution authority')
     approval = commands.add_parser("approve")
     approval.add_argument("release")
     approval.add_argument("component")
@@ -507,6 +514,12 @@ def dispatch(args):
         if args.command == "events":
             ledger.get(args.release)
             return ledger.events(args.release)
+        history = args.history or args.query or args.environment or args.component or args.outcome or args.limit is not None or args.cursor
+        if history:
+            if args.release:
+                raise Refused('Choose one release ID or history filters, not both', 422)
+            return ledger.history(args.query, args.environment, args.component, args.outcome,
+                                  args.limit if args.limit is not None else 20, args.cursor)
         return ledger.get(args.release) if args.release else ledger.list()
 
     # Stateful actions share the same workspace and ledger owner
