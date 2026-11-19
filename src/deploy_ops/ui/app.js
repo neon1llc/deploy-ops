@@ -468,21 +468,36 @@ function reviewWorkflow(root, workflow) {
 
 // Keep local serving separate from activation, authority and preview cleanup
 function renderServing(area, release, name, sessions) {
-  text(area, "h4", "Serve this static revision");
-  text(area, "p", "Serving opens this retained revision on a separate loopback origin. It does not deploy or change the current target. If an action response is lost, refresh to inspect its session before retrying.");
-  const session = sessions.find(item => item.component === name);
+  renderServingMode(area, release, name, sessions, "revision");
+  if (!release.preview && release.nodes[name].physical_target) renderServingMode(area, release, name, sessions, "target");
+}
+
+
+// One shared session owner serves a fixed revision or follows the reviewed active target
+function renderServingMode(area, release, name, sessions, mode) {
+  const following = mode === "target";
+  const suffix = (following ? "target-" : "") + name;
+  text(area, "h4", following ? "Serve the active target" : "Serve this static revision");
+  text(area, "p", following
+    ? "One local URL follows successful approved activations of this target. Waiting approval leaves the current revision serving; unavailable evidence returns an error. This starts no deployment and retires no files."
+    : "Serving opens this retained revision on a separate loopback origin. It does not deploy or change the current target. If an action response is lost, refresh to inspect its session before retrying.");
+  const session = sessions.find(item => item.component === name && (item.mode || "revision") === mode);
   if (!session) {
-    area.append(button("Start serving", async () => {
-      await api("/serving/start", "POST", {release: release.id, component: name}); await refresh();
-    }, "serving-start-" + name));
+    area.append(button(following ? "Start serving active target" : "Start serving", async () => {
+      const body = {release: release.id, component: name};
+      if (following) body.mode = mode;
+      await api("/serving/start", "POST", body); await refresh();
+    }, "serving-start-" + suffix));
     return;
   }
-  text(area, "p", "Session: " + session.status + " · selected artifact " + session.digest);
+  text(area, "p", "Session: " + session.status + (following
+    ? " · active release " + (session.active_release || "unavailable") + " · active artifact " + (session.active_digest || "unavailable")
+    : " · selected artifact " + session.digest));
   const link = document.createElement("a"); link.href = session.url; link.textContent = session.url;
   link.target = "_blank"; link.rel = "noopener noreferrer"; link.referrerPolicy = "no-referrer"; area.append(link);
   area.append(button("Stop serving", async () => {
     await api("/serving/stop", "POST", {id: session.id}); await refresh();
-  }, "serving-stop-" + name));
+  }, "serving-stop-" + suffix));
 }
 
 

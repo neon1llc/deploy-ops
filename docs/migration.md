@@ -111,3 +111,10 @@ artifacts can be measured when their existing format and exact retained bytes va
 canonical tree helper preserves prior ordering and digest meaning; file/byte inventory remains separate
 from package detection. Unknown report versions refuse offline inspection. Collected results neither
 backfill a historical approval nor enforce a new release policy. See [artifact observations](artifact-observations.md).
+
+## Active-target serving
+
+The optional local listener follows the existing reviewed static target without changing approval,
+prepared-envelope, database or pointer formats. Fixed revision serving remains the default. Target
+mode requires physical ownership in adapter contract 2 and refuses isolated previews or legacy
+ownership evidence. Existing revisions and audit bytes are preserved. See [local serving](local-serving.md).

@@ -1,5 +1,20 @@
 # Verification
 
+## Active-target local serving, 2026-11-05
+
+The v0.23.0 domain/API journey used real loopback HTTP for a fixed revision and active-target listener.
+Preparation and approval-and-hold preserved the original bytes; separate execution activated new bytes
+on the same target URL while the fixed URL retained the original. Repeated starts from a later release
+returned the same owned target session. Foreign, malformed, missing and externally reverted pointers,
+uncertain completion, altered reviewed evidence and a changed newly selected inventory returned 410.
+Retained serving worked with invalid current TOML, and process shutdown closed the owned listener.
+The executed DOM harness separately checked distinct revision/target actions, fixed request identities,
+safe links, explicit stop and no target control for isolated previews. Those are not mounted UI checks.
+
+Current mounted target controls, keyboard/layout/AT and human acceptance remain unqualified following
+the earlier Edge debugger detachment. Static target routing alone does not qualify complete blue-green
+readiness, separate switch authority, post-check or explicit previous-capacity retirement.
+
 ## Retained static artifact observations, 2026-11-05
 
 The v0.22.0 collector's domain/API checks cover a real artifact waiting for approval, exact byte and
