@@ -174,6 +174,8 @@ def capture(state: Path, release_id: str, run_id=None, run_attempt=None) -> dict
     release = Ledger.open_existing(state).get(release_id)
     if any(node.get('outputs', {}).get('activation') == 'candidate' for node in release['nodes'].values()):
         raise Refused('Inspection format 2 does not describe separate static rollout phases. Use rollout inspect for current routing and retirement facts', 422)
+    if any(node.get('kubernetes_binding') for node in release['nodes'].values()):
+        raise Refused('Inspection format 2 does not describe the Kubernetes connection/UID operation. Use provider inspect or a coherent private backup', 422)
     components = []
     try:
         for name, node in release['nodes'].items():

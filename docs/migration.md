@@ -180,3 +180,17 @@ workspace. Unknown output values remain a runtime validation boundary; known unu
 in preparation. Older writers do not enforce this contract. Historical inspection is retained, while
 mutations should use the current writer consistently. Remote backend/provider qualification remains
 separate from local metadata and native built-in-resource proof. See [configuration](configuration.md).
+
+## Kubernetes connection/UID contract
+
+New preparations carry a version1 `kubernetes_request` and exact request digest. They bind selected
+client connection, public TLS identity, tool version and existing object UID/version/container baseline.
+The new writer refuses older Kubernetes mutation evidence before runner claim and native adapter use.
+Historical records are not rewritten. Shared read-only prepared compatibility checks also project
+legacy IaC/stack-deletion reasons into console review without changing their requests or audit.
+
+A new public native journal preserves one-shot patch intent, acknowledgement and observation. Coherent
+backup format1 admits this known journal while excluding credential homes; older strict readers may
+refuse that added extent. Deployment inspection format2 explicitly refuses the new operation scope;
+legacy summaries retain their meaning. No database migration, automatic namespace/resource adoption,
+cluster creation, kubeconfig edit, permission or host trust change is introduced. See [Kubernetes](kubernetes.md).

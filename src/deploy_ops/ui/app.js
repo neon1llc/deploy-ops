@@ -664,6 +664,8 @@ async function show(id) {
     }
     reviewFacts(area, [["Adapter", node.adapter], ["Source revision", node.source?.revision],
       ["Local target", node.physical_target?.path], ["Target owner", node.physical_target?.owner?.join("/")]]);
+    if (node.kubernetes_binding) reviewEvidence(area, name + ":kubernetes", "Reviewed Kubernetes connection and object UID",
+      node.kubernetes_binding, expanded);
     if (node.infrastructure_backend) reviewEvidence(area, name + ":backend", "Effective infrastructure backend",
       node.infrastructure_backend, expanded);
     if (node.output_readiness) reviewEvidence(area, name + ":output-readiness", "Selected output readiness before apply",
@@ -672,7 +674,7 @@ async function show(id) {
     if (node.adapter === "static" && node.artifact_digest && typeof artifactControls === "function") artifactControls(area, id, name, expanded);
     if (node.adapter === "static" && node.artifact_digest && typeof signatureControls === "function") signatureControls(area, id, name, node.artifact_digest, expanded);
     for (const warning of node.warnings || []) text(area, "p", "Review: " + warning);
-    if (["cloudformation", "cdk", "arm", "bicep", "ecs", "container-apps", "cloud-run"].includes(node.adapter) && (node.request_digest || node.status === "uncertain")) {
+    if (["cloudformation", "cdk", "arm", "bicep", "ecs", "container-apps", "cloud-run", "kubernetes"].includes(node.adapter) && (node.request_digest || node.status === "uncertain")) {
       area.append(button("Read provider status", async () => {
         const observed = await api("/releases/" + id + "/provider/inspect", "POST", {component: name});
         message(observed.reason || ("Provider readback: " + (observed.status || observed.stack_status || observed.operation || "recorded") + ". No deployment was replayed."));

@@ -117,6 +117,9 @@ def inspect_pending(context: Context) -> dict:
 
 # Require the same reviewed request before exposing operation recovery evidence
 def inspect(context: Context, prepared: dict) -> dict:
+    if context.component.adapter == 'kubernetes':
+        from . import kubernetes
+        return kubernetes.inspect(context, prepared)
     if context.component.adapter == "cloud-run":
         from . import cloud_run
         return cloud_run.inspect(context, prepared)
@@ -312,25 +315,20 @@ def prepare(context: Context) -> dict:
         if result['cloud_run_request']['no_op']:
             result['preview']['changes'][0]['action'] = 'no-op'
     elif adapter == "kubernetes":
-        for key in ("context", "namespace", "deployment", "container"):
-            need(context.options, key)
-        # Existing resources are owned by the infrastructure or GitOps repository
-        base = ["kubectl", "--context", context.options["context"], "--namespace", context.options["namespace"]]
-        current = json.loads(context.command([*base, "get", "deployment/" + context.options["deployment"], "-o", "json"], capture=True))
-        containers = current["spec"]["template"]["spec"]["containers"]
-        indices = [index for index, item in enumerate(containers) if item["name"] == context.options["container"]]
-        if len(indices) != 1:
-            raise Refused("Expected one named Kubernetes container")
-        result["container_index"] = indices[0]
-        result["previous_image"] = containers[indices[0]]["image"]
-        result["resource_version"] = current["metadata"]["resourceVersion"]
+        from . import kubernetes
+        result.update(kubernetes.prepare(context, image))
         result["preview"] = preview(context.name, "kubernetes_image_update", False)
+        if result['kubernetes_request']['no_op']:
+            result['preview']['changes'][0]['action'] = 'no-op'
     return result
 
 
 # Recheck the baseline and verify the provider's resulting revision
 def apply(context: Context, prepared: dict) -> dict:
     adapter = context.component.adapter
+    if adapter == 'kubernetes':
+        from . import kubernetes
+        return kubernetes.apply(context, prepared)
     image = prepared["image"]
     if adapter == "ecs":
         if (context.stage.parent / "ecs-operation.json").exists():
@@ -409,19 +407,3 @@ def apply(context: Context, prepared: dict) -> dict:
     if adapter == "cloud-run":
         from . import cloud_run
         return cloud_run.apply(context, prepared)
-    base = ["kubectl", "--context", need(context.options, "context"), "--namespace", need(context.options, "namespace")]
-    deployment = "deployment/" + need(context.options, "deployment")
-    # Use atomic test operations to reject concurrent Kubernetes changes
-    patch = [
-        {"op": "test", "path": "/metadata/resourceVersion", "value": prepared["resource_version"]},
-        {"op": "test", "path": f"/spec/template/spec/containers/{prepared['container_index']}/image", "value": prepared["previous_image"]},
-        {"op": "replace", "path": f"/spec/template/spec/containers/{prepared['container_index']}/image", "value": image},
-    ]
-    context.command([*base, "patch", deployment, "--type=json", "--patch", json.dumps(patch)])
-    context.command([*base, "rollout", "status", deployment, "--timeout=120s"])
-    observed = json.loads(context.command([*base, "get", deployment, "-o", "json"], capture=True))
-    matches = [container for container in observed["spec"]["template"]["spec"]["containers"]
-               if container["name"] == context.options["container"]]
-    if len(matches) != 1 or matches[0]["image"] != image:
-        raise Refused("Kubernetes deployment no longer matches the requested image")
-    return {"deployment": deployment, "image": image}

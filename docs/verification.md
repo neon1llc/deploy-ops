@@ -1,5 +1,25 @@
 # Verification
 
+## Kubernetes connection and object identity, 2026-11-05
+
+Actual kubectl v1.36.1 against an owned loopback TLS API fixture retained the original connection when
+the on-disk alias changed during execution, rejected a recreated UID atomically, and sent one accepted
+PATCH whose acknowledgement was lost. Read-only inspection observed its result without replay or
+controller completion. Raw native config remained in memory/anonymous stdin; public prepared/journal
+facts contained no fixture token. All owned sockets and temporary TLS material were removed.
+
+The first fixture did not implement current watch-list initial bookmarks and timed out. Bounded stdin
+and named-file diagnostics both showed the same fixture timeout; implementing the documented bookmark
+completed the native journey without changing product semantics or weakening TLS. Native-shaped cases
+cover preclaim legacy refusal, connection/UID/version/container changes, no-op readiness, final UID
+replacement, retained journal privacy, backup extent and explicit unsupported portable-inspection scope.
+Console compatibility reads retain pending status and leave rows/audit unchanged.
+
+No dedicated real-cluster reference is available, and read-only discovery found the configured local
+Docker daemon unavailable. No daemon, personal context or cluster was changed. This current proof is
+not real Kubernetes-controller/workload/RBAC/managed-cluster qualification, and current mounted browser,
+keyboard/layout/AT/human acceptance remain open. Historical v0.7 VM proof below stays separate.
+
 ## Generic IaC readiness, 2026-11-05
 
 Real Terraform1.16.0 using built-in terraform_data and private local state refused a known complex
