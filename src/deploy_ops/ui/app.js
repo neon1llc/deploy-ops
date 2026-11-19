@@ -40,6 +40,56 @@ const message = (text, error = false) => {
 };
 
 
+// Keep confirmations and inspection notes inside a native dialog with browser-owned focus containment
+let activeDialog = null;
+function operatorDialog(description, initialValue = null) {
+  if (activeDialog) return Promise.resolve(null);
+  const previousFocus = document.activeElement;
+  const dialog = document.createElement("dialog");
+  activeDialog = dialog;
+  dialog.setAttribute("aria-labelledby", "operator-dialog-heading");
+  const form = document.createElement("form"); form.method = "dialog"; dialog.append(form);
+  const heading = text(form, "h2", initialValue === null ? "Confirm action" : "Record inspection");
+  heading.id = "operator-dialog-heading";
+  const descriptionNode = text(form, "p", description); descriptionNode.id = "operator-dialog-description";
+  dialog.setAttribute("aria-describedby", descriptionNode.id);
+  let input = null;
+  if (initialValue !== null) {
+    const label = text(form, "label", "Inspection note"); label.htmlFor = "operator-dialog-note";
+    input = document.createElement("textarea"); input.id = "operator-dialog-note";
+    input.rows = 4; input.maxLength = 500; input.value = initialValue;
+    form.append(input);
+  }
+  const controls = document.createElement("div"); controls.className = "controls"; form.append(controls);
+  const cancel = text(controls, "button", "Cancel"); cancel.type = "submit"; cancel.value = "cancel";
+  cancel.className = "secondary"; cancel.autofocus = true;
+  const confirm = text(controls, "button", initialValue === null ? "Confirm" : "Continue");
+  confirm.type = "submit"; confirm.value = "confirm";
+  document.body.append(dialog);
+  return new Promise(resolve => {
+    dialog.addEventListener("close", () => {
+      const result = dialog.returnValue === "confirm" ? (input ? input.value : true) : null;
+      dialog.remove(); activeDialog = null;
+      if (previousFocus?.isConnected) previousFocus.focus({preventScroll: true});
+      resolve(result);
+    }, {once: true});
+    dialog.showModal();
+  });
+}
+
+
+// Approval remains an explicit accepted confirmation rather than a dialog dismissal
+async function confirmAction(description) {
+  return await operatorDialog(description) === true;
+}
+
+
+// Cancelling or pressing Escape leaves inspection and recovery unsubmitted
+async function promptAction(description, initialValue = "") {
+  return operatorDialog(description, initialValue);
+}
+
+
 // Send authenticated operations to the same local core as the CLI
 async function api(path, method = "GET", body) {
   const response = await fetch("/api" + path, {
@@ -59,7 +109,15 @@ function button(label, action, key = label) {
   node.onclick = () => safe(async () => {
     if (acting) return;
     acting = true; node.disabled = true;
-    try { await action(); } finally { acting = false; node.disabled = false; }
+    try { await action(); } finally {
+      acting = false; node.disabled = false;
+      // A dialog may close while its opener is disabled or replaced by refreshed release evidence
+      if (document.activeElement === document.body) {
+        const replacement = [...(element("detail")?.querySelectorAll("[data-key]") || [])]
+          .find(control => control.dataset.key === key);
+        (node.isConnected ? node : replacement || element("detail-heading"))?.focus({preventScroll: true});
+      }
+    }
   }); return node;
 }
 
@@ -409,7 +467,7 @@ async function show(id) {
       }, "provider-" + name));
       if (["cloudformation", "cdk"].includes(node.adapter) && release.status === "waiting") {
         area.append(button("Discard unexecuted change set", async () => {
-          if (!window.confirm("Delete this release's unexecuted change set and cancel the release? Existing deployed resources remain.")) return;
+          if (!await confirmAction("Delete this release's unexecuted change set and cancel the release? Existing deployed resources remain.")) return;
           await api("/releases/" + id + "/provider/discard", "POST", {component: name});
           message("Change set discarded. Inspect any retained stack record in provider status."); await refresh();
         }, "discard-" + name));
@@ -426,7 +484,7 @@ async function show(id) {
         ? ". Ready for separate execution." : ".") : "Approval status unavailable or changed. Refresh before acting.");
     }
     if (node.status === "waiting" && matchingRequest && request.status === "pending") area.append(button("Approve this exact change", async () => {
-      if (!window.confirm("Approve the displayed change for " + name + "?")) return;
+      if (!await confirmAction("Approve the displayed change for " + name + "?")) return;
       await api("/releases/" + id + "/approve", "POST", { component: name, digest: node.request_digest });
       message("Exact change approved. Execution is a separate action."); await refresh();
     }, "approve-" + name));
@@ -440,7 +498,7 @@ async function show(id) {
         const label = (action.rollback ? "Rollback in " : "Promote to ") + action.environment;
         if (!action.available) { text(area, "p", label + ": " + action.reason); continue; }
         controls.append(button(label, async () => {
-          if (!window.confirm(label + " using the displayed " + name + " artifact? A new release will check authority and target state.")) return;
+          if (!await confirmAction(label + " using the displayed " + name + " artifact? A new release will check authority and target state.")) return;
           const next = await api("/releases", "POST", { origin: id, component: name, environment: action.environment, rollback: action.rollback, only: true,
             receipts: readReceipts() });
           selected = next.id; message("Artifact reuse requested. Inspect the new release and any required approval."); await refresh();
@@ -463,7 +521,7 @@ async function show(id) {
     await api("/releases/" + id + "/cancel", "POST", {}); await refresh();
   }));
   if (release.status === "uncertain") root.append(button("Reconcile inspected target", async () => {
-    const note = window.prompt("After stopping the worker and inspecting the target, record what you found:");
+    const note = await promptAction("After stopping the worker and inspecting the target, record what you found:");
     if (!note) return;
     await api("/releases/" + id + "/recover", "POST", { note }); await refresh();
   }));
@@ -554,7 +612,7 @@ element("release-form").onsubmit = (event) => { event.preventDefault(); safe(asy
 
 // Keep bounded local delegation a separate operator decision
 element("delegation").onsubmit = (event) => { event.preventDefault(); safe(async () => {
-  if (!window.confirm("Grant bounded local authority for the selected environment?")) return;
+  if (!await confirmAction("Grant bounded local authority for the selected environment?")) return;
   await api("/delegations", "POST", { environment: element("environment").value, hours: Number(element("hours").value), uses: Number(element("uses").value) });
   message("Local delegation granted. Production and unknown operations remain gated.");
 }); };
@@ -578,7 +636,7 @@ element("save-config").onclick = () => safe(async () => {
     element("validate-config").click();
     message("Validate and review all changes below, then save the configuration."); return;
   }
-  if (!window.confirm("Save this local workspace? The previous file is retained in local state.")) return;
+  if (!await confirmAction("Save this local workspace? The previous file is retained in local state.")) return;
   await api("/config/save", "POST", { configuration: element("config").value, source_hash: savedSourceHash });
   token = ""; location.reload();
 });
@@ -1037,7 +1095,7 @@ function renderPreview(root, data) {
   if (request) text(root, "pre", "Cleanup approval: " + request.status + "\nDigest: " + request.digest);
   if (cleanup.status === "waiting" && request?.status === "pending") {
     root.append(button("Approve exact preview cleanup", async () => {
-      if (!window.confirm("Approve only the displayed preview file removals? Retained source, artifacts, audit and listed data remain.")) return;
+      if (!await confirmAction("Approve only the displayed preview file removals? Retained source, artifacts, audit and listed data remain.")) return;
       await act("approve-cleanup", {digest: request.digest}, "Cleanup approved. Execution is a separate action.");
     }, "approve-cleanup"));
   }
@@ -1048,9 +1106,9 @@ function renderPreview(root, data) {
   }
   if (["preparing", "waiting", "running", "uncertain"].includes(cleanup.status)) {
     root.append(button("Inspect and reconcile cleanup", async () => {
-      const note = window.prompt("Stop any worker, inspect the owned preview namespace, and describe what remains:");
+      const note = await promptAction("Stop any worker, inspect the owned preview namespace, and describe what remains:");
       if (!note) return;
-      const removed = window.prompt("Type removed only if you inspected and confirmed the entire owned namespace is absent. Leave blank to prepare a new plan for remaining files:", "");
+      const removed = await promptAction("Type removed only if you inspected and confirmed the entire owned namespace is absent. Leave blank to prepare a new plan for remaining files:", "");
       if (removed === null) return;
       if (removed !== "" && removed !== "removed") throw new Error("Use removed or leave the inspection choice blank.");
       await act("reconcile", {note, confirm_removed: removed === "removed"}, "Cleanup inspection recorded. Original deployment outcome is unchanged.");

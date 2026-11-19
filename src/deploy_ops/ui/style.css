@@ -14,6 +14,11 @@ body { margin: 0; font-size: 14px; line-height: 1.5; }
 [hidden] { display: none !important; }
 a { color: var(--accent, #246834); text-underline-offset: 3px; }
 button, input, select, textarea { font: inherit; }
+
+/* Native dialogs contain focus while keeping confirmation text readable at narrow widths */
+dialog { color: var(--text, #17211a); background: var(--panel, #fbfcfb); border: 1px solid var(--line, #c5d1c8); border-radius: var(--radius, 10px); padding: var(--space); width: min(560px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow: auto; }
+dialog::backdrop { background: rgb(0 0 0 / 55%); }
+dialog textarea { width: 100%; margin-bottom: 16px; }
 button, a, input, select, textarea, summary { -webkit-tap-highlight-color: transparent; }
 
 /* Adapt the licensed workspace frame without coupling to another application */

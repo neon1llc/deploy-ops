@@ -92,7 +92,7 @@ const context = vm.createContext({
 context.document.activeElement = context.document.body;
 const source = fs.readFileSync("src/deploy_ops/ui/app.js", "utf8");
 vm.runInContext(source.slice(0, source.indexOf('// Unlock from memory')), context);
-vm.runInContext('token="fixture"; refresh=async()=>{}; const selectionWithReceipts=selection;', context);
+vm.runInContext('token="fixture"; refresh=async()=>{}; confirmAction=async()=>true; const selectionWithReceipts=selection;', context);
 context.fixture = {release: {id: "release-fixture", status: "waiting", environment: "development",
   config_digest: "contract-fixture", nodes: {web: {adapter: "ecs", status: "waiting", request_digest: "exact-fixture"}}},
   events: [], artifact_actions: [], request_statuses: {web: {status: "pending", digest: "exact-fixture"}}};
