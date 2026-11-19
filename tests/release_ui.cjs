@@ -213,6 +213,17 @@ function control(key) {
   assert.deepEqual(calls.map(call => [call.path, call.body.component]), [["/releases/release-fixture/provider/inspect", "web"]]);
   assert.match(nodes.get("message").textContent, /register-submitted/);
 
+  // Reviewed effective backend and output uncertainty use native disclosures, not inferred readiness
+  context.fixture.release.nodes.web.infrastructure_backend = {version: 1, type: 'local', workspace: 'default', config_digest: 'fixture'};
+  context.fixture.release.nodes.web.output_readiness = {selected: 'unknown_until_apply'};
+  await vm.runInContext('show("release-fixture")', context);
+  const reviewNodes = nodes.get('detail').querySelectorAll('*');
+  assert(reviewNodes.some(node => node.tagName === 'summary' && node.textContent === 'Effective infrastructure backend'));
+  assert(reviewNodes.some(node => node.tagName === 'summary' && node.textContent === 'Selected output readiness before apply'));
+  assert(reviewNodes.some(node => node.tagName === 'code' && node.textContent.includes('unknown_until_apply')));
+  delete context.fixture.release.nodes.web.infrastructure_backend;
+  delete context.fixture.release.nodes.web.output_readiness;
+
   // Both journal-backed application adapters expose readback without enabling unsupported adapters
   for (const [adapter, visible] of [["container-apps", true], ["cloud-run", true], ["kubernetes", false]]) {
     context.fixture.release.nodes.web.adapter = adapter;

@@ -147,7 +147,7 @@ Preview cleanup reconciliation now uses a native namespace-state selection after
 It no longer asks for blank or `removed` through a dialog that requires ten-character notes. The note
 constraint, cancellation and all backend cleanup checks remain intact.
 
-## Complete migration and stack-deletion effects in v0.26.0
+## Complete migration and stack-deletion effects
 
 New Terraform/OpenTofu migration manifests carry `native_effects_version = 2` alongside caller schema 2.
 Their change rows preserve native actions plus import/move. Existing manifest bytes, digests and audit
@@ -164,3 +164,19 @@ they are never edited automatically. New snapshot rows require the current reade
 reader may refuse them. Older writers do not acquire these new enforcement guarantees by reading a
 new report. Use the current writer consistently for mutations; no cross-version writer lock or
 historical backfill is introduced. See [native infrastructure](native-infrastructure.md).
+
+## Generic IaC readiness
+
+The generic Terraform/OpenTofu delivery adapter prepares `iac_contract_version = 2`, including the
+saved-plan digest, effective initialized backend binding, selected-output readiness and native effects
+version 2. This extends the v0.26.0 controller-path migration guard to the separate generic delivery
+runner. Earlier generic prepared envelopes lack that complete contract and refuse before runner claim
+or native adapter use; keep their historical evidence and prepare a fresh release. Native controller
+manifests and unrelated adapters keep their existing formats. No database migration, state migration,
+address rename, grant change or automatic historical backfill is performed.
+
+Current generic writers support exact owned local state or s3/gcs/azurerm remote metadata in the default
+workspace. Unknown output values remain a runtime validation boundary; known unusable selections refuse
+in preparation. Older writers do not enforce this contract. Historical inspection is retained, while
+mutations should use the current writer consistently. Remote backend/provider qualification remains
+separate from local metadata and native built-in-resource proof. See [configuration](configuration.md).
