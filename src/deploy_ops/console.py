@@ -402,6 +402,7 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
     def detail(release_id: str):
         release = engine.ledger.get(release_id)
         cleanup = release.get("cleanup", {})
+        from .delivery.previews import recovery_status as cleanup_recovery_status
 
         # Optional current authority failure cannot hide retained retirement evidence
         cleanup_request = None
@@ -425,6 +426,8 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         return {"serving_sessions": [item for item in serving.list() if item["release"] == release_id],
                 "release": release, "events": engine.ledger.events(release_id),
                 "request_statuses": request_statuses,
+                "recovery": engine.recovery_status(release),
+                "cleanup_recovery": cleanup_recovery_status(engine, release) if cleanup else None,
                 "cleanup_request": cleanup_request,
                 "artifact_actions": engine.artifact_actions(release)}
 

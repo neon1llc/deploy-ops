@@ -584,6 +584,7 @@ class Engine:
                 current = self.ledger.latest_outputs(release['environment'], dependency, self.spec.digest)
                 if not current or current['receipt'] != frozen['release_id'] or fingerprint(current['outputs']) != frozen['outputs_digest']:
                     raise Refused("Reviewed local dependency changed or is unresolved. Prepare fresh evidence")
+            return self.ledger.worker_binding('release:' + release['id'], release['id'])
 
         check_local_inputs()
         # Consume approval only after the retained source and artifact checks pass
@@ -617,8 +618,11 @@ class Engine:
             raise Refused("Workspace changed. Create a new release instead of resuming")
         if release["status"] in ("succeeded", "failed", "cancelled", "uncertain"):
             raise Refused("Terminal or interrupted releases cannot resume")
+        if release['status'] in {'running', 'cancel_requested'} or any(
+                node['status'] in {'running', 'preparing', 'uncertain'} for node in release['nodes'].values()):
+            raise Refused("Interrupted work must be inspected through recovery; starting another worker cannot prove the original stopped")
         scope = "release:" + release_id
-        self.ledger.lock(scope, release_id)
+        self.ledger.lock(scope, release_id, kind='worker')
         current_name = None
         try:
             for name in release["order"]:
@@ -645,6 +649,8 @@ class Engine:
                     release["status"] = "waiting"
                     return self.ledger.save(release, "release.waiting", {"component": name, **waiting})
                 if request["status"] != "approved":
+                    if request['status'] in {'running', 'uncertain'}:
+                        node['status'] = 'uncertain'
                     raise Refused("Deployment request is " + request["status"])
                 self._apply(release, name, request)
                 if self.ledger.get(release_id)['status'] in {'cancel_requested', 'cancelled'}:
@@ -709,12 +715,30 @@ class Engine:
         return self.ledger.save(release, "release.cancel_requested")
 
 
+    # Expose only recovery supported by this operation owner and observed local worker evidence
+    def recovery_status(self, release: dict):
+        result = {"release_id": release['id'], "available": False, "worker": "unavailable"}
+        if release['status'] not in {'running', 'uncertain', 'cancel_requested'}:
+            return {**result, "reason": "Recovery requires an interrupted release; retained inspection remains available."}
+        if type(self.gate) is not LocalGate:
+            return {**result, "reason": "Use the original remote or isolated operation owner to inspect and reconcile this release."}
+        worker = self.ledger.worker_status('release:' + release['id'], release['id'])
+        return {**result, "available": worker['state'] in {'dead', 'stopped'},
+                "worker": worker['state'], "reason": worker['reason']}
+
+
     # Acquire recovery ownership before resolving interrupted release state
     def recover(self, release_id: str, note: str):
         """Release a locked target only after the operator has inspected its actual state."""
         if not isinstance(note, str) or not 10 <= len(note.strip()) <= 500:
             raise Refused("Recovery needs an inspection note of 10 to 500 characters", 422)
-        # Recovery cannot replace a lock owned by a worker that may still be running
+        release = self.ledger.get(release_id)
+        if release.get("reconciliation") and release["status"] == "failed":
+            return release
+        available = self.recovery_status(release)
+        if not available['available']:
+            raise Refused(available['reason'])
+        # Recovery rechecks the same evidence transactionally before replacing ownership
         scope = "release:" + release_id
         self.ledger.recovery_lock(scope, release_id)
         try:

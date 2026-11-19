@@ -81,13 +81,15 @@ class Operator:
     def resolve(self, identifier, resolution):
         with self.engine.ledger.store.connect() as connection:
             rows = connection.execute('SELECT id,data FROM releases')
-            owner = next((row['id'] for row in rows if any(node.get('request_id') == identifier
+            owner = next(((row['id'], 'cleanup' if json.loads(row['data']).get('cleanup', {}).get('request_id') == identifier else 'worker')
+                         for row in rows if any(node.get('request_id') == identifier
                          for node in json.loads(row['data'])['nodes'].values()) or
                          json.loads(row['data']).get('cleanup', {}).get('request_id') == identifier), None)
         if not owner:
             raise Refused('Retained worker ownership is unavailable; inspect through the original operation owner')
+        owner, kind = owner
         scope = 'release:' + owner
-        self.engine.ledger.recovery_lock(scope, owner)
+        self.engine.ledger.recovery_lock(scope, owner, kind=kind)
         try:
             return self.controller.resolve(identifier, resolution, 'local-operator')
         finally:

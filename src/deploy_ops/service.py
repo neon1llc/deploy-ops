@@ -416,8 +416,11 @@ class Controller:
             if busy:
                 raise Refused("Target already has a running or unresolved execution: request " + busy["id"])
             # A local consumer rechecks frozen producers while this same store excludes all writers
-            if local_input_check:
-                local_input_check()
+            local_worker = local_input_check() if local_input_check else None
+            if local_worker is not None:
+                required = {'protocol_version', 'host_id', 'state_path', 'pid', 'owner_id', 'scope', 'kind'}
+                if not isinstance(local_worker, dict) or set(local_worker) != required or local_worker['protocol_version'] != 1:
+                    raise Refused("Unsupported local worker admission binding")
             if request["approval"]["kind"] == "delegation":
                 grant = self.store.delegation(connection, request["approval"]["id"])
                 if not fits_delegation(target, request["manifest"], grant, now):
@@ -434,6 +437,8 @@ class Controller:
                 "reported_outcome": None,
                 "source": source.model_dump(),
             }
+            if local_worker is not None:
+                request['execution']['local_worker'] = local_worker
             if target.receipt_outputs:
                 # A failed apply can still mutate infrastructure; never revive its predecessor's receipt
                 for row in connection.execute("SELECT data FROM requests WHERE target=?", (request["manifest"]["target"],)).fetchall():

@@ -48,3 +48,18 @@ Request reads add a safe `timing` projection without changing retained manifests
 approvals or database records. Older clients can ignore it. New clients report timing unavailable
 when an older controller omits it; existing controller enforcement remains authoritative. The
 projection contains explicitly selected timestamps and limits, without execution tokens or hashes.
+
+## Local worker evidence
+
+New local release admissions/stops and command launch/stop records append to the existing events and
+audit chain. No original manifest, digest or historical record is rewritten. The database schema is
+unchanged. Historical readers can inspect retained records, but older recovery writers do not enforce
+this protocol and must not be used to bypass a refusal. Keep the matching runtime with interrupted work.
+Legacy or relocated evidence without matching local worker ownership remains readable but does not
+authorize reconciliation in this runtime. There is no automatic ownership backfill or force-unlock.
+
+Local execution records additionally retain the controller's internal callback binding to the exact
+worker admission. This is outside the approved manifest. HTTP claim input cannot supply this binding.
+Deployment, preview cleanup and provider readback keep their separate meanings under the shared lock.
+An imported, legacy or external claim without matching ownership remains unknown; no later successful
+readback or refused local execution authorizes resolving it.

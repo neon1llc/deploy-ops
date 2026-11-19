@@ -334,6 +334,18 @@ def test_cancel_prepared_release_withdraws_authority(engine, approved):
     assert not list(engine.deployments.rglob("resource.json"))
 
 
+# Retain a real admitted local claim while deliberately omitting adapter application
+def claim_only(engine, release, identifier):
+    scope = 'release:' + release['id']
+    engine.ledger.lock(scope, release['id'], kind='worker')
+    try:
+        return engine.gate.claim(engine.gate.status(identifier), release,
+            local_input_check=lambda: engine.ledger.worker_binding(scope, release['id']))
+    finally:
+        engine.ledger.unlock(scope, release['id'])
+
+
+
 # Controller reconciliation can close delivery tracking without rewriting a final decision
 @pytest.mark.parametrize("outcome", ["failed", "succeeded", None])
 def test_cancel_after_controller_inspection(engine, outcome):
@@ -342,7 +354,7 @@ def test_cancel_after_controller_inspection(engine, outcome):
     release = engine.advance(engine.create("development", "foundation")["id"])
     node = release["nodes"]["foundation"]
     engine.approve(release["id"], "foundation", node["request_digest"])
-    engine.gate.claim(engine.gate.status(node["request_id"]), release)
+    claim_only(engine, release, node["request_id"])
     operator.call("pause")
     if outcome:
         operator.call("resolve", node["request_id"], {"outcome": outcome,
@@ -415,7 +427,7 @@ def test_subprocess_does_not_inherit_personal_tokens(tmp_path, monkeypatch):
     process = Process(tmp_path, lambda event, detail: events.append((event, detail)))
     text = process.run([sys.executable, "-c", "import os,json; print(json.dumps(dict(os.environ)))"], tmp_path, capture=True)
     assert "not-for-builds" not in text
-    assert events[-1][0] == "command.finished"
+    assert [event for event, _ in events] == ["command.started", "command.launched", "command.finished", "command.stopped"]
 
 
 # All public operation labels come from fixed native prefixes rather than arbitrary arguments
@@ -440,10 +452,12 @@ def test_native_azure_failure_labels_do_not_expose_diagnostics(tmp_path, known):
         process.run([str(executable), *operation, "--secret", "argument-secret-sentinel"], tmp_path, capture=True)
     evidence = json.dumps(events) + str(failure.value)
     assert "secret-sentinel" not in evidence
-    assert events[-1][0] == "command.failed"
-    assert events[-1][1]["exit_code"] == 7
-    assert events[-1][1]["elapsed_ms"] >= 0
-    assert events[-1][1]["outcome"] == "failed"
+    assert [event for event, _ in events] == ["command.started", "command.launched", "command.failed", "command.stopped"]
+    outcome = next(detail for event, detail in events if event == "command.failed")
+    assert outcome["exit_code"] == 7
+    assert outcome["elapsed_ms"] >= 0
+    assert outcome["outcome"] == "failed"
+    assert all(detail["command_id"] == outcome["command_id"] for _, detail in events)
     assert ("azure.deployment.group.what-if" in evidence) is known
 
 
@@ -455,9 +469,13 @@ def test_native_azure_success_labels_keep_captured_output_private(tmp_path):
     events = []
     process = Process(tmp_path, lambda event, detail: events.append((event, detail)))
     assert process.run([str(executable), "account", "show"], tmp_path, capture=True) == "captured-secret-sentinel"
-    assert events[0] == ("command.started", {"tool": "az", "operation": "azure.account.show"})
-    assert events[-1][0] == "command.finished"
-    assert events[-1][1]["elapsed_ms"] >= 0
+    assert events[0][0] == "command.started"
+    identifier = events[0][1]["command_id"]
+    assert len(identifier) == 32
+    assert events[0][1] == {"tool": "az", "operation": "azure.account.show", "command_id": identifier}
+    assert [event for event, _ in events] == ["command.started", "command.launched", "command.finished", "command.stopped"]
+    assert next(detail for event, detail in events if event == "command.finished")["elapsed_ms"] >= 0
+    assert all(detail["command_id"] == identifier for _, detail in events)
     assert "captured-secret-sentinel" not in json.dumps(events)
 
 
@@ -753,7 +771,7 @@ def test_local_operator_stop_and_recovery(engine):
     assert stale.status_code == 409
     operator.call('decision', identifier, {'digest': node['request_digest'], 'decision': 'approve'})
     assert engine.ledger.get(release['id'])['status'] == 'waiting'
-    lease = engine.gate.claim(engine.gate.status(identifier), release)
+    lease = claim_only(engine, release, identifier)
     grants = engine.gate.delegate('development', 1, 1)
     assert client.post(base + 'pause', headers=headers, json={}).json() == {'paused': True}
     observed = client.get(base + 'request', params={'identifier': identifier}, headers=headers).json()

@@ -8,6 +8,7 @@ import signal
 import subprocess
 import tempfile
 import time
+import uuid
 from pathlib import Path
 
 from ..errors import Refused
@@ -94,7 +95,7 @@ class Process:
         if not argv or any(not isinstance(item, str) or "\x00" in item for item in argv):
             raise Refused("Invalid command argument list", 422)
         self.heartbeat()
-        metadata = command_metadata(argv)
+        metadata = {**command_metadata(argv), "command_id": uuid.uuid4().hex}
         self.emit("command.started", metadata)
 
         # Private streams keep raw provider responses out of ordinary command events
@@ -115,6 +116,7 @@ class Process:
                 label = metadata.get("operation", metadata["tool"])
                 raise Refused(f"{label} could not start; check the local executable and working directory") from None
             try:
+                self.emit("command.launched", {**metadata, "process_group": process.pid if os.name == "posix" else None})
                 # Authority expiry and output limits interrupt local execution without claiming rollback
                 while process.poll() is None:
                     if time.monotonic() - started >= timeout or (self.deadline and time.time() >= self.deadline):
@@ -161,3 +163,4 @@ class Process:
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait()
+                self.emit("command.stopped", metadata)
