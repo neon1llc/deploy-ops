@@ -169,7 +169,7 @@ historical backfill is introduced. See [native infrastructure](native-infrastruc
 
 The generic Terraform/OpenTofu delivery adapter prepares `iac_contract_version = 2`, including the
 saved-plan digest, effective initialized backend binding, selected-output readiness and native effects
-version 2. This extends the v0.26.0 controller-path migration guard to the separate generic delivery
+version 2. This extends the controller-path migration guard to the separate generic delivery
 runner. Earlier generic prepared envelopes lack that complete contract and refuse before runner claim
 or native adapter use; keep their historical evidence and prepare a fresh release. Native controller
 manifests and unrelated adapters keep their existing formats. No database migration, state migration,
@@ -216,9 +216,9 @@ if its content changes. Upgrade the callback consumer with the renderer so new c
 understood. Existing request bytes, audit rows, exact-digest decision buttons and the separate execution
 contract are unchanged. No reading-progress ledger or retroactive human-review claim is introduced.
 
-The v0.30.1 correction includes the registered public isolated-IaC planning packet, which the first
+The correction includes the registered public isolated-IaC planning packet, which the first
 bounded renderer omitted. Other public manifest fields now come from the existing controller contract
-rather than a second field list. Target identity stays visible on each page. Existing v0.30.0 source
+rather than a second field list. Target identity stays visible on each page. Earlier source
 and review results remain historical. Restart an incomplete review after upgrading.
 
 ## Source capture evidence
