@@ -79,7 +79,7 @@ deploy-ops --project deploy-ops.toml config patch --section components --name we
 
 The JSON result has the updated `toml`, a unified `diff`, validated fields, and the contract digest. Save the draft through the console or your editor. Check configuration output for repository paths and options before publishing it.
 
-For directory/static components, **Local component settings** distinguishes component options from
+For directory/static/Compose components, **Local build and deployment settings** distinguishes component options from
 environment overrides. **Use adapter default** removes one optional component option; required settings
 such as the directory resource name cannot be removed. **Use inherited** removes one environment override.
 An explicit override remains pinned even when it equals the inherited value, and survives later component
@@ -94,6 +94,23 @@ deploy-ops --project deploy-ops.toml config reset --name web --scope base \
 deploy-ops --project deploy-ops.toml config reset --name web --scope environment \
   --environment staging --field activation --draft-out inherited-draft.toml
 ```
+
+Compose file and project settings use the same creation, component-default and environment-override
+controls. The file is required and must stay inside the component source. Omitting the project derives
+`environment-component`; an explicit project follows Docker's lowercase/digit/dash/underscore naming
+rules. An equal environment pin remains explicit when component defaults change. These pure edits do
+not read Compose files, start Docker, render configuration or pull images.
+
+```bash
+deploy-ops --project deploy-ops.toml config add --section components --name container \
+  --repository application --kind application --adapter compose --compose-file compose.yaml \
+  --draft-out compose-draft.toml
+```
+
+Release preparation still delegates rendering to native `docker compose config` and checks the rendered
+services for the existing image and host-access restrictions. Container execution requires a separately
+reviewed release and a suitable Docker daemon. See Docker's [project-name rules](https://docs.docker.com/compose/how-tos/project-name/)
+and [native configuration rendering](https://docs.docker.com/reference/cli/docker/compose/config/).
 
 Paging uses a separate versioned configuration, so edits don't invalidate deployment approvals. Use `deploy-ops paging` or the console. See [paging](paging.md).
 

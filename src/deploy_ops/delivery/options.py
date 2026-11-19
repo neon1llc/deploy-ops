@@ -76,6 +76,15 @@ class DirectoryOptions(PublicOptions):
     name: str = Field(pattern=r"^(?:[a-z][a-z0-9-]{0,47}|\$\{(?:env\.[^{}]+|outputs\.[^{}.]+\.[^{}.]+)\})$", title="Resource name")
 
 
+# Check local paths once without resolving deployment outputs
+def relative_path(value: str):
+    if re.fullmatch(r"\$\{(?:env\.[^{}]+|outputs\.[^{}.]+\.[^{}.]+)\}", value):
+        return
+    path = Path(value)
+    if path.is_absolute() or ".." in path.parts or "\\" in value or "\x00" in value or "${" in value:
+        raise ValueError("Local paths must stay inside their source or deployment root")
+
+
 # Keep artifact and target paths reviewable without resolving deployment outputs
 class StaticOptions(PublicOptions):
     directory: str = Field(default=".", title="Artifact directory", description="Path inside the component source")
@@ -87,17 +96,28 @@ class StaticOptions(PublicOptions):
     # References remain complete values and are checked against the workspace by the caller
     @model_validator(mode="after")
     def paths(self):
-        for key, value in (("directory", self.directory), ("destination", self.destination)):
-            if re.fullmatch(r"\$\{(?:env\.[^{}]+|outputs\.[^{}.]+\.[^{}.]+)\}", value):
-                continue
-            path = Path(value)
-            if path.is_absolute() or ".." in path.parts or "\\" in value or "\x00" in value or "${" in value:
-                raise ValueError("Local paths must stay inside their source or deployment root")
+        for value in (self.directory, self.destination):
+            relative_path(value)
+        return self
+
+
+# Describe only the existing native Compose adapter inputs; rendering remains Docker's job
+class ComposeOptions(PublicOptions):
+    file: str = Field(min_length=1, title="Compose file", description="Compose file inside the component source; native rendering and image/security checks happen during preparation")
+    project: str = Field(default="", pattern=r"^[a-z0-9][a-z0-9_-]*$", title="Compose project",
+        description="Lowercase letters, digits, dashes and underscores; omit to use environment-component",
+        json_schema_extra={"default_description": "environment-component"})
+
+
+    # An omitted project uses the adapter's derived name; an authored empty name is invalid
+    @model_validator(mode="after")
+    def paths(self):
+        relative_path(self.file)
         return self
 
 
 # These forms do not join MODELS, whose consumers enforce native cloud constraints
-LOCAL_MODELS = {"directory": DirectoryOptions, "static": StaticOptions}
+LOCAL_MODELS = {"directory": DirectoryOptions, "static": StaticOptions, "compose": ComposeOptions}
 
 
 # Supply defaults to forms while keeping omitted values out of saved TOML

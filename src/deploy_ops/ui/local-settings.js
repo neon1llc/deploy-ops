@@ -41,7 +41,7 @@ function localRender() {
   const contract = formContract?.local_edit_forms?.[name];
   const root = element("local-fields"); root.replaceChildren();
   element("local-apply").disabled = !contract || localBusy;
-  if (!contract) { text(root, "p", "No supported local directory/static components. Other adapters use their existing settings controls."); return; }
+  if (!contract) { text(root, "p", "No supported local directory/static/Compose components. Other adapters use their existing settings controls."); return; }
   const scope = element("local-scope").value, environment = element("local-environment").value;
   element("local-environment-label").hidden = scope !== "environment";
   const metadata = contract.environments[environment] || {};
@@ -107,7 +107,7 @@ function localRender() {
     const info = metadata[key];
     text(root, "p", scope === "environment" && info
       ? "Effective: " + String(info.runtime_default ? "environment/component destination at preparation" : info.effective ?? "omitted") + " · source: " + info.source + " · component authored: " + String(info.component_authored ? info.component : "omitted")
-      : "Authored: " + String(Object.hasOwn(contract.base, key) ? contract.base[key] : "omitted") + " · adapter default: " + String(field.default ?? "required"));
+      : "Authored: " + String(Object.hasOwn(contract.base, key) ? contract.base[key] : "omitted") + " · adapter default: " + String(field.default_description ?? field.default ?? "required"));
     if (scope === "base" && Array.isArray(contract.required) && !contract.required.includes(key)) {
       const reset = text(root, "button", "Use adapter default " + field.title.toLowerCase()); reset.type = "button";
       reset.disabled = !Object.hasOwn(contract.base, key) || localBusy;

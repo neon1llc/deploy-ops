@@ -124,6 +124,8 @@ def parser():
     config.add_argument("--resource-name", help="Directory resource slug")
     config.add_argument("--artifact-directory", help="Static artifact path inside the component source")
     config.add_argument("--destination", help="Deployment-relative path or whole dependency output reference")
+    config.add_argument("--compose-file", help="Compose file inside the component source")
+    config.add_argument("--compose-project", help="Explicit Compose project name; omission uses environment-component")
     config.add_argument("--build-command", type=json.loads, help='Argument list, e.g. \'["python3","build.py"]\'')
     config.add_argument("--check", action="append", type=json.loads, help='Check argument list; repeat for multiple checks')
     config.epilog = ('Example: config add --section components --name site --repository app --kind application '
@@ -429,7 +431,7 @@ def dispatch(args):
                                or (args.draft_out.exists() and args.draft_out.samefile(args.project))):
             raise Refused("--draft-out requires add/patch/edit/reset and a different file from the saved workspace", 422)
         creation_fields = ("path", "provider", "repository", "kind", "adapter", "need", "resource_name",
-                           "artifact_directory", "destination", "build_command", "check")
+                           "artifact_directory", "destination", "compose_file", "compose_project", "build_command", "check")
         if args.action != "add" and any(getattr(args, key) is not None for key in creation_fields):
             raise Refused("Creation fields require config add", 422)
         if args.action in {"edit", "reset"}:
@@ -452,7 +454,8 @@ def dispatch(args):
                 fields = {key: getattr(args, key) for key in ("path", "provider", "repository", "kind", "adapter")}
                 fields["needs"] = args.need
                 fields["options"] = {key: value for key, value in (("name", args.resource_name),
-                    ("directory", args.artifact_directory), ("destination", args.destination)) if value is not None}
+                    ("directory", args.artifact_directory), ("destination", args.destination),
+                    ("file", args.compose_file), ("project", args.compose_project)) if value is not None}
                 fields["build"] = {key: value for key, value in (("command", args.build_command),
                     ("checks", args.check)) if value is not None}
                 for key, value in fields.items():
