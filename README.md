@@ -6,7 +6,7 @@ DeployOps deploys infrastructure and applications from separate repositories. Yo
 
 It's for developers who want reviewed, approved releases on their own machine. It isn't a CI/CD platform and doesn't replace GitHub Actions, Argo CD, or Atlantis. [Where it fits](docs/adoption-fit.md) compares them and says who should wait.
 
-You need Python 3.11 or later.
+Needs Python 3.11 or later.
 
 ```bash
 python3 -m venv .venv
@@ -15,7 +15,7 @@ python -m pip install -r requirements-dev.txt -e .
 deploy-ops demo ../deploy-ops-demo
 ```
 
-The demo builds, deploys, promotes, and HTTP-checks a real local application. No cloud account needed.
+The demo builds, deploys, promotes, and HTTP-checks a real local application, with no cloud account.
 
 ## Docs
 
@@ -35,6 +35,6 @@ The local path runs end to end on a clean machine. Cloud support is partial.
 | Azure | Live Bicep and ARM provisioning. Live Container Apps image update with revision health and logs | Ingress HTTP check, DeployOps-driven deletion of ARM resources |
 | GCP | Cloud Run candidate and traffic operations and the isolated GCP recipe pass command fixtures and offline validation. [Verification](docs/verification.md) records one bounded, nonproduction Cloud Run run that has not been reproduced independently | Any qualified live deployment, application HTTP, external ingress, image publication |
 
-The [support matrix](docs/support-matrix.md) lists exact versions, regions, and limits. An identity preflight alone doesn't qualify a deployment. "What has run" is Verified evidence under neon1's [release levels](https://github.com/neon1llc/neon1-corpus/blob/main/corpus/standards/versioning.md#release-levels). Nothing is Qualified until it has real use and a tested recovery.
+The [support matrix](docs/support-matrix.md) lists exact versions, regions, and limits. "What has run" is Verified evidence under neon1's [release levels](https://github.com/neon1llc/neon1-corpus/blob/main/corpus/standards/versioning.md#release-levels). Nothing is Qualified until it has real use and a tested recovery.
 
 Licensed under [Apache-2.0](LICENSE), with [attribution notices](NOTICE). See [licensing](docs/licensing.md).

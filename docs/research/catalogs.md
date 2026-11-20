@@ -1,8 +1,6 @@
 # Catalogs and marketplaces
 
-A deployment template catalog and a commercial software marketplace are different things. The first can
-supply reviewed building blocks. The second may require buying a product, accepting terms, and granting
-new permissions. DeployOps must not equate selecting a template with authorizing those separate actions.
+A deployment template catalog and a commercial software marketplace are different. A catalog can supply reviewed building blocks. A marketplace may require buying a product, accepting terms, and granting new permissions. Selecting a template must never authorize those separate actions.
 
 | System | Useful lesson |
 |---|---|
@@ -16,17 +14,16 @@ new permissions. DeployOps must not equate selecting a template with authorizing
 
 ## Proposed catalog contract
 
-Each deployable entry should record source URL and immutable revision, license and notices, provider and
-tool versions, required identity scopes, input schema, expected outputs, costs, subscription prerequisites,
-preview guarantees, health checks, and cleanup behavior. A template is promoted from research to runnable
-only after an integration test has established its complete path.
+Each deployable entry should record:
 
-Represent an existing entitlement as an operator-supplied reference. Do not scrape marketplace login
-sessions or automatically accept terms. Subscription, role creation, payment, quota changes, and
-production access remain explicit human decisions. Even a free software listing can deploy billable resources.
+- Source URL and immutable revision, license, and notices.
+- Provider and tool versions, required identity scopes, input schema, and expected outputs.
+- Costs, subscription prerequisites, preview guarantees, health checks, and cleanup behavior.
+
+A template moves from research to runnable only after an integration test establishes its complete path.
+
+Represent an existing entitlement as an operator-supplied reference. Never scrape marketplace login sessions or accept terms automatically. Subscription, role creation, payment, quota changes, and production access stay explicit human decisions. Even a free listing can deploy billable resources.
 
 ## Current implementation
 
-`deploy-ops catalog` lists curated metadata and actual native adapter maturity. It does not fetch arbitrary
-code or provision catalog products. The local starter is the one executable generated template. Provider
-catalog backends and signed template distribution are later work with their own acceptance criteria.
+`deploy-ops catalog` lists curated metadata and native adapter maturity. It fetches no arbitrary code and provisions no catalog products. The local starter is the one executable generated template. Provider catalog backends and signed template distribution are later work.

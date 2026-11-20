@@ -16,20 +16,8 @@ or NAT gateway. The initial image must implement the sample's Python health chec
 The example declares `CAPABILITY_IAM` because its execution role creates permissions.
 Use an explicitly approved test scope and cost allowance before preparing it.
 
-Create and advance an infrastructure release first. Preparation creates a remote change set.
-Review its resource effects and exact request digest, approve it, and advance again.
-The completed release exports `Cluster`, `Service`, `Container`, and `ImageRepository`.
-Publish the app image to that registry in the independent build job, then create an application-only
-release with dependencies excluded. Its saved infrastructure outputs feed the ECS adapter without
-an infrastructure apply. Updating the app image changes only the application release.
-Inspect the service rollout and native container health before treating it as useful deployment evidence.
+Create and advance an infrastructure release first. Preparation creates a remote change set. Review its resource effects and request digest, approve it, and advance again. The release exports `Cluster`, `Service`, `Container`, and `ImageRepository`. Publish the app image to that registry in the independent build job, then create an application-only release with dependencies excluded. Its saved infrastructure outputs feed the ECS adapter without an infrastructure apply. Inspect the service rollout and container health before treating it as useful evidence.
 
-For cleanup, set the infrastructure operation to `destroy` and create a new reviewed release.
-DeployOps requires its saved creation record and the matching stack ownership tag, then binds the
-exact stack state, template and resource inventory. It never disables termination protection or forces
-a failed deletion. ECR images and the log group are retained by the template and can continue to cost
-money. Review and remove those separately only within the test's cleanup authority.
+For cleanup, set the infrastructure operation to `destroy` and create a new reviewed release. DeployOps requires its saved creation record and the matching stack ownership tag, then binds the stack state, template, and resource inventory. It never disables termination protection or forces a failed deletion. The template retains ECR images and the log group, which can keep costing money, so remove them separately within the test's cleanup authority.
 
-An abandoned change set can be discarded independently. The empty stack shell remains owned and
-must be reviewed for deletion. An interrupted preview can be inspected using its saved request token.
-An interrupted execution requires provider readback before another release is attempted.
+An abandoned change set can be discarded independently. The empty stack shell stays owned and must be reviewed for deletion. Inspect an interrupted preview using its saved request token. An interrupted execution needs provider readback before another release.

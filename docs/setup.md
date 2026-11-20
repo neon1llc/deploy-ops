@@ -31,13 +31,11 @@ deploy-ops run development --component web --only
 deploy-ops ui --token-file "$HOME/.config/deploy-ops/operator.token"
 ```
 
-Open the loopback address the command prints, not the packaged HTML file, and paste the token from that file into **Connect workspace**. The server creates the file with mode `0600` if absent. The browser holds the token in memory only.
+Open the loopback address the command prints, not the packaged HTML file, and paste the token into **Connect workspace**. The server creates the file with mode `0600` if absent. The browser holds the token in memory only.
 
 Prepare a release from **Releases**, inspect its actions, approve the exact change, then choose **Execute approved release**. Approval alone doesn't start execution.
 
-**Controls** has searchable repository, environment, component, and native infrastructure settings. Edits stay in a draft until you review and save. Advanced TOML covers options without guided controls, since the forms don't cover every setting.
-
-Saving configuration requires all releases to be finished, cancelled, or reconciled. The previous file is kept in `.deploy-ops/previous-workspace.toml`. Remote policy can't be edited here.
+**Controls** has searchable repository, environment, component, and native infrastructure settings. Edits stay in a draft until you review and save, and advanced TOML covers options without guided controls. Saving needs all releases finished, cancelled, or reconciled, and keeps the previous file in `.deploy-ops/previous-workspace.toml`. Remote policy can't be edited here.
 
 **Controls → Appearance** sets a preset, density, and corner radius. Only these preferences use browser storage, under `deploy-ops.appearance.v1`.
 
@@ -45,7 +43,7 @@ The UI and API bind to `127.0.0.1`. Don't reverse-proxy the operator interface t
 
 ## Review and save configuration from the CLI
 
-Edit a separate draft file so the saved workspace stays untouched until review. If Save is interrupted, use [Save recovery](save-recovery.md) before preparing more work.
+Edit a separate draft so the saved workspace stays untouched until review. If Save is interrupted, use [Save recovery](save-recovery.md) before preparing more work.
 
 ```bash
 cp deploy-ops.toml draft.toml
@@ -55,7 +53,9 @@ deploy-ops config diff --file draft.toml
 deploy-ops config save --file draft.toml --source-hash SAVED_SOURCE_HASH
 ```
 
-Take the hash from `source_hash` in `config inspect` or `saved_source_hash` in draft validation. `config patch --file draft.toml` returns revised TOML without writing it. A save refuses a changed saved file or an outstanding release. Console and CLI must share one operator state directory. After a save, reload any running console.
+Take the hash from `source_hash` in `config inspect` or `saved_source_hash` in draft validation. `config patch --file draft.toml` returns revised TOML without writing it. A save refuses a changed saved file or an outstanding release. Console and CLI must share one operator state directory, and a running console must reload after a save.
+
+Validate reports the saved and proposed contract digests and what Save changes for promotion, rollback, and output reuse. Comments alone don't change the contract, and approvals are unaffected. Save keeps one previous copy, so preserve that TOML before another Save replaces it. A change after the origin release needs a fresh release before promotion.
 
 ## Add a local application to an existing workspace
 
@@ -76,19 +76,51 @@ deploy-ops config diff --file draft.toml
 deploy-ops config save --file draft.toml --source-hash SAVED_SOURCE_HASH
 ```
 
-`--draft-out` writes successful add or patch results to a separate file, never the saved workspace. Without it, the result is JSON with proposed `toml`, `diff`, draft `source_hash`, and effective configuration. Duplicate names are refused. `--values` takes a structured entry for advanced fields such as environment variables, build context, and environment `targets`. Don't set one field through both a flag and `--values`.
+`--draft-out` writes to a separate file, never the saved workspace. Without it, the result is JSON with proposed `toml`, `diff`, draft `source_hash`, and effective configuration. Duplicate names are refused. `--values` takes a structured entry for advanced fields such as environment variables, build context, and environment `targets`, but not for a field also set by a flag.
 
-The authenticated `POST /api/config/add` takes `configuration` (draft TOML), `section`, `name`, and `values`. Controls has forms for repositories, environments, directory infrastructure, and static applications. Other adapters use advanced TOML or structured CLI or API input.
+The authenticated `POST /api/config/add` takes `configuration` (draft TOML), `section`, `name`, and `values`. Controls has forms for repositories, environments, directory infrastructure, and static applications. Other adapters use advanced TOML or CLI or API input.
 
 Authoring, validation, and save never run build or check arguments. After saving, run `deploy-ops run local-test --component docs-site`, approve the requests, run `deploy-ops resume RELEASE_ID`, and check with `deploy-ops status RELEASE_ID`.
+
+## Edit existing local build and deployment settings
+
+In **Controls → Local build and deployment settings**, select a directory or static component. Build arguments are ordered lists, not shell commands. **Pin override** writes a value even when it equals the inherited one, and **Use inherited value** removes the override. Applying fields updates the TOML draft only.
+
+```bash
+cp deploy-ops.toml draft.toml
+deploy-ops config edit --file draft.toml --draft-out draft.toml --name web --scope build --values '{"checks":[["python3","check.py"]],"command":["python3","build.py"]}'
+deploy-ops config edit --file draft.toml --draft-out draft.toml --name web --scope base --values '{"directory":"dist"}'
+deploy-ops config edit --file draft.toml --draft-out draft.toml --name foundation --scope environment --environment staging --values '{"name":"staging-root"}'
+deploy-ops config reset --file draft.toml --draft-out draft.toml --name foundation --scope environment --environment staging --field name
+deploy-ops config inspect --file draft.toml
+deploy-ops config validate --file draft.toml
+deploy-ops config diff --file draft.toml
+```
+
+`local_edit_forms` in inspection reports effective values and their source. Use whole `${env.name}` and `${outputs.component.key}` references only. Validation doesn't check that a future output exists or run build code. These operations cover local build checks, the build command, DirectoryOptions, and StaticOptions, not environment-specific builds or provider options.
+
+Native infrastructure forms work the same way, with the native form name such as `foundation/staging`:
+
+```bash
+deploy-ops config edit --file draft.toml --draft-out draft.toml --name foundation/staging --scope environment --values '{"region":"us-east-1"}'
+deploy-ops config reset --file draft.toml --draft-out draft.toml --name foundation/staging --scope environment --field region
+```
+
+## Serve a selected static revision
+
+A successful static component offers **Start serving** in its release detail. The console starts an owned loopback listener on its own OS-assigned port, and **Stop serving** closes it. Neither action builds, deploys, or changes pointers, approvals, previews, or files. From the CLI:
+
+```bash
+deploy-ops preview RELEASE_ID --component web --port 8000
+```
+
+Use `--port 0` for an OS-assigned port. A console process owns at most eight sessions and can't stop a CLI session. Keep secrets out of static artifacts, since other local processes can read loopback content, and never serve it at the console origin. See [local serving](local-serving.md).
 
 ## Cloud setup
 
 Read [security](../SECURITY.md) first. [Authority setup](authority-setup.md) and the [cloud trust templates](../integrations/clouds) cover separate planner and executor identities. Replace every placeholder and validate the provider configuration.
 
-`deploy-ops gate` separates IaC planning and execution jobs. The delivery worker runs native app rollouts from a built immutable image and refuses build hooks, generic commands, and IaC in a cloud-authorized job.
-
-`integrations/github/delivery-worker.yml` is a reviewed-runner recipe, not a ready-to-enable workflow. You supply cloud CLIs, provider identities, backend state, registry credentials, and existing app resources.
+`deploy-ops gate` separates IaC planning and execution jobs. The delivery worker runs native app rollouts from a built immutable image and refuses build hooks, generic commands, and IaC in a cloud-authorized job. `integrations/github/delivery-worker.yml` is a reviewed-runner recipe, not a ready workflow. You supply cloud CLIs, identities, backend state, registry credentials, and app resources.
 
 ## Docker and other systems
 
@@ -100,7 +132,12 @@ For app delivery on a disposable engine or cluster, copy the [Compose](../exampl
 
 ## Exit codes
 
-The CLI returns 0 on success, 1 for a failed or uncertain release, 2 for invalid or refused input, and 3 when a run waits for approval. Read-only status commands return 0 when the record is found. CI must not treat a pending deployment as a successful rollout.
+| Code | Meaning |
+| --- | --- |
+| 0 | Success. Read-only status commands return 0 when the record is found. |
+| 1 | Failed or uncertain release. |
+| 2 | Invalid or refused input. |
+| 3 | The run waits for approval. CI must not treat this as a successful rollout. |
 
 ## Stop and recover local controller authority
 
@@ -122,56 +159,17 @@ deploy-ops operator resume
 
 `operator decision REQUEST_ID --values` takes `digest`, `decision` (`approve` or `reject`), and an optional `note`. Reconciliation needs an inspection reason of 10 to 500 characters. Keep credentials out of notes. The panel and CLI cover the local controller only. Remote and isolated modes keep their own interfaces. After reconciling, use the release's recovery action if it was also interrupted.
 
-## Edit existing local build and deployment settings
-
-In **Controls → Local build and deployment settings**, select an existing directory or static component. Build arguments are ordered lists, not shell commands. Each option shows its effective value and source. **Pin override** writes a value even when it equals the inherited one. **Use inherited value** removes the override. Applying fields updates the TOML draft only.
-
-```bash
-cp deploy-ops.toml draft.toml
-deploy-ops config edit --file draft.toml --draft-out draft.toml --name web --scope build --values '{"checks":[["python3","check.py"]],"command":["python3","build.py"]}'
-deploy-ops config edit --file draft.toml --draft-out draft.toml --name web --scope base --values '{"directory":"dist"}'
-deploy-ops config edit --file draft.toml --draft-out draft.toml --name foundation --scope environment --environment staging --values '{"name":"staging-root"}'
-deploy-ops config reset --file draft.toml --draft-out draft.toml --name foundation --scope environment --environment staging --field name
-deploy-ops config inspect --file draft.toml
-deploy-ops config validate --file draft.toml
-deploy-ops config diff --file draft.toml
-```
-
-`local_edit_forms` in inspection reports effective values and their source. Use whole `${env.name}` and `${outputs.component.key}` references only. Draft validation doesn't check that a future output exists or run build code.
-
-Save with `config save --file draft.toml --source-hash SAVED_SOURCE_HASH` or the console. A configuration change after the origin release needs a fresh release before promotion. These operations cover local build checks, the build command, DirectoryOptions, and StaticOptions. They don't cover environment-specific builds or arbitrary provider options.
-
-## Serve a selected static revision
-
-A successful static component offers **Start serving** in its release detail. The console starts an owned listener on a separate OS-assigned loopback port, and you open the session's URL yourself. **Stop serving** closes that session only. Neither action builds, deploys, changes active pointers or approvals, retires previews, or deletes files. Session status describes the listener and preview lifetime, not activation or application health.
-
-```bash
-deploy-ops preview RELEASE_ID --component web --port 8000
-```
-
-`--port 0` picks an OS-assigned port. Console shutdown closes its sessions, and the console can't stop a CLI session. A console process owns at most eight sessions. Served content is read-only, bounded files from the retained reviewed revision. Keep secrets out of static artifacts, since other local processes can read loopback content and this isn't a sandbox. Serve it on its own origin, never through a proxy or iframe at the console origin.
-
-Native infrastructure forms also show each field's source. **Pin … for environment** writes the current value, even when it equals the inherited one. **Use inherited …** removes only that field's environment override. Unapplied sibling edits stay in the form. The CLI uses the native form name, such as `foundation/staging`, with the same edit and reset operations:
-
-```bash
-deploy-ops config edit --file draft.toml --draft-out draft.toml --name foundation/staging --scope environment --values '{"region":"us-east-1"}'
-deploy-ops config reset --file draft.toml --draft-out draft.toml --name foundation/staging --scope environment --field region
-```
-
-Loading forms from revised TOML refreshes untouched local fields. If the TOML and a retained field edit changed the same value, the panel shows both versions and requires **Keep my …** or **Use current …** before applying. Ordered build arguments stay ordered. Field drafts live in the tab's memory, and reloading or locking the tab clears them.
-
-Validate reports the saved and proposed contract digests and the effect of Save on promotion, rollback, dependency output reuse, provider inspection, and preview retirement. Comments alone don't change the contract. Exact historical gates stay in force. Save keeps one previous workspace copy in local state, so preserve that exact TOML separately before another Save replaces it. To return to an old contract, use the normal validate, review, and hash-guarded Save flow. Approvals are unaffected.
-
-Controller review and release detail show the observed request and approval expiries, the provisional budget before claim, the configured maximum execution window, and afterward the actual admitted deadline. The contact timestamp and its age describe what the server observed, not proof that a provider stopped. A known budget below the server's minimum hides Execute, and the controller still rechecks every claim and heartbeat. Old controllers without this projection report timing unavailable. A component's longer command timeout can't extend authority, and no countdown renews approval or retries an operation.
+Controller review and release detail show request and approval expiries, the budget before claim, and afterward the admitted deadline. These are what the server observed, not proof that a provider stopped. A known budget below the server's minimum hides Execute. A longer component command timeout can't extend authority, and no countdown renews approval.
 
 ## Inspect interrupted local recovery
 
-Run `deploy-ops recovery RELEASE_ID` to check recovery availability, then
-`deploy-ops recover RELEASE_ID --note "What was inspected after stopping the original worker"`.
-Retained `status` and `events` work without an initialized workspace. The `recovery` check needs the current local workspace and owner.
+```bash
+deploy-ops recovery RELEASE_ID
+deploy-ops recover RELEASE_ID --note "What was inspected after stopping the original worker"
+```
 
-Release detail shows the same recovery reason for interrupted `running`, `cancel_requested`, and `uncertain` records. It offers reconciliation only when current worker evidence supports it, and the backend checks again when you act. A dead supervisor isn't enough while a tracked command group may still run. Unknown command ownership, legacy locks, and copied or foreign-host worker evidence stay unavailable. Reading this view kills no process and clears no lock. Target inspection and the bounded note are still required, because a local process exit doesn't prove an accepted provider operation stopped.
+Retained `status` and `events` work without an initialized workspace. `recovery` needs the current local workspace and owner.
 
-Remote and isolated releases use their original operation owner, so starting another worker can't make an old interrupted release recoverable. Reconciliation records an inspected outcome without replaying deployment, restoring data, or manufacturing verified outputs. If the controller completed before its worker died, that terminal outcome stays and missing outputs stay unverified.
+Release detail shows the recovery reason for interrupted `running`, `cancel_requested`, and `uncertain` records and offers reconciliation only when current worker evidence supports it. A dead supervisor isn't enough while a tracked command group may still run, and unknown ownership, legacy locks, and copied or foreign-host evidence stay unavailable. Target inspection and the note are still required, because a process exit doesn't prove a provider operation stopped. Remote and isolated releases use their original owner, so another worker can't recover them. Reconciliation records an outcome without replaying deployment or manufacturing outputs.
 
-Preview cleanup has its own check: `deploy-ops previews recovery RELEASE_ID`, or the release inspector. A completed provider readback can't certify an older deployment or cleanup worker. If a new local claim's worker admission doesn't match the controller execution, a later local attempt can't manufacture stopped ownership for the original one.
+Preview cleanup has its own check: `deploy-ops previews recovery RELEASE_ID`, or the release inspector.

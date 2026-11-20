@@ -41,9 +41,4 @@ The separate application release consumes the stack outputs and deploys a prebui
 The infrastructure example creates billable ECS resources and IAM permissions. Its ECR repository and
 logs are retained during deletion. Read the CloudFormation example's scope and cleanup notes before use.
 
-For other assemblies, prebuilt file assets and deterministic zip directories are supported only with
-explicit `asset_bucket` and slash-terminated `asset_prefix` options. Their exact destination, digest and
-`cdk_file_asset` changes are reviewed before conditional S3 publication. Existing objects need matching
-SHA-256 checksums. Assets remain in the shared bucket after stack deletion. The adapter does not delete
-or bootstrap that bucket. Executable assets, Docker asset builds, implicit role assumptions, unresolved
-lookups, nested stacks and stack-to-stack assembly dependencies need separate supported workflows.
+For other assemblies, prebuilt file assets and deterministic zip directories work only with explicit `asset_bucket` and slash-terminated `asset_prefix` options. Their destination, digest, and `cdk_file_asset` changes are reviewed before conditional S3 publication, and existing objects need matching SHA-256 checksums. Assets stay in the shared bucket after stack deletion, and the adapter neither deletes nor bootstraps that bucket. Executable assets, Docker asset builds, implicit role assumptions, unresolved lookups, nested stacks, and stack-to-stack dependencies need separate workflows.

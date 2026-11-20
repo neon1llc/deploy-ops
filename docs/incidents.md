@@ -2,7 +2,7 @@
 
 An incident records who owns the response to a failed or uncertain release, or to an exact saved later observation of drift or unavailable evidence. It doesn't change the release outcome, repair a deployment, or show that a responder was paged. The owner is a label, not an authenticated identity.
 
-## Open, acknowledge and resolve
+## Open, acknowledge, and resolve
 
 ```bash
 deploy-ops incidents open RELEASE_ID --owner operations \
@@ -12,19 +12,18 @@ deploy-ops incidents list
 
 Without an observation reference, only failed or uncertain releases qualify. Repeating an open request returns the existing incident, and changing its source, owner, or policy is refused. A resolved incident is never reopened. Existing failures aren't opened automatically.
 
-Use the incident ID and version returned by `list` for decisions:
+Use the incident ID and version from `list` for decisions:
 
 ```bash
 deploy-ops incidents acknowledge INCIDENT_ID --version CURRENT_VERSION --note 'Investigating the target'
 deploy-ops incidents resolve INCIDENT_ID --version CURRENT_VERSION --note 'Cause inspected and corrected'
 ```
 
-Acknowledgement stops further escalation. You can resolve from open or acknowledged, which also stops escalation. A stale version is refused, so read the latest state and retry. Record target recovery separately through release reconciliation. Notes stay in local event and audit records and aren't sent in notifications. Keep secrets out of notes and owner labels.
+Acknowledgement stops further escalation, and so does resolving from open or acknowledged. A stale version is refused, so read the latest state and retry. Record target recovery separately through release reconciliation. Notes stay in local event and audit records and aren't sent in notifications. Keep secrets out of notes and owner labels.
 
-## Track a later observation and review responder handoff
+## Track a later observation and hand off to responders
 
-A successful deployment stays successful when a later observation finds changed or missing files.
-Run `deploy-ops observe RELEASE_ID`, then use its exact `reference.sequence` and `reference.digest`:
+A successful deployment stays successful when a later observation finds changed or missing files. Run `deploy-ops observe RELEASE_ID`, then use its exact `reference.sequence` and `reference.digest`:
 
 ```bash
 deploy-ops incidents open RELEASE_ID --owner operations --note 'Investigate later drift' \
@@ -35,26 +34,13 @@ deploy-ops incidents handoff INCIDENT_ID --version CURRENT_VERSION \
   --route-digest REVIEWED_ROUTE_DIGEST --note 'Queue the reviewed responder route'
 ```
 
-The reference must identify a saved adverse observation of this release. `unknown` means evidence is
-unavailable or unsupported, not that the application is unhealthy. Current observations cover local
-files only. The source and scope stay visible in incident history. One incident per release is supported.
-A resolved episode is preserved and cannot be replaced by another observation or silently reopened.
+The reference must identify a saved adverse observation of this release. `unknown` means evidence is unavailable or unsupported, not that the application is unhealthy. Observations cover local files only. One incident per release is supported, and a resolved episode is kept and can't be replaced by another observation or reopened.
 
-In the console, choose **Track this recorded observation** in release details, fill the owner and note,
-and open the local incident. Opening from an observation does not queue native responder pages.
-Ordinary notification routing remains independent. Select the incident, choose **Preview responder
-route**, review current routing and recorded suppression, then use **Queue reviewed responder handoff** with a
-note and confirmation. Previewing never contacts a destination. Handoff queues work that a running
-worker may send immediately. It does not acknowledge a responder, repair a deployment or resolve it.
+In the console, choose **Track this recorded observation** in release details, fill the owner and note, and open the local incident. This queues no native responder pages, and ordinary notification routing stays independent. To page, select the incident, choose **Preview responder route**, review routing and recorded suppression, then use **Queue reviewed responder handoff** with a note and confirmation. Previewing never contacts a destination. Handoff queues work that a running worker may send immediately. It doesn't acknowledge a responder, repair a deployment, or resolve anything.
 
-The handoff digest binds the incident version and active route, including current quiet eligibility.
-Changes require a fresh preview. A quiet period expiring never replays its suppressed opening.
-Handoff is a deliberate new event using the `incident.opened` routing filters. Existing native bindings
-or a previously requested handoff block another handoff. Inspect those bindings and use their explicit
-readback, retry or resolution actions instead, especially when an earlier outcome is unknown. An earlier
-ordinary notification might already have reached someone. No recall or duplicate-free delivery is claimed.
+The handoff digest binds the incident version and active route, including quiet eligibility, so changes need a fresh preview. A quiet period expiring never replays its suppressed opening. Handoff is a deliberate new event using the `incident.opened` routing filters. Existing native bindings or a previous handoff block another one. Use their readback, retry, or resolution actions instead, especially when an earlier outcome is unknown. An earlier ordinary notification may already have reached someone. No recall or duplicate-free delivery is claimed.
 
-## Explicit escalation checks
+## Escalation checks
 
 ```bash
 deploy-ops incidents tick
@@ -72,7 +58,7 @@ deploy-ops notify --status
 deploy-ops notify --kind json
 ```
 
-The JSON, Slack, and ntfy transports accept incident events. HTTP success means the destination accepted the request, not that someone acknowledged it. The outbox reports pending, HTTP-accepted, superseded, and exhausted records. It tracks one state per event, not per destination, so changing `--url` doesn't fan out. Use one receiver that owns downstream routing.
+The JSON, Slack, and ntfy transports accept incident events. HTTP success means the destination accepted the request, not that someone acknowledged it. The outbox reports pending, HTTP-accepted, superseded, and exhausted records, with one state per event, not per destination, so changing `--url` doesn't fan out. Use one receiver that owns downstream routing.
 
 JSON incident notifications hold a complete snapshot with a stable event ID, incident ID, monotonic version, owner, status, escalation level and limit, interval, and timestamps. A receiver must:
 
@@ -82,8 +68,8 @@ JSON incident notifications hold a complete snapshot with a stable event ID, inc
 
 Delivery is at least once, with up to ten attempts per event. After exhaustion, inspect the receiver and local evidence. Retry reset isn't implemented. A crash after HTTP acceptance but before recording can duplicate an event ID. The endpoint must be HTTPS, redirects aren't followed, and HMAC and bearer credentials come from the worker's environment. In-flight requests can't be recalled.
 
-## Boundaries and storage
+## Storage and boundaries
 
 Incidents are an additive table in the workspace database, and state changes, audit entries, and outbox records commit together. Back up workspace state before upgrading.
 
-[Named paging destinations](paging.md) add PagerDuty and GoAlert requests with per-destination evidence. Local acknowledgement stays local. Authenticated incoming acknowledgement, remote readback, and live paging qualification are unfinished. Keep the console on loopback and never expose it as a webhook callback.
+[Named paging destinations](paging.md) add per-destination evidence. Local acknowledgement stays local. Authenticated incoming acknowledgement, remote readback, and live paging qualification are unfinished. Keep the console on loopback and never expose it as a webhook callback.

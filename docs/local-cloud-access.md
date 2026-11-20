@@ -26,7 +26,9 @@ credentials_file = "/secure/aws-credentials"
 config_file = "/secure/aws-config"
 ```
 
-This example is inactive on purpose. An approval reference isn't spending approval, and the change limit isn't a billing cap. Supply the exact approved resource types and operations. CloudFormation creates a remote change set during preparation, so the grant must allow that. Deletion needs a grant allowing it and a separate reviewed destroy release. CDK file publication also needs `cdk_file_asset` in the grant and explicit `asset_bucket` and `asset_prefix` options. No bootstrap or role creation is automatic.
+This example is inactive on purpose. An approval reference isn't spending approval, and the change limit isn't a billing cap. Supply the exact approved resource types and operations. CloudFormation creates a remote change set during preparation, so the grant must allow that. Deletion needs a grant allowing it and a separate reviewed destroy release. CDK file publication also needs `cdk_file_asset` in the grant and explicit `asset_bucket` and `asset_prefix`. No bootstrap or role creation is automatic.
+
+CloudFormation and CDK stack deletion needs `AWS::CloudFormation::Stack` in `resource_types`, including empty shells and retained-only stacks. Snapshot fates also need `snapshot` in `actions` and the original resource type. Stack delete, original resource delete, and snapshot each count toward `max_changes`. These additions don't update an existing grant. See [native infrastructure](native-infrastructure.md).
 
 AWS uses the selected profile and credential and config files explicitly. It rejects profile helpers, role chaining, and custom endpoints, and verifies the exact account and IAM-user ARN before preparation and execution. It accepts a persistent key pair, not temporary session credentials.
 
@@ -40,7 +42,7 @@ region = "us-central1"
 credentials_file = "/secure/service-account.json"
 ```
 
-The file must identify that service account and project and use Google's standard token endpoint. `GOOGLE_APPLICATION_CREDENTIALS` and `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE` both reference it. Missing APIs, billing linkage, and runtime permissions need separate qualification, and none is enabled or linked automatically.
+The file must identify that service account and project and use Google's standard token endpoint. `GOOGLE_APPLICATION_CREDENTIALS` and `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE` both reference it. Missing APIs, billing linkage, and runtime permissions need separate qualification. None is enabled or linked automatically.
 
 For Azure, use `provider = "azure"`, `adapters = ["arm", "bicep", "container-apps"]` and this identity section:
 
@@ -56,16 +58,10 @@ certificate_file = "/secure/deployment-test.pem"
 
 The service principal, certificate, and resource group must already exist, with only the permissions needed on the approved group. DeployOps creates no identities, assigns no roles, and registers no providers. The certificate file holds its private key and public certificate in PEM format, as [Azure CLI certificate authentication](https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli-service-principal) requires, and must be owner-only and outside the workspace and source repositories. The worker passes only its path to `az login --certificate`. Certificate validity and the shorter grant expiry are separate limits.
 
-Azure CLI uses a private configuration directory under the worker's temporary home, selects `AzureCloud`, disables dynamic extension installation, and checks the subscription, tenant, client ID, and resource-group ID before preview or execution. Install tools and extensions separately. Workspace `subscription_id` and `resource_group` must match the grant, and ARM and Bicep `tenant_id` must too. Sovereign clouds, human login reuse, and client-secret authentication are unsupported. Removing deployment history doesn't remove resources.
+Azure CLI uses a private configuration directory under the worker's temporary home, selects `AzureCloud`, disables dynamic extension installation, and checks the subscription, tenant, client ID, and resource-group ID before preview or execution. Install tools and extensions separately. Workspace `subscription_id` and `resource_group`, and ARM and Bicep `tenant_id`, must match the grant. Sovereign clouds, human login reuse, and client-secret authentication are unsupported. Removing deployment history doesn't remove resources.
 
-Local cloud grants allow CloudFormation, frozen CDK assemblies, ECS, Cloud Run, ARM/Bicep, and Container Apps. They don't allow arbitrary workflows, Terraform or OpenTofu programs, build commands, or synthesis commands. Those need the isolated planning and execution workflow, with builds in a separate credentialless environment that supplies frozen templates, assemblies, or digest-pinned images.
+Local cloud grants allow CloudFormation, frozen CDK assemblies, ECS, Cloud Run, ARM and Bicep, and Container Apps. They don't allow arbitrary workflows, Terraform or OpenTofu programs, build commands, or synthesis commands. Those need the isolated planning and execution workflow, with builds in a separate credentialless environment that supplies frozen templates, assemblies, or digest-pinned images.
 
 Local grants never enable delegation or production. Every credentialed command checks the active grant. Revocation or expiry stops further commands but can't undo work a provider already accepted, so inspect uncertain results before retrying. Credential references stay out of workspace forms and manifests. Declare only public outputs, and review source first, since a plaintext template can hold sensitive material.
 
 This is a trusted local worker. File permissions, identity checks, and a clean subprocess environment don't isolate hostile same-user processes or restrict an administrator key at IAM level. The grant doesn't enforce account-wide spend, remote deadlines, or automatic cleanup. Use an isolated worker and provider-side controls for those.
-
-CloudFormation/CDK stack deletion requires `AWS::CloudFormation::Stack` in `resource_types`, including
-empty shells and retained-only stacks. Snapshot fates also need explicit `snapshot` in `actions` and
-the original resource type. Stack delete, original resource delete and snapshot count separately toward
-`max_changes`. These additions do not update an existing grant or authorize a new test batch. Native
-fates and unverified retained capacity/cost are explained in [native infrastructure](native-infrastructure.md).

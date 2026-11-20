@@ -12,37 +12,37 @@ DeployOps supports bounded CloudFormation, AWS CDK, ARM, and Bicep paths alongsi
 
 See the [configuration reference](configuration.md) for fields. Credentials and access grants stay outside the forms. Unsupported combinations fail before execution.
 
+## Terraform and OpenTofu migration effects
 
-## Terraform/OpenTofu migration effects
+Import and move describe state changes apart from native actions. A saved plan that imports and updates one resource shows both `update` and `import`. A move with replacement shows both `replace` and `move`. Pure migrations omit a redundant no-op row.
 
-Import and move describe state changes independently of native infrastructure actions. A saved plan
-that imports and updates one resource shows both `update` and `import`; a move with replacement shows
-both `replace` and `move`. Both migration annotations are retained if present. Pure migrations omit a
-redundant no-op row. Every effect must satisfy the target policy and resource scope. Local grants and delegations count
-effect rows toward their limits. Allowing import or move alone cannot authorize update, deletion or replacement. Default migration and
-destructive-action denials remain unchanged. No import IDs or attribute values enter the normalized
-manifest. Combined effects above the existing 2,000-row bound refuse, rather than truncate.
+- Every effect must satisfy the target policy and resource scope, and local grants and delegations count effect rows toward their limits.
+- Allowing import or move alone can't authorize update, deletion, or replacement.
+- No import IDs or attribute values enter the normalized manifest.
+- Combined effects above the 2,000-row bound refuse instead of truncating.
 
-New migration manifests retain caller schema 2 and add `native_effects_version = 2`. The current writer
-refuses execution of earlier migration approvals, which may have lost native actions, and projects a
-fresh-plan blocker without rewriting their bytes or audit. Submit a fresh saved plan and approve its
-full effect set. Historical nonmigration requests keep their existing contract. This change does not
-add state migration execution, rename addresses, broaden grants or reapply an old plan. The native
-format describes annotations separately from actions in [Terraform JSON format](https://developer.hashicorp.com/terraform/internals/json-format).
+New migration manifests add `native_effects_version = 2`. The writer refuses earlier migration approvals, which may have lost native actions, and shows a fresh-plan blocker without rewriting their bytes or audit. Submit a fresh saved plan and approve its full effect set. This adds no state migration execution, address renames, broader grants, or old-plan reapply. See the [Terraform JSON format](https://developer.hashicorp.com/terraform/internals/json-format).
 
 ## CloudFormation
 
-Use AWS CLI v2 and set `account_id`, `region`, `stack_name`, and a repository-relative `template`. YAML templates need PyYAML. Inline templates are limited to 51,200 bytes. Public `parameters`, `tags`, a `role_arn`, and IAM `capabilities` are optional, and the adapter never adds capabilities to make a rejected deployment pass.
+Use AWS CLI v2 and set `account_id`, `region`, `stack_name`, and a repository-relative `template`. YAML templates need PyYAML. Inline templates are limited to 51,200 bytes. Public `parameters`, `tags`, a `role_arn`, and IAM `capabilities` are optional. The adapter never adds capabilities to make a rejected deployment pass.
 
-`deploy-ops plan` only describes the release graph. Preparing with `run` creates a remote CloudFormation change set and, for a new stack, an empty review stack, so **preparation needs cloud mutation authority** before execution is approved. Include that in a test's scope and cleanup plan.
+`deploy-ops plan` only describes the release graph. Preparing with `run` creates a remote change set and, for a new stack, an empty review stack, so **preparation needs cloud mutation authority** before execution is approved. Include that in a test's scope and cleanup plan.
 
 Approval binds the change-set ID, frozen template, parameters, target, tool version, and observed stack state. Apply rejects changed evidence, executes that change set once, and waits for the expected outcome. No-change previews return the existing outputs. A failed update, rollback, or timeout isn't reported as delivery.
 
-Macros, transforms, custom resources, and nested stacks are unsupported. Don't put secrets in parameters or select secret-bearing outputs. Automatic checks can't prove an arbitrary output is public.
+Macros, transforms, custom resources, and nested stacks are unsupported. Don't put secrets in parameters or select secret-bearing outputs, since automatic checks can't prove an output is public.
 
-To destroy a stack, set `operation = "destroy"` and prepare a new reviewed release. It needs retained DeployOps creation evidence and the matching ownership tag and stack ID, and binds the current inventory, template, and state. It never disables termination protection or forces deletion. Every destruction review includes deleting the `AWS::CloudFormation::Stack` object, even for an empty review shell or entirely retained resources. That type and `delete` must be in the local grant. `Retain` and `RetainExceptOnCreate` keep the live resource. `Snapshot` deletes the original resource and adds a separate `snapshot` effect under its native resource type. Snapshot authority is explicit and never added to an existing grant. Each effect uses one change row, so a snapshot resource plus its stack takes three rows. Deletion stays manual-only. Retained resources and snapshots can keep incurring charges. Pre-existing stacks can't be destroyed.
+To destroy a stack, set `operation = "destroy"` and prepare a new reviewed release. It needs retained DeployOps creation evidence and the matching ownership tag and stack ID, and binds the current inventory, template, and state. It never disables termination protection or forces deletion. Pre-existing stacks can't be destroyed.
 
-DB clusters and DB instances without `DBClusterIdentifier` default to Snapshot, and an explicit supported Delete overrides that. Unsupported or dynamic deletion policies, unresolved RDS membership, mismatched inventories, and nested stack deletion refuse a new review. Retaining a nested stack doesn't review its internal resources. Stack `DELETE_COMPLETE` confirms only the stack operation. Outputs show the requested retention and snapshot creation, and leave their identities, restore usefulness, and ongoing cost unverified. Historical prepared deletion reports stay readable, but new execution needs destroy contract 2. See [migration](migration.md).
+- Every review includes deleting the `AWS::CloudFormation::Stack` object, even for an empty shell or fully retained resources. That type and `delete` must be in the local grant.
+- `Retain` and `RetainExceptOnCreate` keep the live resource. `Snapshot` deletes the original and adds a separate `snapshot` effect, with explicit authority never added to an existing grant. Each effect takes one change row, so a snapshot resource plus its stack takes three.
+- Deletion is manual-only. Retained resources and snapshots can keep incurring charges.
+- DB clusters and DB instances without `DBClusterIdentifier` default to Snapshot, and an explicit supported Delete overrides that.
+- Unsupported or dynamic deletion policies, unresolved RDS membership, mismatched inventories, and nested stack deletion refuse a new review.
+- `DELETE_COMPLETE` confirms only the stack operation. Snapshot identities, restore usefulness, and cost stay unverified.
+
+Historical prepared deletion reports stay readable, but new execution needs destroy contract 2. See [migration](migration.md).
 
 ## AWS CDK
 
@@ -50,7 +50,9 @@ Synthesize in a separate isolated builder, then freeze the complete cloud assemb
 
 Already-built files and deterministic zip packaging are supported. Each asset needs one destination matching `asset_bucket` and a slash-terminated `asset_prefix`. The approval includes these `cdk_file_asset` writes. Publication checks the bucket owner, uses a conditional create, and verifies SHA-256. An existing object with different bytes is refused.
 
-Command events name allowlisted operations such as `azure.deployment.group.what-if` and the exit code, never arguments or raw errors. Docker and executable assets, unresolved context, dependent stacks, implicit role assumptions, and unsupported assembly instructions are refused. No bootstrap stack, bucket, registry, or IAM role is created or changed, and published assets and bootstrap resources survive stack deletion. The [CDK example](../examples/aws-cdk/README.md) uses an asset-free ECS template and `LegacyStackSynthesizer`. Its Python and TypeScript variants synthesized with `aws-cdk-lib` 2.275.0 and Node.js 24.19.0 under local restrictions. That qualifies those samples locally, not every construct library or a live AWS deployment.
+Command events name allowlisted operations such as `azure.deployment.group.what-if` and the exit code, never arguments or raw errors. Docker and executable assets, unresolved context, dependent stacks, implicit role assumptions, and unsupported assembly instructions are refused. No bootstrap stack, bucket, registry, or IAM role is created or changed, and published assets and bootstrap resources survive stack deletion.
+
+The [CDK example](../examples/aws-cdk/README.md) uses an asset-free ECS template and `LegacyStackSynthesizer`. Its Python and TypeScript variants synthesized with `aws-cdk-lib` 2.275.0 and Node.js 24.19.0 under local restrictions. That qualifies those samples locally, not every construct library or a live AWS deployment.
 
 ## ARM and Bicep
 

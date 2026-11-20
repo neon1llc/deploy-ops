@@ -203,9 +203,7 @@
                       retiring</label
                     >
                     <p>
-                      Each preview gets a new namespace and deploys its own dependencies. Expiry
-                      marks cleanup due; it never deletes files. Cleanup requires a separate exact
-                      approval.
+                      Each preview gets a new namespace and its own dependencies. Expiry marks cleanup due but never deletes files. Cleanup needs a separate approval.
                     </p>
                   </fieldset>
                   <div class="controls">
@@ -240,12 +238,12 @@
                   <div id="releases"></div>
                   <details id="capture-history">
                     <summary>Source capture history</summary>
-                    <p>A capture can stop before a release is registered. These records show source-copy progress and separately observed registration. They provide no resume or cleanup action.</p>
+                    <p>A capture can stop before a release is registered. These records show source-copy progress and observed registration. They offer no resume or cleanup.</p>
                     <p id="capture-status" role="status"></p>
                     <div id="captures"></div>
                     <details>
                       <summary>Inspect retained capture elsewhere</summary>
-                      <p>Read an original or restored record without loading its workspace or credentials. Registration in another state location does not authorize this console to resume it.</p>
+                      <p>Read an original or restored record without loading its workspace or credentials. Registration elsewhere doesn’t let this console resume it.</p>
                       <form id="capture-inspect-form">
                         <label for="capture-state">Retained state directory</label>
                         <input id="capture-state" required pattern="(?:/|~/).*" maxlength="4096" autocomplete="off" spellcheck="false" />
@@ -295,9 +293,7 @@
                   </button>
                 </form>
                 <p>
-                  Planning uses authenticated provider reads and backend locking. Applying a saved
-                  plan changes cloud resources. Stopping a worker does not undo accepted cloud
-                  operations. This route does not support infrastructure destruction.
+                  Planning uses authenticated provider reads and backend locking. Applying a saved plan changes cloud resources. Stopping a worker doesn’t undo accepted operations. Destruction isn’t supported.
                 </p>
                 <div id="isolated-requests"></div>
               </details>
@@ -306,10 +302,7 @@
               <details id="incident-panel">
                 <summary>Local incidents</summary>
                 <p>
-                  Track a failed or uncertain release, or a recorded later observation,
-                  without changing its deployment outcome.
-                  Owners are local labels. Escalations queue signals; they do not contact another
-                  responder or start a background scheduler.
+                  Track a failed or uncertain release, or a later observation, without changing its deployment outcome. Owners are local labels. Escalations queue signals. They contact no one else and start no scheduler.
                 </p>
                 <form id="incident-open-form">
                   <p id="incident-origin">Source: failed or uncertain delivery. A recorded later observation can be selected from release details.</p>
@@ -387,9 +380,7 @@
                 </form>
                 <div id="incident-handoff-review" role="region" aria-label="Responder handoff review"></div>
                 <p>
-                  Acknowledgement stops escalation. Resolution records your decision; it does not
-                  repair or reconcile the deployment. Notes stay in the local audit. Keep secrets
-                  out of them.
+                  Acknowledgement stops escalation. Resolution records your decision and doesn’t repair the deployment. Notes stay in the local audit, so keep secrets out.
                 </p>
                 <button id="incident-tick" type="button" class="secondary">
                   Check due escalations
@@ -409,9 +400,7 @@
               <details id="paging-panel">
                 <summary>Paging destinations and routing</summary>
                 <p>
-                  Keep responder schedules in your paging provider. Local incident acknowledgement
-                  and remote destination acknowledgement are separate decisions. Accepted requests
-                  do not prove a person received a page.
+                  Keep responder schedules in your paging provider. Local and remote acknowledgement are separate. An accepted request doesn’t prove a person received a page.
                 </p>
                 <button id="paging-load" type="button" class="secondary">
                   Load saved paging settings
@@ -464,9 +453,7 @@
                 </form>
                 <h3>Route order</h3>
                 <p>
-                  The first matching route wins. Each route can fan out to multiple destinations.
-                  Repeated names select a destination once. No matching route uses the default
-                  destinations.
+                  The first matching route wins and can fan out to several destinations. With no match, the default destinations apply.
                 </p>
                 <div id="paging-routes"></div>
                 <fieldset id="paging-defaults">
@@ -477,9 +464,7 @@
                   ><button id="paging-activate" type="button">Activate saved revision</button>
                 </div>
                 <p>
-                  Saving does not activate routing or send a test. Activation affects new events.
-                  Existing remote incidents retain their original destinations and credential
-                  references.
+                  Saving doesn’t activate routing or send a test. Activation affects new events. Existing remote incidents keep their destinations and credential references.
                 </p>
                 <!-- Route preview never contacts a provider or evaluates credential values -->
                 <form id="paging-preview-form" action="/api/paging/preview" method="post">
@@ -521,8 +506,7 @@
                 <div id="paging-deliveries"></div>
                 <p id="paging-status" role="status" aria-live="polite" tabindex="-1"></p>
                 <p>
-                  Native paging supports PagerDuty, GoAlert, incident.io, Better Stack, Grafana
-                  Cloud IRM and ilert. Optional Apprise notification transport remains planned.
+                  Native paging supports PagerDuty, GoAlert, incident.io, Better Stack, Grafana Cloud IRM, and ilert.
                 </p>
               </details>
             </div>
@@ -530,7 +514,7 @@
               <!-- Edit local build and target settings as a draft before reviewing and saving -->
               <details id="local-settings" data-setting="local build checks command arguments static directory compose file project artifact destination inheritance overrides">
                 <summary>Local build and deployment settings</summary>
-                <p>Edit existing directory/static/Compose components. Applying fields changes the draft only. Review and save before preparing a release. Output references are checked for availability during preparation.</p>
+                <p>Edit existing directory, static, and Compose components. Applying fields changes the draft only. Review and save before preparing a release.</p>
                 <button id="docker-readiness" type="button" class="secondary" aria-describedby="docker-readiness-status">Inspect Compose prerequisites</button>
                 <p id="docker-readiness-status" role="status" aria-live="polite">Compose prerequisite inspection reads explicit tool/socket metadata only. It cannot start Docker or verify daemon health.</p>
                 <button id="local-reload" type="button" class="secondary">Discard local field edits and reload from draft</button>
@@ -544,7 +528,7 @@
               <!-- Stop and reconcile authority through the existing local controller -->
               <details id="operator-panel" data-setting="controller authority pause resume requests approvals recovery reconciliation delegations audit">
                 <summary>Controller stop and recovery</summary>
-                <p>Pause blocks new authority, revokes delegations and cancels approved work. Running work becomes uncertain and needs inspection. Accepted operations are not rolled back. Resume does not restore revoked grants.</p>
+                <p>Pause blocks new authority, revokes delegations, and cancels approved work. Running work becomes uncertain and needs inspection. Accepted operations aren’t rolled back. Resume doesn’t restore revoked grants.</p>
                 <button id="operator-load" type="button" class="secondary">Refresh controller</button>
                 <p id="operator-status" role="status" aria-live="polite"></p>
                 <div id="operator-controls" hidden>
@@ -576,9 +560,7 @@
               >
                 <summary>Workspace configuration</summary>
                 <p>
-                  Add or edit repositories, environments and components below. Advanced options
-                  stay in the TOML draft. Keep secrets out of this file. Finish or cancel
-                  outstanding releases before saving.
+                  Add or edit repositories, environments, and components below. Advanced options stay in the TOML draft. Keep secrets out. Finish or cancel outstanding releases before saving.
                 </p>
                 <button id="load-forms" type="button" class="secondary">
                   Load forms from current draft
@@ -586,9 +568,7 @@
                 <details data-setting="add create register repository environment directory static compose build artifact">
                   <summary>Add to the workspace draft</summary>
                   <p>
-                    Register a repository, then an environment and its components. Guided component
-                    creation supports local directory infrastructure, static and Compose applications.
-                    Other adapters use the advanced TOML path. Adding never saves or executes.
+                    Register a repository, then an environment and its components. Guided creation covers local directory infrastructure and static and Compose applications. Other adapters use advanced TOML. Adding never saves or executes.
                   </p>
                   <form id="config-add-form" action="/api/config/add" method="post">
                     <fieldset id="config-add-controls">
@@ -626,14 +606,12 @@
                 </form>
                 <p id="config-status" role="status" aria-live="polite" tabindex="-1"></p>
                 <p class="muted">
-                  Provider and tool choices do not translate advanced options or grant cloud
-                  credentials. Review environment overrides in TOML before deployment.
+                  Provider and tool choices don’t translate advanced options or grant credentials. Review environment overrides in TOML.
                 </p>
                 <details>
                   <summary>Advanced TOML editor</summary>
                   <p>
-                    Use the same validated workspace file as the CLI. Changes here stay in the draft
-                    until reviewed and saved.
+                    Same validated workspace file as the CLI. Changes stay in the draft until you review and save.
                   </p>
                   <label for="config">Deployment workspace</label
                   ><textarea id="config" rows="22" spellcheck="false"></textarea>
@@ -652,7 +630,7 @@
               </details>
               <details id="backup-panel" data-setting="private backup restore state audit inventory inspection">
                 <summary>Private state backups</summary>
-                <p>Capture the local ledger, exact configuration and owned source/artifact/data files. Backups can contain sensitive data; they stay in your chosen private directory and are never uploaded automatically.</p>
+                <p>Capture the ledger, configuration, and owned source, artifact, and data files. Backups can hold sensitive data and stay in your chosen private directory.</p>
                 <p id="backup-limits"></p>
                 <button id="backup-options" type="button" class="secondary">Suggest paths for empty fields</button>
                 <form id="backup-form" action="/api/backups/inspect" method="post">
@@ -677,7 +655,7 @@
                     <input id="restore-workspace" name="workspace_directory" type="text" required maxlength="4096" pattern="(/.*|~/.+)" autocorrect="off" autocapitalize="off" spellcheck="false" aria-describedby="restore-help" />
                     <label for="restore-state">New state directory (optional)</label>
                     <input id="restore-state" name="state_directory" type="text" maxlength="4096" pattern="(/.*|~/.+)" autocorrect="off" autocapitalize="off" spellcheck="false" aria-describedby="restore-help" />
-                    <p id="restore-help">Leave state blank for .deploy-ops inside the new workspace. Existing directories are refused. Original absolute references are preserved; relocated copies are inspection-only.</p>
+                    <p id="restore-help">Leave state blank for .deploy-ops inside the new workspace. Existing directories are refused. Relocated copies are inspection-only.</p>
                     <div class="controls">
                       <button type="submit" name="action" value="inspect-restored" class="secondary" formaction="/api/backups/inspect-restored">Inspect restored copy</button>
                       <button type="submit" name="action" value="restore">Restore for inspection</button>
@@ -754,9 +732,7 @@
               <details class="appearance-settings__advanced">
                 <summary>Import, export and custom colors</summary>
                 <p>
-                  Export the current settings here, or import appearance JSON. Color overrides must
-                  preserve readable contrast. Deployment settings and credentials are never
-                  included.
+                  Export settings here, or import appearance JSON. Color overrides must stay readable. Deployment settings and credentials are never included.
                 </p>
                 <label for="appearance-json">Appearance JSON</label
                 ><textarea

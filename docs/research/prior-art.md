@@ -4,15 +4,9 @@
 
 ## How this was screened
 
-This is a curated set of relevant repositories, sorted by stars shown on their primary GitHub pages.
-Rounded values are snapshots, not exact counts or proof of maintenance, security, or suitability.
-Smaller focused projects remain useful. In particular, Towards the Cloud matches neon1's desired style
-of complete, understandable cloud starters more closely than some much larger platforms.
+A curated set of relevant repositories, sorted by stars shown on their primary GitHub pages. Rounded values are snapshots, not exact counts or proof of maintenance, security, or suitability. Smaller focused projects still matter: Towards the Cloud matches neon1's desired style of complete, understandable cloud starters more closely than some much larger platforms.
 
-Repository descriptions and license files support the ecosystem observations. The adoption decisions
-below are DeployOps design judgements. No implementation claim follows from a project appearing here.
-No source from these repositories was copied into this release. The machine-readable record is
-[sources.json](sources.json).
+Descriptions and license files support the observations. The adoption decisions are DeployOps design judgements. A project appearing here implies no implementation claim, and no source from these repositories was copied into this release. The machine-readable record is [sources.json](sources.json).
 
 | Repository | Observed stars | License screen | Useful capability | DeployOps decision |
 |---|---:|---|---|---|
@@ -45,57 +39,23 @@ No source from these repositories was copied into this release. The machine-read
 
 ## What changed in the design
 
-The portable inspection contract also compared current public operation records in
-[Argo CD](https://github.com/argoproj/argo-cd/blob/6f235dafe346b288983dda2dbe69fda0f7021ec8/pkg/apis/application/v1alpha1/types.go)
-and [Kargo](https://github.com/akuity/kargo/blob/73db55255a3702c683d8a7ef3863c125c03624c9/api/v1alpha1/promotion_types.go).
-The observed repository metadata on 2026-11-05 showed 24,547 and 3,761 stars respectively, Apache-2.0
-license declarations, and activity that day. Both distinguish operation phase from other status
-details. DeployOps keeps that distinction in its existing ledger rather than introducing either
-Kubernetes controller as a desktop dependency. This was a conceptual source comparison. No upstream
-implementation was copied and neither controller was runtime-qualified here. Arbitrary messages
-and execution state are deliberately excluded from the portable projection.
-
-Coolify, Dokploy, and Dokku reinforce that users need an end-to-end app outcome, not just an approval card.
-DeployOps now has a workspace, release graph, artifact preparation, local deployment, provider runtime
-adapters, promotion, and a local console. It does not copy their entire hosting platform or claim their maturity.
-
-Dagger suggests a portable build boundary. The current local builder has explicit inputs and outputs,
-but it is not a sandbox. Cloud build isolation and artifact attestation are the next required increment.
-Do not present a sanitized subprocess environment as Dagger-equivalent isolation.
-
-Argo CD, Flux, Crossplane, and Argo Workflows suggest integration with existing reconcilers and schedulers.
-A commit, a queued workflow, a provider operation, and a healthy application are different facts. The release
-record should retain each separately. The current native adapters verify only the guarantees they actually expose.
-
-Backstage suggests a catalog with explicit owners and templates. The shipped catalog records capabilities,
-license screening, provider fit, and maturity. It does not install researched repositories, accept marketplace
-terms, or pretend a GitHub URL is a ready-to-run integration.
-
-Atlantis and Towards the Cloud reinforce protected reusable workflows, planning boundaries, and a complete
-starter path. The retained split-job IaC path remains separate from unprivileged application builds.
-Towards the Cloud's CDK and Terraform kits are candidate upstream template sources, not a reason to scatter
-AWS-specific commands throughout the provider-neutral release core.
-
-SOPS, Trivy, OPA, and Apprise are good examples of capabilities best supplied by maintained packages or
-executables. Add a small integration contract when there is a complete use case. Do not copy their protocol
-implementations merely to make every line of the repository look owned.
+- **Operation records.** The portable inspection contract compared public operation records in [Argo CD](https://github.com/argoproj/argo-cd/blob/6f235dafe346b288983dda2dbe69fda0f7021ec8/pkg/apis/application/v1alpha1/types.go) and [Kargo](https://github.com/akuity/kargo/blob/73db55255a3702c683d8a7ef3863c125c03624c9/api/v1alpha1/promotion_types.go). On 2026-11-05 they showed 24,547 and 3,761 stars, Apache-2.0 license declarations, and activity that day. Both separate operation phase from other status details, and DeployOps keeps that distinction in its existing ledger without taking either controller as a dependency. A conceptual comparison only. Arbitrary messages and execution state are excluded from the portable projection.
+- **Coolify, Dokploy, Dokku.** Users need an end-to-end app outcome, not just an approval card. DeployOps has a workspace, release graph, artifact preparation, local deployment, provider runtime adapters, promotion, and a local console. It doesn't copy their hosting platforms or claim their maturity.
+- **Dagger.** Suggests a portable build boundary. The local builder has explicit inputs and outputs but is not a sandbox. Cloud build isolation and artifact attestation come next. A sanitized subprocess environment is not Dagger-equivalent isolation.
+- **Argo CD, Flux, Crossplane, Argo Workflows.** Integrate with existing reconcilers and schedulers. A commit, a queued workflow, a provider operation, and a healthy application are different facts, and the release record keeps each separately. Native adapters verify only the guarantees they expose.
+- **Backstage.** A catalog with explicit owners and templates. The shipped catalog records capabilities, license screening, provider fit, and maturity. It installs no researched repositories, accepts no marketplace terms, and treats no GitHub URL as a ready integration.
+- **Atlantis, Towards the Cloud.** Protected reusable workflows, planning boundaries, and a complete starter path. Split-job IaC stays separate from unprivileged application builds. Towards the Cloud's CDK and Terraform kits are candidate template sources, not a reason to scatter AWS-specific commands through the provider-neutral core.
+- **SOPS, Trivy, OPA, Apprise.** Best supplied by maintained packages or executables. Add a small integration contract when a complete use case exists. Don't copy protocol implementations to make the repository look owned.
 
 ## Licensing decisions that affect reuse
 
-The current Terraform repository identifies Business Source License 1.1. OpenTofu uses MPL-2.0 and is the
-preferred OSS-default engine. Ansible is GPL-3.0-or-later. These terms differ from Apache-2.0 or MIT.
-Invoking a tool, bundling its executable, and copying its implementation are different decisions.
+Terraform is Business Source License 1.1. OpenTofu is MPL-2.0 and the preferred OSS-default engine. Ansible is GPL-3.0-or-later. Invoking a tool, bundling its executable, and copying its implementation are different decisions.
 
-Dokploy has mixed licensing. CapRover's [actual license file](https://github.com/caprover/caprover/blob/master/LICENSE)
-contains additional terms. Neither should be treated as an unrestricted Apache-only code donor.
-For a copied feature, inspect its exact file-level license and pin a source revision first. Preserve notices
-and record modifications. These findings are screening notes, not a legal opinion.
+Dokploy has mixed licensing. CapRover's [license file](https://github.com/caprover/caprover/blob/master/LICENSE) adds terms. Neither is an unrestricted Apache-only code donor. Before copying a feature, inspect its file-level license, pin a source revision, preserve notices, and record modifications. These are screening notes, not legal opinion.
 
 ## Native infrastructure decisions
 
-The native adapters reuse installed provider tools for transport and provider semantics. DeployOps owns
-the small remainder: frozen inputs, exact review, state checks, output selection, durable operation identity
-and shared CLI/API/UI behavior. No upstream implementation source was copied for these adapters.
+The native adapters reuse installed provider tools for transport and provider semantics. DeployOps owns frozen inputs, exact review, state checks, output selection, durable operation identity, and shared CLI, API, and UI behavior. No upstream source was copied.
 
 | Refreshed candidate | Observed stars | Inspected source and terms | Decision |
 |---|---:|---|---|
@@ -105,36 +65,17 @@ and shared CLI/API/UI behavior. No upstream implementation source was copied for
 | [aws/aws-cdk-cli](https://github.com/aws/aws-cdk-cli) | 109 | Assembly/asset schemas at `d97e3123ebd59701c487e7aa04a83c5f24fd0426`, Apache-2.0. Schema package 55.3.0 | Interpret a bounded assembly subset and share CloudFormation execution |
 | [Azure/arm-deploy](https://github.com/Azure/arm-deploy) | 91 | Current repository metadata, MIT license screen | A GitHub Action is useful in existing pipelines but does not own this local shared lifecycle |
 
-Star counts are a dated discovery snapshot, not a quality ranking. Azure CLI, Bicep and the action were
-not archived when inspected. Invoking separately installed tools does not bundle or relicense their source.
-The compiler trial establishes only the sample's local compilation. Native provider paths currently have
-command fixtures, not live deployment qualification.
+Star counts are a dated discovery snapshot, not a quality ranking. Azure CLI, Bicep, and the action weren't archived when inspected. Invoking separately installed tools doesn't bundle or relicense their source. The compiler trial establishes only the sample's local compilation. Native provider paths have command fixtures, not live deployment qualification.
 
-AWS's [create-change-set](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/create-change-set.html),
-[describe-change-set](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/describe-change-set.html),
-[execute-change-set](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/execute-change-set.html)
-and [delete-stack](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/delete-stack.html) contracts
-support keeping preview identity, execution and deletion distinct. The
-[cloud assembly schema](https://docs.aws.amazon.com/cdk/api/v2/docs/cloud-assembly-schema-readme.html)
-defines templates and assets as deployment instructions, which is why unsupported executable instructions
-are refused instead of forwarded to a general `cdk deploy` command.
+- AWS [create-change-set](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/create-change-set.html), [describe-change-set](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/describe-change-set.html), [execute-change-set](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/execute-change-set.html), and [delete-stack](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/delete-stack.html) keep preview identity, execution, and deletion distinct. The [cloud assembly schema](https://docs.aws.amazon.com/cdk/api/v2/docs/cloud-assembly-schema-readme.html) defines templates and assets as deployment instructions, so unsupported executable instructions are refused instead of forwarded to a general `cdk deploy`.
+- Azure [deployment commands](https://learn.microsoft.com/en-us/cli/azure/deployment/group), the [what-if contract](https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/deploy-what-if), and the [Bicep build contract](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/bicep-cli#build) support freezing compiler output while revalidating the prediction before submission. What-if is not an immutable plan. Unknown analysis, secure inputs, cross-scope deployment, and destruction stay explicit limitations, not inferred parity with Terraform or CloudFormation.
 
-Azure's [deployment commands](https://learn.microsoft.com/en-us/cli/azure/deployment/group),
-[what-if contract](https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/deploy-what-if)
-and [Bicep build contract](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/bicep-cli#build)
-support freezing compiler output while revalidating the prediction before submission. What-if is not
-an immutable plan. Unknown analysis, secure inputs, cross-scope deployment and destruction remain
-explicit limitations rather than inferred parity with Terraform or CloudFormation.
-
-Revisit these boundaries when a concrete workload needs multi-stack dependencies, executable assets,
-secure parameter references or native Azure teardown. Qualify that complete path before advertising it.
+Revisit these boundaries when a workload needs multi-stack dependencies, executable assets, secure parameter references, or native Azure teardown. Qualify that path before advertising it.
 
 ## Adoption order
 
-First finish a safe two-repository AWS path using the existing split-job IaC contract and a native app rollout.
-Qualify the implemented CloudFormation/CDK path and test the same release contract on Azure and GCP.
-Add portable builds, artifact signatures, and a curated
-template registry before a large UI framework, plugin marketplace, or distributed control plane.
+1. Finish a safe two-repository AWS path using split-job IaC and a native app rollout.
+2. Qualify the CloudFormation and CDK path, then test the same release contract on Azure and GCP.
+3. Add portable builds, artifact signatures, and a curated template registry before a large UI framework, plugin marketplace, or distributed control plane.
 
-Stars inform what deserves inspection. Complete user paths, understandable maintenance, license fit,
-security boundaries, and evidence decide what belongs in the product.
+Stars inform what deserves inspection. Complete user paths, understandable maintenance, license fit, security boundaries, and evidence decide what belongs in the product.

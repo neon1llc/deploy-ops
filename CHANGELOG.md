@@ -5,9 +5,9 @@ DeployOps releases use `v0.MINOR.PATCH` until the first complete release, v1.0.0
 ## v0.15.1 - 2026-11-20
 
 ### Changed
-- Shorter README, security notes, setup, licensing, and other docs. The README groups its doc links instead of tabulating them.
+- Shorter README, security notes, licensing, docs, examples, `--help` text, and console hints. The README groups its doc links instead of tabulating them. The migration page is now a table, the verification ledger is condensed with shared caveats stated once, and repeated recovery, setup, and limit text is merged. The case study page is removed, and its open item moved to the roadmap.
 - Docs and `--help` text use sentences instead of semicolons.
-- The native infrastructure page matches the support matrix: CloudFormation, Bicep, and ARM have run live, and CDK has fixtures only. The case study says the same.
+- The native infrastructure page matches the support matrix: CloudFormation, Bicep, and ARM have run live, and CDK has fixtures only.
 - `status --help` reads "Default 20" instead of "default20".
 
 ## v0.15.0 - 2026-11-19

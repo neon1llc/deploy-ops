@@ -60,10 +60,7 @@ No cleanup override deletes retained data. This covers generated static files an
 
 ## Recover interrupted cleanup
 
-In the console, first record a descriptive inspection note, then choose whether the namespace/files
-remain or the entire owned namespace is absent. These are native selection choices, separate from the
-note's ten-character minimum. Cancel at either dialog submits no reconciliation. Choosing absence never
-bypasses the backend's ownership, retained-data or actual-absence checks and does not execute deletion.
+In the console, first record a descriptive inspection note, then choose whether the namespace and files remain or the owned namespace is absent. These are native selection choices, separate from the note's ten-character minimum. Cancelling either dialog submits nothing. Choosing absence never bypasses the backend's ownership, retained-data, or absence checks and doesn't execute deletion.
 
 A stale plan, interruption, or uncertain completion stays visible. Stop the worker and inspect the namespace before recording a note:
 
@@ -76,6 +73,4 @@ Approve the new digest before executing the new plan, even for a zero-file plan.
 
 ## Upgrade and boundaries
 
-Back up state before upgrading, and don't downgrade while preview operations are in progress. Don't delete lock rows, since unattributed legacy locks fail closed in recovery.
-
-Runtime teardown, shared storage, mutable services, cloud previews, automatic expiry deletion, and cross-preview artifact reuse are unsupported.
+Back up state before upgrading, and don't downgrade while preview operations are in progress. Don't delete lock rows, since unattributed legacy locks fail closed in recovery. Unsupported: runtime teardown, shared storage, mutable services, cloud previews, automatic expiry deletion, and cross-preview artifact reuse.

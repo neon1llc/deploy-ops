@@ -6,7 +6,7 @@ The adapters are checked with local protocol fixtures only. No live provider pag
 
 ## Configure, preview and activate
 
-The console's **Paging destinations and routing** panel has destination fields, ordered routes, defaults, and a route preview. Edits stay in memory until **Save paging draft** succeeds. Saving validates but doesn't activate. **Activate saved revision** makes that revision effective for new events. Configuration lives in the workspace database, apart from deployment approvals. Repository code can't install destinations. Back up workspace state before an upgrade.
+The console's **Paging destinations and routing** panel has destination fields, ordered routes, defaults, and a route preview. Edits stay in memory until **Save paging draft** succeeds. Saving validates but doesn't activate, and **Activate saved revision** makes it effective for new events. Configuration lives in the workspace database, apart from deployment approvals, and repository code can't install destinations. Back up workspace state before an upgrade.
 
 CLI, using [paging.toml](../examples/paging/paging.toml):
 
@@ -37,9 +37,9 @@ Each destination chooses a provider and worker environment references beginning 
 Provider limits:
 
 - incident.io, Grafana Cloud IRM, and ilert have no acknowledgement or status readback on the selected route.
-- Better Stack keeps the returned incident ID. A lost creation response without an ID can't be reconciled and never triggers an automatic duplicate create.
-- Before setting Grafana `template_mapping_confirmed = true`, configure the integration to group by `{{ payload.alert_uid }}`, resolve when `{{ payload.state == 'ok' }}`, enable autoresolve, and pick the responder route. DeployOps sends `alerting` and `ok` with the same `alert_uid`. The setting confirms your setup and inspects nothing remote ([templates](https://grafana.com/docs/grafana-cloud/observe-and-act/respond-to-incidents/escalation-and-routing/customize-alert-templates/)).
-- ilert `priority_mode = "source"` keeps its configured priority. `"severity"` sends `HIGH` for critical and error and `LOW` for warning and info, which ilert source settings can override. Local severity also goes in `customDetails`.
+- Better Stack keeps the returned incident ID. A lost creation response without an ID can't be reconciled and never triggers an automatic duplicate.
+- Before setting Grafana `template_mapping_confirmed = true`, configure the integration to group by `{{ payload.alert_uid }}`, resolve when `{{ payload.state == 'ok' }}`, enable autoresolve, and pick the responder route. DeployOps sends `alerting` and `ok` with the same `alert_uid`, and the setting confirms your setup without inspecting anything remote ([templates](https://grafana.com/docs/grafana-cloud/observe-and-act/respond-to-incidents/escalation-and-routing/customize-alert-templates/)).
+- ilert `priority_mode = "source"` keeps its configured priority. `"severity"` sends `HIGH` for critical and error and `LOW` for warning and info, which ilert source settings can override.
 
 Set referenced credentials in the worker environment, never in console fields, TOML, repositories, or command arguments. Native bindings keep a hash of the initial credential and refuse later sends if it changes, so keep the original available until its bindings are resolved. Configuration changes and disabling a destination affect new events only.
 
@@ -47,13 +47,13 @@ GoAlert and notification endpoints can allow private CIDRs in `allowed_networks`
 
 ## Routing and worker behavior
 
-Routes match exact project, environment, component, event, and severity values, and empty lists match all. The first matching route wins and fans out to its destinations. With no match, `default_destinations` applies. Native destinations page only for `incident.opened` or a separately reviewed `incident.handoff_requested`, which uses the same route filters, and release success stays a notification.
+Routes match exact project, environment, component, event, and severity values, and empty lists match all. The first matching route wins and fans out to its destinations. With no match, `default_destinations` applies. Native destinations page only for `incident.opened` or a reviewed `incident.handoff_requested`. Release success stays a notification.
 
-The route preview explains selected, disabled, quiet, and unsupported destinations. `quiet_until` takes an ISO date and time with a timezone offset and suppresses new routed events until then. Recurring quiet hours aren't implemented. Critical incidents follow the configured policy. Expiry sends no catch-up pages. A local incident opened from an exact later observation holds native pages until an explicit [responder handoff](incidents.md#track-a-later-observation-and-review-responder-handoff).
+The route preview shows selected, disabled, quiet, and unsupported destinations, the evaluated source (`active`, `saved-draft`, or `unsaved-draft`), revision, digest, and context. Previewing or saving a draft doesn't activate it, and recorded routing decisions stay historical.
 
-Preview shows the evaluated source (`active`, `saved-draft`, or `unsaved-draft`), its revision when available, the configuration digest, the evaluation time, and the exact context. Saving or previewing a draft doesn't activate it. Recorded routing decisions stay historical evidence even if a current preview differs.
+`quiet_until` takes an ISO date and time with a timezone offset and suppresses new routed events until then. Recurring quiet hours aren't implemented. Critical incidents follow the configured policy, and expiry sends no catch-up pages. A local incident opened from a later observation holds native pages until an explicit [responder handoff](incidents.md#track-a-later-observation-and-hand-off-to-responders).
 
-An optional route `fallback` picks a different destination after a definite final transport failure, never after an unknown outcome. There is no fallback chain. Before a new native fallback, the worker rechecks the incident version, open state, and handoff eligibility in one transaction. A late ordinary notification failure after local acknowledgement or resolution can't start a new native page. Historical notification results, existing binding supersession, and unknown in-flight outcomes stay visible.
+An optional route `fallback` picks a different destination after a definite final transport failure, never after an unknown outcome, and has no chain. Before a native fallback, the worker rechecks the incident version, open state, and handoff eligibility in one transaction, so a late notification failure after local acknowledgement or resolution can't start a native page.
 
 ```bash
 # Inspect state without sending
@@ -64,9 +64,9 @@ deploy-ops paging drain --limit 50
 deploy-ops paging worker
 ```
 
-The worker runs local incident timers and durable delivery drains. A process manager or container can restart it, but DeployOps installs none. A stopped host can't deliver new events. The console shows worker heartbeat and each obligation's attempts and next due time.
+The worker runs local incident timers and durable delivery drains. A process manager or container can restart it, but DeployOps installs none, and a stopped host can't deliver new events. The console shows worker heartbeat and each obligation's attempts and next due time.
 
-A worker claims each operation before network I/O, in order per binding, and honors bounded `Retry-After`. A stopped in-flight attempt becomes unknown after its claim expires. Backoff and attempt caps survive restart. A lost response or ambiguous provider error stays unknown. There is no exactly-once claim, so replaying an old trigger can create another alert, and retrying a Better Stack creation after an unknown outcome can duplicate an open incident.
+A worker claims each operation before network I/O, in order per binding, and honors bounded `Retry-After`. A stopped in-flight attempt becomes unknown after its claim expires. Backoff and attempt caps survive restart, and a lost response or ambiguous error stays unknown. There is no exactly-once claim: replaying an old trigger can create another alert, and retrying a Better Stack creation after an unknown outcome can duplicate an open incident.
 
 ## Respond to one destination
 

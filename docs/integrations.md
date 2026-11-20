@@ -38,26 +38,17 @@ Submission runs in the planning environment. Claim and execution run in the exec
 
 ## Automatically loaded IaC files
 
-Guarded `plan` and `execute` require the registered commit and unchanged tracked files. They also
-refuse untracked or ignored root `.tf`/`.tf.json` files, automatic variable files
-(`terraform.tfvars`, `terraform.tfvars.json`, `*.auto.tfvars`, `*.auto.tfvars.json`) and the provider
-lock file. OpenTofu additionally checks `.tofu`/`.tofu.json`, which can override the matching Terraform
-file. Native configuration dotfiles/editor backups are ignored, and OpenTofu selects a matching
-`.tofu` alternative over `.tf`. Automatic variable files use their own naming rules: a hidden
-`.private.auto.tfvars` is still guarded, as is `.terraform.lock.hcl`. This check inspects filenames and Git membership, never variable values. Root native input
-symlinks and nonregular files refuse. It happens before credentials or native initialization.
+Guarded `plan` and `execute` require the registered commit and unchanged tracked files. They refuse:
 
-The refusal changes no files. Review public configuration through the normal commit workflow or use
-a clean checkout. Keep secrets out of Git. Ordinary untracked notes, explicitly selected variable
-files that this command does not load, saved plans and native caches remain usable. Execution still
-applies the exact approved saved plan. It does not generate a replacement plan.
+- Untracked or ignored root `.tf` and `.tf.json` files.
+- Automatic variable files (`terraform.tfvars`, `terraform.tfvars.json`, `*.auto.tfvars`, `*.auto.tfvars.json`), including a hidden `.private.auto.tfvars`.
+- The provider lock file, `.terraform.lock.hcl`.
+- For OpenTofu, `.tofu` and `.tofu.json` files, which can override the matching Terraform file.
+- Root native input symlinks and nonregular files.
 
-This bounded root check does not attest local child modules outside the root, module downloads,
-files read by expressions or providers, arbitrary external inputs, submodule contents or concurrent
-uncooperative changes after inspection. Use a controlled, isolated runner for those boundaries.
-Native file loading is documented by [Terraform](https://developer.hashicorp.com/terraform/language/files)
-and [OpenTofu](https://opentofu.org/docs/language/files/). Automatic variable names follow their
-[input variable contract](https://opentofu.org/docs/language/values/variables/).
+Native configuration dotfiles and editor backups are ignored. The check reads filenames and Git membership, never variable values, and runs before credentials or native initialization. It changes no files. Review public configuration through the normal commit workflow or use a clean checkout, and keep secrets out of Git. Untracked notes, variable files this command doesn't load, saved plans, and native caches stay usable. Execution still applies the exact approved saved plan.
+
+This root check doesn't attest local child modules outside the root, module downloads, files read by expressions or providers, external inputs, submodule contents, or concurrent changes after inspection. Use a controlled, isolated runner for those. Native file loading is documented by [Terraform](https://developer.hashicorp.com/terraform/language/files) and [OpenTofu](https://opentofu.org/docs/language/files/), and automatic variable names follow their [input variable contract](https://opentofu.org/docs/language/values/variables/).
 
 ## Generic manifest contract
 

@@ -24,7 +24,7 @@ The executable there is `terraform-provider-google`. Keep the package's other fi
 
 The VM must be running with no host mounts, SSH agent or X11 forwarding, proxy environment, or application port forwards. Register the fingerprint of the effective `config` object from `limactl list NAME --json`, using DeployOps' `fingerprint` function. Runtime changes need a new grant. Native gcloud and limactl paths must be operator or root owned.
 
-The root supervisor is trusted. It holds a kernel lock for one operation at a time, runs native tools under a fresh numeric UID and GID with no supplementary groups, and keeps source, provider lock, and approved plan root-owned and immutable to the worker. The temporary token crosses stdin and process environment, never arguments, persistent keys, or logs. Guest root can still read it, so this isolates the VM from contributor source and doesn't protect against a compromised guest administrator or kernel.
+The root supervisor is trusted. It holds a kernel lock for one operation at a time, runs native tools under a fresh numeric UID and GID with no supplementary groups, and keeps source, provider lock, and approved plan root-owned and immutable to the worker. The temporary token crosses stdin and process environment, never arguments, persistent keys, or logs. Guest root can still read it, so this isolates the VM from contributor source, not from a compromised guest administrator or kernel.
 
 ## Grant structure
 

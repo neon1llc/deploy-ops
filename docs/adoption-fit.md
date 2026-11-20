@@ -10,7 +10,7 @@ From a laptop or a self-hosted runner: deploy infrastructure and an application 
 - **Typed hand-off between repositories.** The infrastructure release publishes public outputs. The application release reads them, so an app-only release skips infrastructure.
 - **A release record you can read.** Every run, approval, promotion, and rollback lands in a local audit history that the CLI and console share.
 
-Everything else, including paging, appearance settings, and the prior-art catalog, supports those three.
+Everything else supports those three.
 
 ## What you can do without it
 
@@ -24,7 +24,7 @@ Everything else, including paging, appearance settings, and the prior-art catalo
 | **AWS CodeDeploy** or a cloud's native deploy service | Deployment groups and rollback inside one cloud | One CLI across providers, in principle | Depth on any single provider |
 | **A Makefile or shell script** | Run build, test, and deploy steps | Approvals, the audit record, and promotion without rebuilding | Simplicity |
 
-If your team already runs reviewed deploys in GitHub Actions and that audit trail is enough, DeployOps gives you little. The test is whether you need approval bound to the exact artifact, and whether you want to run it locally.
+If reviewed deploys in GitHub Actions and its audit trail are enough, DeployOps adds little. Try it if you need approval bound to the exact artifact and want to run locally.
 
 ## Who should try it
 
@@ -33,8 +33,8 @@ If your team already runs reviewed deploys in GitHub Actions and that audit trai
 
 ## Who should wait
 
-- You need production support, an audited security posture, or Windows. The [support matrix](support-matrix.md) shows what ran. [SECURITY.md](../SECURITY.md) lists the boundaries that don't exist.
-- You need rollback you can rely on in a cloud. Local and kind rollbacks have tests. Cloud rollback is unqualified.
-- You need canary or blue/green releases in a cloud, SBOM enforcement, or live Terraform or OpenTofu apply on AWS. These aren't implemented or aren't live-checked.
+- You need production support, an audited security posture, or Windows. The [support matrix](support-matrix.md) shows what ran, and [SECURITY.md](../SECURITY.md) lists the missing boundaries.
+- You need cloud rollback. Local and kind rollbacks have tests. Cloud rollback is unqualified.
+- You need cloud canary or blue/green releases, SBOM enforcement, or live Terraform or OpenTofu apply on AWS. These aren't implemented or aren't live-checked.
 
-[Capabilities](capabilities.md) separates implemented behavior from live evidence. The [roadmap](roadmap.md) is intent only. A feature reaches the README only after it has run.
+[Capabilities](capabilities.md) separates implemented behavior from live evidence. The [roadmap](roadmap.md) is intent only.

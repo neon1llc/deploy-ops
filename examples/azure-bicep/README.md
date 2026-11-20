@@ -10,20 +10,13 @@ For this reviewed, self-contained sample, compile with the standalone Bicep CLI 
 bicep build infrastructure/main.bicep --no-restore --outfile infrastructure/main.json
 ```
 
-Run compilation before deployment authentication. For untrusted source, use a separate isolated
-builder with no cloud credential files, identity endpoints, host home mounts or privileged sockets.
-Removing credential variables alone is not filesystem isolation. The sample has no external modules
-or extensions. Do not expand that boundary without reviewing the compiler inputs and dependencies.
+Compile before deployment authentication. For untrusted source, use a separate isolated builder with no cloud credential files, identity endpoints, host home mounts, or privileged sockets. Removing credential variables alone isn't filesystem isolation. The sample has no external modules or extensions, so review the compiler inputs and dependencies before expanding that.
 
 Commit the Bicep source and generated JSON together. The `bicep` adapter requires native compiler
 metadata and binds the complete source snapshot plus the frozen template digest. Metadata is compiler
 information, not a signature or proof that compilation occurred in a trusted environment.
 
-The supplied template was compiled locally with Bicep v0.41.2. A second compilation under macOS process
-restrictions denied network access and home-directory reads, confined writes to a disposable directory,
-and produced the same parsed template. Native compilation validates Bicep
-syntax and type relationships. It does not establish Azure permissions, resource availability,
-application health, cost, or live deployment success. Replace the workspace placeholders before use.
+The template was compiled locally with Bicep v0.41.2. A second compilation under macOS process restrictions denied network access and home-directory reads, confined writes to a disposable directory, and produced the same parsed template. Compilation validates Bicep syntax and types, not Azure permissions, resource availability, application health, cost, or deployment success. Replace the workspace placeholders before use.
 
 See the official [Bicep build contract](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/bicep-cli#build)
 for `--no-restore` behavior. This example calls the maintained compiler and Azure CLI instead of

@@ -45,7 +45,7 @@ An app-only release uses the same valid receipt and a new immutable image. Promo
 
 The controller checks exact receipt references at submission, claim, heartbeat, and completion. A new producer execution invalidates earlier receipts when it claims authority. Failure or reconciliation doesn't make them valid again, because a failed apply can still change infrastructure. Publish fresh evidence through a new reviewed infrastructure execution before resuming delivery.
 
-An operator can revoke a receipt through the existing admin credential:
+An operator can revoke a receipt through the admin credential:
 
 ```bash
 deploy-ops gate revoke-receipt RECEIPT_ID
@@ -53,7 +53,7 @@ deploy-ops gate revoke-receipt RECEIPT_ID
 
 Revocation prevents new authority and interrupts later heartbeats. It doesn't undo an operation AWS already accepted, so reconcile uncertain operations before retrying.
 
-The state digest identifies the `tofu state pull` representation, not the S3 object bytes or version ID. A valid receipt proves a trusted worker's observation. It doesn't detect out-of-band drift or prove current health. The ECS adapter reads the service revision before applying and checks convergence afterwards. Live backend observations, image provenance enforcement, and external application probes are unfinished.
+The state digest identifies the `tofu state pull` representation, not the S3 object bytes or version ID. A valid receipt proves a trusted worker's observation, not current health or absence of out-of-band drift. The ECS adapter reads the service revision before applying and checks convergence afterwards. Unfinished: live backend observations, image provenance enforcement, external application probes.
 
 ## GCP contract
 
@@ -61,4 +61,4 @@ Use [the GCP controller example](../config/gcp-receipts.example.toml) and [the G
 
 The operator registers a GCS bucket and canonical prefix. The runner writes a temporary native backend override before obtaining credentials, refuses competing overrides, and uses `init -reconfigure`. Backend metadata is checked before planning, applying, and state extraction. Explicit credentials, custom endpoints, impersonation, encryption overrides, and unknown metadata fields are refused.
 
-This uses the isolated OIDC plan and apply workflow with distinct planning and execution identities. It doesn't enable Terraform or OpenTofu in local cloud grants. The state digest describes the `state pull` representation, not a GCS object generation. Follow a receipt with live service readback. Scope backend access separately from application delivery.
+This uses the isolated OIDC plan and apply workflow with distinct planning and execution identities, and doesn't enable Terraform or OpenTofu in local cloud grants. The state digest describes the `state pull` representation, not a GCS object generation. Follow a receipt with live service readback, and scope backend access separately from application delivery.

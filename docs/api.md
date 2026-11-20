@@ -28,13 +28,11 @@ Bearer tokens use `Authorization: Bearer TOKEN`. GitHub tokens need the configur
 
 Request shapes are in [models.py](../src/deploy_ops/models.py), and extra fields are rejected. Costs are whole USD cents per month and may be unknown. Unknown estimates can't qualify for automatic approval unless the operator changes that rule.
 
-A denied or rejected request can't be approved by editing it, so submit a new plan. A policy change also needs a new request. A claim failure never means a caller should apply anyway.
-
-An operator can reject a pending or approved request before execution is claimed, even after approval expires. Once execution starts, inspect and reconcile instead, since rejection isn't rollback.
+A denied or rejected request can't be approved by editing it, and a policy change also needs a new request, so submit a new plan. A claim failure never means a caller should apply anyway. An operator can reject a pending or approved request before execution is claimed, even after approval expires. Once execution starts, inspect and reconcile instead, since rejection isn't rollback.
 
 ## Local incident operations
 
-The loopback console exposes `GET/POST /api/incidents`, `POST /api/incidents/tick`, `POST /api/incidents/{id}/acknowledge`, `POST /api/incidents/{id}/resolve`, and `GET /api/notifications`. Opening takes `release_id`, `owner`, `note`, `interval_seconds`, and `limit`. Decisions need the current `version` and a `note`. All endpoints use the console token plus origin and host checks and grant no remote authority. See [local incidents](incidents.md).
+The loopback console exposes `GET/POST /api/incidents`, `POST /api/incidents/tick`, `POST /api/incidents/{id}/acknowledge`, `POST /api/incidents/{id}/resolve`, and `GET /api/notifications`. Opening takes `release_id`, `owner`, `note`, `interval_seconds`, and `limit`. Decisions need the current `version` and a `note`. All use the console token plus origin and host checks and grant no remote authority. See [local incidents](incidents.md).
 
 ## Isolated static previews
 
