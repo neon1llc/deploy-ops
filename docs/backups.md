@@ -2,7 +2,7 @@
 
 Capture the ledger together with its owned files before moving or retiring a workspace. A backup
 contains private configuration, source, artifacts, deployment data and audit history. Keep it in private
-storage. DeployOps creates owner-only files and directories; it does not encrypt or upload them.
+storage. DeployOps creates owner-only files and directories. It does not encrypt or upload them.
 For a smaller report intended for review, use [portable inspection](inspection.md) instead.
 
 ## Capture and verify
@@ -20,12 +20,12 @@ Choose a new directory outside the source workspace and state directory. An exis
 never overwritten. Capture reserves the ledger while SQLite's native backup operation creates a
 self-contained database, including committed WAL data. It copies known owned files, checks the
 before/after inventory and exact configuration, and writes the manifest last. Interrupted directories
-remain available for inspection; an absent manifest is not a completed backup.
+remain available for inspection. An absent manifest is not a completed backup.
 
 The manifest binds file hashes, sizes, executable flags, original locations, release count and the
 verified audit prefix. Bounds are 20,000 entries, 512 MB total and 100 MB per file or database.
 Missing files or unavailable evidence produce an explicit partial capture. Inspect its limits before
-relying on it. Hash verification detects changed bytes; it does not authenticate an untrusted author.
+relying on it. Hash verification detects changed bytes. It does not authenticate an untrusted author.
 
 Included scope covers frozen release repositories, component source/artifacts/prepared evidence,
 known native operation journals, local deployment and preview data, cleanup evidence, Save recovery
@@ -52,7 +52,7 @@ inspected digest. The original project filename is retained, even when it differ
 
 Restore verifies source and destination bytes and audit lineage. Its receipt and manifest allow
 `inspect-restored` without the original backup attached. Existing directories are refused. A failed or
-interrupted restore remains inspection-only; preserve it and choose fresh targets after diagnosis.
+interrupted restore remains inspection-only. Preserve it and choose fresh targets after diagnosis.
 
 Both the backup and restored workspace/state carry inspection boundaries. Normal writable Store,
 Engine, configuration and controller paths refuse them, including alternate state selections. No worker
@@ -63,7 +63,7 @@ and the matching runtime. Removing them is not an execution-admission procedure.
 
 A relocated copy preserves absolute references for truthful history. It does not redirect them to
 other files. Read-only status, events and audit verification can remain useful even when source or
-artifacts are missing; dependent operations must refuse incompatible evidence.
+artifacts are missing. Dependent operations must refuse incompatible evidence.
 
 For a separate original-location exercise, preserve the old owned workspace elsewhere and restore
 into its now-absent original root, with the original state location. Never overwrite an active owner.
@@ -88,5 +88,5 @@ new restore locations. Restore requires a separate confirmation and defaults foc
 Validation and failed requests preserve entered paths. No background capture or automatic upload occurs.
 
 The implementation uses [Python's SQLite backup API](https://docs.python.org/3.12/library/sqlite3.html#sqlite3.Connection.backup)
-and the [SQLite online backup mechanism](https://www.sqlite.org/backup.html); copying a raw database
+and the [SQLite online backup mechanism](https://www.sqlite.org/backup.html). Copying a raw database
 without its WAL is not the capture procedure.

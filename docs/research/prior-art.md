@@ -51,7 +51,7 @@ and [Kargo](https://github.com/akuity/kargo/blob/73db55255a3702c683d8a7ef3863c12
 The observed repository metadata on 2026-11-05 showed 24,547 and 3,761 stars respectively, Apache-2.0
 license declarations, and activity that day. Both distinguish operation phase from other status
 details. DeployOps keeps that distinction in its existing ledger rather than introducing either
-Kubernetes controller as a desktop dependency. This was a conceptual source comparison; no upstream
+Kubernetes controller as a desktop dependency. This was a conceptual source comparison. No upstream
 implementation was copied and neither controller was runtime-qualified here. Arbitrary messages
 and execution state are deliberately excluded from the portable projection.
 
@@ -99,10 +99,10 @@ and shared CLI/API/UI behavior. No upstream implementation source was copied for
 
 | Refreshed candidate | Observed stars | Inspected source and terms | Decision |
 |---|---:|---|---|
-| [aws/aws-cli](https://github.com/aws/aws-cli) | 17,340 | Current CloudFormation command references; external CLI v2 | Keep native change-set and stack operations behind the shared execution context |
+| [aws/aws-cli](https://github.com/aws/aws-cli) | 17,340 | Current CloudFormation command references. External CLI v2 | Keep native change-set and stack operations behind the shared execution context |
 | [Azure/azure-cli](https://github.com/Azure/azure-cli) | 4,665 | Resource deployment implementation at `azure-cli-2.76.0`, MIT | Use full what-if and incremental deployment commands rather than a second ARM engine |
-| [Azure/bicep](https://github.com/Azure/bicep) | 3,660 | v0.41.2 compiler and MIT license; architecture icon terms are separate | Compile reviewed source separately and consume frozen JSON in the writer |
-| [aws/aws-cdk-cli](https://github.com/aws/aws-cdk-cli) | 109 | Assembly/asset schemas at `d97e3123ebd59701c487e7aa04a83c5f24fd0426`, Apache-2.0; schema package 55.3.0 | Interpret a bounded assembly subset and share CloudFormation execution |
+| [Azure/bicep](https://github.com/Azure/bicep) | 3,660 | v0.41.2 compiler and MIT license. Architecture icon terms are separate | Compile reviewed source separately and consume frozen JSON in the writer |
+| [aws/aws-cdk-cli](https://github.com/aws/aws-cdk-cli) | 109 | Assembly/asset schemas at `d97e3123ebd59701c487e7aa04a83c5f24fd0426`, Apache-2.0. Schema package 55.3.0 | Interpret a bounded assembly subset and share CloudFormation execution |
 | [Azure/arm-deploy](https://github.com/Azure/arm-deploy) | 91 | Current repository metadata, MIT license screen | A GitHub Action is useful in existing pipelines but does not own this local shared lifecycle |
 
 Star counts are a dated discovery snapshot, not a quality ranking. Azure CLI, Bicep and the action were

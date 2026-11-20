@@ -5,11 +5,11 @@
 The installed local build completed one bounded, nonproduction Cloud Run journey using an
 existing identity and API. A separately provisioned official sample service used internal ingress,
 IAM protection, zero minimum instances and two small revisions at most. The CLI prepared an exact
-change; actual browser approval left it waiting until a separate CLI resume. Both native operations
+change. Actual browser approval left it waiting until a separate CLI resume. Both native operations
 completed, the immutable candidate image matched and desired/observed traffic converged to it.
 Browser and CLI provider inspection observed the result without replaying deployment. A fresh exact
 approval and separate execution then verified a same-image no-op with no native write. Readback
-counted exactly two revisions. Owned deletion completed; the service returned 404 and no revisions
+counted exactly two revisions. Owned deletion completed. The service returned 404 and no revisions
 remained. The local console and grant closed within the recorded lifetime.
 
 This qualifies that narrow candidate/traffic/readback/no-op path. It does not qualify application
@@ -26,7 +26,7 @@ Readback now reloads and revalidates component/configuration/operation under act
 both pending and final cache writes merge only cache metadata through the existing ledger transaction.
 Focused cases preserve completed state/outputs during inspection, refuse newly ineligible discard
 before its leaf, and isolate both metadata write modes from primary state. Earlier candidate evidence
-remains separate; sequential cleanup success alone did not cover this interleaving.
+remains separate. Sequential cleanup success alone did not cover this interleaving.
 
 ## Separate private cache cleanup outcomes, 2026-11-05
 
@@ -37,7 +37,7 @@ record separate category failure, continue the other cache check and retain safe
 They also cover unavailable observation recording, native link/nonregular-path refusal, existing
 active-worker exclusion, ordinary quiet removal and later explicit pending observation. Cache values
 and exception sentinels stay out of public results/events. One fixture initially expected failed
-preparation; the existing conservative primary result is correctly uncertain and remains so. These
+preparation. The existing conservative primary result is correctly uncertain and remains so. These
 are local synthetic-cache cases, not actual credential retention, secure erasure or provider tests.
 
 ## Waiting worker admission correction, 2026-11-05
@@ -74,7 +74,7 @@ same session/generation/field binding and a local status. Narrow deferred-respon
 late-error suppression, retained prior content on current failure, successful error replacement and
 unchanged authored fields/unrelated messages. Capture facts stack within the narrow desktop history
 column so full identifiers and ordinary words have useful width. Earlier capture/backend/native
-proof remains separately scoped; no new authority or provider action.
+proof remains separately scoped. No new authority or provider action.
 
 ## Inspectable source capture attempts, 2026-11-05
 
@@ -134,11 +134,11 @@ Broad accessibility, assistive technology, every workflow and human acceptance r
 Actual kubectl v1.36.1 against an owned loopback TLS API fixture retained the original connection when
 the on-disk alias changed during execution, rejected a recreated UID atomically, and sent one accepted
 PATCH whose acknowledgement was lost. Read-only inspection observed its result without replay or
-controller completion. Raw native config remained in memory/anonymous stdin; public prepared/journal
+controller completion. Raw native config remained in memory/anonymous stdin. Public prepared/journal
 facts contained no fixture token. All owned sockets and temporary TLS material were removed.
 
 The first fixture did not implement current watch-list initial bookmarks and timed out. Bounded stdin
-and named-file diagnostics both showed the same fixture timeout; implementing the documented bookmark
+and named-file diagnostics both showed the same fixture timeout. Implementing the documented bookmark
 completed the native journey without changing product semantics or weakening TLS. Native-shaped cases
 cover preclaim legacy refusal, connection/UID/version/container changes, no-op readiness, final UID
 replacement, retained journal privacy, backup extent and explicit unsupported portable-inspection scope.
@@ -154,7 +154,7 @@ keyboard/layout/AT/human acceptance remain open. Historical v0.7 VM proof below 
 Real Terraform1.16.0 using built-in terraform_data and private local state refused a known complex
 selected output before apply, applied a valid saved plan and validated its previously unknown public
 scalar output, and refused a changed initialized backend before apply. The alternate state file was
-not created. Local source overrides and backend selectors are not silently adopted; old generic
+not created. Local source overrides and backend selectors are not silently adopted. Old generic
 prepared work refuses before runner claim/native use. Remote backend shapes are fixture checks, not
 remote storage, cloud identity, restore or provider qualification. DOM checks expose backend and output
 uncertainty as review evidence. Current mounted browser/keyboard/layout/AT and human acceptance remain
@@ -164,7 +164,7 @@ unqualified. No cloud batch, existing grant, host credentials or publication cha
 
 A real Terraform 1.16.0 local saved plan used the built-in `terraform_data` resource to produce import
 plus update and move plus replacement. Normalization preserved all four effect rows. Only the local
-baseline was applied; the migration plan was not applied and no cloud provider or credentials were used.
+baseline was applied. The migration plan was not applied and no cloud provider or credentials were used.
 Controller cases cover independent action denials, pure held migration approval, legacy claim refusal
 without row/audit changes, malformed metadata and the combined effect bound.
 
@@ -177,10 +177,10 @@ acceptance remains unqualified after the Edge detachment. No grant, cloud batch 
 
 ## Selected-file signatures and cleanup choices, 2026-11-05
 
-A private Cosign v3.1.4 executable matched the official GitHub asset digest and release checksums; this
+A private Cosign v3.1.4 executable matched the official GitHub asset digest and release checksums. This
 is an HTTPS/checksum bootstrap, not independent executable authentication. A native local-key modern
 bundle probe verified the official release and refused a different subject under a fresh HOME. No
-configured-proxy requests were observed; that is not OS-level network isolation. No keys were generated
+configured-proxy requests were observed. That is not OS-level network isolation. No keys were generated
 and no host trust, installation or cloud authority changed.
 
 The source integration then froze an official 99,023,586-byte signed release file beside an unsigned
@@ -210,7 +210,7 @@ request readback, invalid-current-TOML inspection and a strict offline allowlist
 
 Three actual exited subprocess boundaries cover pointer replacement before receipt, interruption
 before controller completion and controller completion before the final release update. Authoritative
-dead-owner inspection resolved incomplete authority without replay; an already successful controller
+dead-owner inspection resolved incomplete authority without replay. An already successful controller
 record remained successful. A synthetic post-check failure retained an uncertain actual route and
 baseline capacity. Partial retirement required reconciliation and a new inventory rather than replay.
 Backup checks include exact rollout plans and inspection-only relocated state.
@@ -220,13 +220,13 @@ request identities, evidence-aware controls and inspection-note retention throug
 renderer timestamp helper was found by this harness and corrected. These are source/DOM/HTTP checks,
 not mounted browser, keyboard/layout, AT or human acceptance. Those current controls remain unqualified
 after the earlier Edge debugger detachment. No cloud/container/weighted routing or artifact-policy
-enforcement follows. Deployment inspection formats 1/2 refuse this different completion scope; the
+enforcement follows. Deployment inspection formats 1/2 refuse this different completion scope. The
 separate rollout snapshot remains inspection-only and has no offline HTML renderer.
 
 ## Active-target local serving, 2026-11-05
 
 The domain/API journey used real loopback HTTP for a fixed revision and active-target listener.
-Preparation and approval-and-hold preserved the original bytes; separate execution activated new bytes
+Preparation and approval-and-hold preserved the original bytes. Separate execution activated new bytes
 on the same target URL while the fixed URL retained the original. Repeated starts from a later release
 returned the same owned target session. Foreign, malformed, missing and externally reverted pointers,
 uncertain completion, altered reviewed evidence and a changed newly selected inventory returned 410.
@@ -248,7 +248,7 @@ covers delayed suggestions, typed paths retained across polling, duplicate submi
 binding and the previous good result surviving failed or mismatched responses. Those are DOM checks.
 
 Native Syft 1.51.1 generated CycloneDX 1.7 for a synthetic artifact containing one software package
-and one file component; these are separate counts. The shared collector also read the actual static
+and one file component. These are separate counts. The shared collector also read the actual static
 artifact delivered in the earlier Edge journey: its one file/332 bytes matched the retained
 `516ed16f…` subject digest. Native Syft found no software packages. Trivy 0.74.0 was unavailable with
 the selected fresh offline advisory cache. The observation retained both results, without treating
@@ -271,21 +271,21 @@ The Cloud Run candidate's v2 API fixtures exercise separate conditional candidat
 lost acknowledgements at both boundaries, exact actual image/readiness, etag conflict, external
 route/configuration/UID changes, no-op and read-only inspection. Existing receipt and isolated-owner
 journeys use that same adapter with native responses replaced by fixtures. Inspection format 2 adds
-Cloud Run scope/phase; a version 1 extent remains readable without reserialization.
+Cloud Run scope/phase. A version 1 extent remains readable without reserialization.
 
 Three finite native attempts used newly owned internal-only, IAM-protected sample services, an
 existing runtime identity, no secret data and no IAM/API/billing/public-access changes. The first two
 stopped before an application write. They established short parent-service names and omitted default
-false protobuf booleans; the adapter and fixtures were corrected. The third prepared and held exact
+false protobuf booleans. The adapter and fixtures were corrected. The third prepared and held exact
 approval, created a candidate with an acknowledged/completed native operation, preserved the template
 digest and baseline route, then stopped before traffic switching. Its readback showed that
 `latestReadyRevision` can remain the serving baseline while the candidate receives no traffic. The
 guard was corrected to use the candidate's own image/readiness instead. Final focused checks cover
-that observed shape; no fourth live attempt was made.
+that observed shape. No fourth live attempt was made.
 
 All three owned services were deleted, subsequent GET returned 404 and revision inventories were
 empty. Temporary grants were closed. The first private cleanup receipt hit a helper error after
-deletion; a separate native read confirmed deletion and zero revisions. Failed/uncertain release and
+deletion. A separate native read confirmed deletion and zero revisions. Failed/uncertain release and
 controller records, operation IDs and the actual version 2 offline inspection remain retained.
 No missing completion or success was fabricated. Actual billed cost was not measured.
 
@@ -298,13 +298,13 @@ traffic/no-op and mounted review/readback path. HTTP and the broader cloud journ
 The candidate build's existing Edge connection exercised interrupted Save inspection, Escape
 cancellation with focus return, current-file reconciliation while retaining an unsaved TOML comment,
 and a separate warned reload that cleared the token. A coherent backup captured 20 files and 39 audit
-events. Cancelled restore left its target absent; confirmed relocated restore verified the same audit
+events. Cancelled restore left its target absent. Confirmed relocated restore verified the same audit
 head and displayed execution not admitted. Inspect restored copy returned the verified receipt.
 
 A fresh local two-component release passed workflow preview, exact approval followed by separate
 execution for each component, and successful delivery. Controller timing and authority limits were
 visible. The retained static revision opened in a separate loopback tab and its listener was closed
-after Stop serving. The browser produced the offline HTML inspection file; the download-event helper
+after Stop serving. The browser produced the offline HTML inspection file. The download-event helper
 timed out, so the actual named file was verified separately. Its visual rendering was not checked in
 this pass. Desktop screenshots covered the restored receipt and delivered application.
 
@@ -312,7 +312,7 @@ These observations used candidate source, not an independently installed final w
 viewport/reflow, assistive technology, human acceptance, cloud browser operations, promotion and
 rollback were not qualified by this pass. No browser permissions or security settings were changed.
 Original-location readback and relocated refusal also have real local HTTP coverage in the backup
-domain checks; writable restored execution remains deliberately unavailable.
+domain checks. Writable restored execution remains deliberately unavailable.
 
 ## Waiting transition identity, 2026-11-05
 
@@ -321,10 +321,10 @@ for one unchanged request. New durable request identity makes repeated checks an
 quiet while preserving distinct next-component events. A lost return after the real waiting commit
 reopens without another transition. The bounded CLI waiter still makes four live checks across
 its 12-second controlled clock and honors approval, rejection, expiry and settled cancellation
-between checks. Source events/outbox IDs stay historical; no reminder scheduler or sender added.
+between checks. Source events/outbox IDs stay historical. No reminder scheduler or sender added.
 
 **Checked:** 2026-11-03. The local and browser observations below qualify the v0.10.0 baseline.
-Later sections record the v0.11.0–v0.12.0 increments and subsequent checks separately.
+Later sections record the v0.11.0 to v0.12.0 increments and subsequent checks separately.
 
 ## Local execution
 
@@ -372,7 +372,7 @@ Cancellation during preparation produced an uncertain outcome. After inspecting 
 deployment pointer, explicit reconciliation allowed further work. That result does not prove that a
 cancelled cloud operation has stopped.
 
-Both the source distribution and wheel built successfully. Their contents retained Apache-2.0, NOTICE,
+The source distribution and wheel both built. Their contents retained Apache-2.0, NOTICE,
 the prior MIT notice and the bundled theme MIT notice. The installed wheel includes the console, local starter and catalog resources.
 The source distribution includes shared test fixtures, check commands, configuration examples and user
 documentation so the documented checks can run from the extracted archive.
@@ -398,11 +398,11 @@ content update without reapplying the foundation. HTTP returned 200 with each ex
 Kubernetes updated an existing Deployment, reused foundation evidence for an app-only image change,
 promoted the same image to staging and rolled development back through a new approval. Both scoped
 Services returned HTTP 200. A real API mutation between preparation and apply caused the resource-version
-precondition to fail; the image remained unchanged. Explicit reconciliation followed by a fresh request
+precondition to fail. The image remained unchanged. Explicit reconciliation followed by a fresh request
 succeeded. The [Kubernetes example](../examples/local-kubernetes/README.md) passed first delivery, app-only
 reuse, same-image promotion and both HTTP probes using an explicit test cluster context override.
 
-The controller Docker image built from the v0.7 source used for runtime qualification. It served `/healthz` successfully as UID 10001,
+The controller Docker image built from the v0.7 source used for runtime qualification. It served `/healthz` as UID 10001,
 with a read-only root filesystem, dropped capabilities, a persistent state volume and no Docker socket.
 These are local runtime observations, not proof of cloud identity, production isolation, registry publishing,
 sustained availability or managed-cluster compatibility. See the [support matrix](support-matrix.md).
@@ -412,7 +412,7 @@ sustained availability or managed-cluster compatibility. See the [support matrix
 Fourteen focused checks cover restart, duplicate opening, immutable policy, stale decisions, direct
 resolution, concurrent escalation, acknowledgement racing escalation, notification supersession,
 concurrent delivery outcomes and the transactional attempt limit. A forced out-of-order delivery sent
-resolved version 2 before opened version 1; a receiver applying only newer versions retained resolution.
+resolved version 2 before opened version 1. A receiver applying only newer versions retained resolution.
 This demonstrates the receiver contract with a fixture, not an external pager integration.
 
 A real browser opened an incident from a deliberately failed local preparation, retained investigation
@@ -424,8 +424,8 @@ credential storage checks passed. HTTP transport success does not acknowledge an
 
 Sixteen focused checks exercise isolated deployment, exact cleanup authority, modified/unknown data
 retention, symlink and artifact refusal, expiry, ordinary policy compatibility, partial cleanup and lost
-completion. Independent review reproduced two recovery races; the shared ledger now refuses live-worker
-recovery and atomically acquires recovery ownership. Both reproductions were rerun successfully. An
+completion. Independent review reproduced two recovery races. The shared ledger now refuses live-worker
+recovery and atomically acquires recovery ownership. Both reproductions were rerun and passed. An
 ownership tombstone remains after cleanup, avoiding an interruption window that could lose ownership proof.
 
 The real browser deployed an isolated preview, reviewed and separately approved cleanup, preserved an
@@ -443,7 +443,7 @@ synthetic provider responses and do not contact AWS.
 
 A separate live test used AWS CLI 2.36.34 in us-east-1 through the actual DeployOps engine. One empty
 private, encrypted S3 bucket passed stack creation, a tag update, no-change handling and owned deletion.
-CloudFormation reported DELETE_COMPLETE; an independent bucket read returned 404. No bucket or objects
+CloudFormation reported DELETE_COMPLETE. An independent bucket read returned 404. No bucket or objects
 remain from that batch. This qualifies that storage lifecycle, not ECS, CDK assets or arbitrary templates.
 The live run used the native implementation before the final default protected-type policy update;
 source and regression checks cover the final candidate separately.
@@ -483,7 +483,7 @@ The task had no inbound access or public service endpoint. Native ECS health and
 the initial immutable image running Python 3.13.18.
 
 DeployOps v0.11.1 then completed two independent application releases using the retained infrastructure
-outputs. The second changed the image to Python 3.14.10; native task health, image digest and startup
+outputs. The second changed the image to Python 3.14.10. Native task health, image digest and startup
 log matched. The CloudFormation template and last-update timestamp remained unchanged across those
 app releases. This qualifies native image rollout and container health, not custom image build/publish,
 public HTTP delivery, cross-worker receipt exchange or production reliability.
@@ -496,14 +496,14 @@ cleanup checks, took under seventeen minutes.
 The ECS mutation journal now records registration intent, the returned task revision and activation
 intent before proceeding. It disables native mutation retries and supports bounded tagged-revision
 discovery after a lost registration response. Six focused recovery cases cover lost acknowledgements,
-changed evidence and replay refusal; the full v0.11.1 snapshot passed 302 tests.
+changed evidence and replay refusal. The full v0.11.1 snapshot passed 302 tests.
 
 ## Isolated native tooling
 
 OpenTofu 1.10.0 and Terraform 1.12.2 initialized, validated, saved and decoded a real `terraform_data`
 plan in a dedicated Linux VM. The unprivileged source worker had no host mounts, cloud configuration,
 SSH agent, sudo or Docker socket, and ran in an offline network namespace. Both plans predicted one
-resource creation; neither was applied. A separate guest Docker 26.1.5/buildx 0.13.1 process built a
+resource creation. Neither was applied. A separate guest Docker 26.1.5/buildx 0.13.1 process built a
 scratch fixture with network access disabled. These checks establish native local tooling behavior,
 not a cloud provider plan, credential isolation for a remote job or a registry publication.
 
@@ -512,7 +512,7 @@ not a cloud provider plan, credential isolation for a remote job or a registry p
 The v0.12.0 candidate passed 417 tests and repository syntax/link/whitespace checks. GCP receipt checks
 cover both pinned engines, exact scope/backend/output binding, failed-apply invalidation and independent
 app-only reuse. Real offline GCS backend probes replaced hostile source endpoint/key settings before
-credential use; locked Google provider 6.50.0 validation passed under both engines. No GCP deployment
+credential use. Locked Google provider 6.50.0 validation passed under both engines. No GCP deployment
 or real GitHub OIDC exchange is claimed from these checks.
 
 Azure CLI 2.91.0 completed certificate service-principal login, exact tenant/subscription/client checks
@@ -522,7 +522,7 @@ Engine fixtures for ARM and Container Apps, including mismatched scope and unsaf
 Paging passed 26 focused cases and a real Chrome journey covering two native destinations, routing
 drafts, preview, activation, independent acknowledgement/resolution, failed-draft retention and a
 390-pixel layout. Browser delivery was intercepted by a local fixture. A real local TLS receiver
-exercised transport deadlines and delayed connection-close bodies; no external recipient was paged.
+exercised transport deadlines and delayed connection-close bodies. No external recipient was paged.
 
 ## Azure application journey
 
@@ -543,7 +543,7 @@ Owned cleanup removed the application. The environment remained `ScheduledForDel
 group and an independent exact-resource Not Found response confirmed cleanup. The pre-existing API
 Center remained present. This records a provider cleanup overrun, not compliance with the planned lifetime.
 The new Container Apps mutation journal and exact-revision recovery checks were added after this live
-run. Local fixtures and retained native response shapes cover them; live uncertain-write recovery
+run. Local fixtures and retained native response shapes cover them. Live uncertain-write recovery
 remains unqualified.
 
 ## Isolated GCP and six native paging targets
@@ -574,7 +574,7 @@ Native paging now includes PagerDuty, GoAlert, incident.io, Better Stack, Grafan
 Provider-shaped fixtures cover each supported lifecycle and distinguish accepted delivery from observed
 remote state. Local browser fixtures exercised the guided configuration and supported transitions.
 No external on-call destination was contacted. Grafana Cloud IRM and incident.io do not offer an
-acknowledgement action through their selected webhook contracts; ilert acceptance does not establish
+acknowledgement action through their selected webhook contracts. Ilert acceptance does not establish
 remote lifecycle state.
 
 ## Remaining qualification
@@ -591,7 +591,7 @@ including expiry, revocation, policy changes, failed-apply invalidation and back
 subprocess exercised extraction with a synthetic OpenTofu executable. These checks do not qualify OpenTofu
 against S3 or an isolated GitHub-to-AWS journey. Raw state secrets stayed out of receipts and audit records.
 Existing workspace digests remain compatible when local cloud access is absent. Native protected-type
-defaults change policy fingerprints; obtain fresh approvals as described in [migration](migration.md). See [security](../SECURITY.md) and
+defaults change policy fingerprints. Obtain fresh approvals as described in [migration](migration.md). See [security](../SECURITY.md) and
 [capabilities](capabilities.md) for current boundaries.
 
 ## Reproduce
@@ -614,7 +614,7 @@ symlink changes after approval, repeated same-owner updates, ordinary foundation
 two actual reservation processes and nested independent state roots. Pure local configuration validation
 rejects the same malformed fields, paths, references and empty executables through the schema, CLI and API
 without running commands. Native equal pin/reset preserves sibling settings and authored comments.
-A real pending request created by the installed v0.14.0 runtime was refused before claim by the new runtime; its
+A real pending request created by the installed v0.14.0 runtime was refused before claim by the new runtime. Its
 approval remained approved and no local target was created.
 
 Real Edge exercised retained local name and ordered build conflicts, untouched check refresh, refusal

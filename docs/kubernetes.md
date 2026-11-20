@@ -7,7 +7,7 @@ supply `DEPLOY_OPS_KUBECONFIG_FILE` outside source control. Keep its authority l
 The [local example](../examples/local-kubernetes/README.md) describes separate disposable prerequisites.
 
 Preparation selects the native context once with `kubectl config view --minify --flatten --raw`.
-The credential-bearing result stays in process memory and anonymous native stdin streams; it is not
+The credential-bearing result stays in process memory and anonymous native stdin streams. It is not
 written to prepared artifacts, journals, public output or backup. Native workload commands use that
 same snapshot through `/dev/stdin`, so a changed on-disk alias cannot redirect later commands in the
 operation. Current support requires POSIX and native HTTPS with TLS verification enabled. This
@@ -38,22 +38,22 @@ The public `kubernetes-operation.json` records intent before the patch, acknowle
 bounded readback afterward. Once any operation record exists, apply refuses to resend. After a timeout,
 interruption or lost response, use `deploy-ops provider inspect RELEASE COMPONENT` or **Read provider
 status** in the console. Readback rechecks the selected connection before contacting a cluster. A
-changed connection returns `connection-changed` without a cluster read; a different UID is
+changed connection returns `connection-changed` without a cluster read. A different UID is
 `object-replaced`. A converged observation after a lost acknowledgement does not invent controller
 success, restore a lease or authorize replay. Follow the existing [recovery workflow](workflows.md).
 
 Coherent private backup includes the public native journal and excludes worker homes. Restored copies
 remain inspection-only. Deployment inspection format2 cannot represent this new connection/UID
-operation and explicitly refuses it; use current native readback or coherent private backup instead.
+operation and explicitly refuses it. Use current native readback or coherent private backup instead.
 Historical inspection formats retain their earlier meanings. New writers refuse old Kubernetes
-mutation evidence before claim/native use; see [migration](migration.md).
+mutation evidence before claim/native use. See [migration](migration.md).
 
 ## Qualification
 
 The current source contract has actual kubectl v1.36.1 checks against an owned TLS API fixture for
 pinned alias behavior, atomic UID refusal and one accepted patch with a lost acknowledgement followed
 by read-only recovery. All fixture sockets and temporary TLS keys were removed. The earlier fixture
-omitted watch-list initial bookmarks; the corrected fixture follows [Kubernetes API concepts](https://kubernetes.io/docs/reference/using-api/api-concepts/).
+omitted watch-list initial bookmarks. The corrected fixture follows [Kubernetes API concepts](https://kubernetes.io/docs/reference/using-api/api-concepts/).
 The native selection flags follow [kubectl config view](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_config/kubectl_config_view/).
 No upstream implementation was copied or bundled.
 

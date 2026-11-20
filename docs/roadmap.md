@@ -1,6 +1,6 @@
 # Roadmap
 
-The goal is configurable infrastructure and application deployment across repositories, environments, clouds, and local targets, with authorization, notifications, audit, and attribution inside the delivery lifecycle.
+Goal: configurable infrastructure and application deployment across repositories, environments, clouds, and local targets, with authorization, notifications, and audit inside the delivery lifecycle.
 
 | Phase | Complete outcome | Acceptance evidence |
 |---|---|---|

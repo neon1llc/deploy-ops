@@ -26,7 +26,7 @@ authenticated configuration API use the same typed fields and preservation rules
 Whole environment/dependency references remain unresolved until preparation. An image may remain
 omitted when the workflow supplies it with a configured image repository at release preparation.
 Inspection and unrelated edits do not author optional defaults or discard unexposed advanced options.
-These controls edit an existing component; guided Cloud Run creation, credential changes and live
+These controls edit an existing component. Guided Cloud Run creation, credential changes and live
 provider discovery are separate. Editing or saving does not execute a deployment.
 
 Fresh releases retain `cloud_run_review` in the same component record returned by CLI `run`/`status`
@@ -54,11 +54,11 @@ retained independently. Success requires native completion and observed traffic 
 A same-image no-op requires an actually observed matching serving revision and unchanged template.
 The candidate's own revision establishes readiness: `latestReadyRevision` may still identify the
 serving baseline while the candidate has no traffic. Default-false protobuf booleans may be omitted
-from native JSON; positive generation and terminal-readiness facts are still required.
+from native JSON. Positive generation and terminal-readiness facts are still required.
 
 The implementation uses the existing supervised gcloud credential provider or current federated token
 and the fixed verified `run.googleapis.com` origin. Tokens stay private. Native writes have no automatic
-retry; requests have bounded responses/timeouts and recheck current execution authority before dispatch.
+retry. Requests have bounded responses/timeouts and recheck current execution authority before dispatch.
 Remote operations can outlive a local interruption or deadline.
 
 ## Inspect an interrupted operation
@@ -77,7 +77,7 @@ successful. Inspect current provider state before preparing any new operation.
 Private [backups](backups.md) include the supported operation journal. Version 2 [portable inspections](inspection.md)
 include allowlisted Cloud Run scope, native request digest, candidate/baseline, durable phase and selected
 last observation without source, raw provider payloads or credentials. Neither imported form authorizes
-execution. Legacy Cloud Run preparations lack this native contract; finish under their matching runtime
+execution. Legacy Cloud Run preparations lack this native contract. Finish under their matching runtime
 or reconcile and prepare fresh evidence without rewriting old approved envelopes.
 
 The design uses the official [conditional Service update](https://docs.cloud.google.com/run/docs/reference/rest/v2/projects.locations.services/patch),

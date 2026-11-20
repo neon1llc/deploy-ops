@@ -30,13 +30,13 @@ Container Apps requests prepared before exact revision journaling must be comple
 New waiting nodes retain the exact `waiting_request` ID/digest in the same transaction as their
 first `release.waiting` event and outboxes. Existing history and delivery IDs stay unchanged. An
 older waiting node without this binding records one current decision-needed transition on its next
-advance, then unchanged observations stay quiet. Stop old writers before upgrading; older writers
+advance, then unchanged observations stay quiet. Stop old writers before upgrading. Older writers
 do not enforce this deduplication. This adds no reminder scheduler or authority.
 
 ## Local target ownership
 
 New directory/static preparations use adapter contract 2. Readers authenticate old evidence without
-rewriting it. Pending contract 1 local operations require fresh preparation before execution; finish
+rewriting it. Pending contract 1 local operations require fresh preparation before execution. Finish
 or reconcile old work under its matching runtime before upgrading. Previously prepared ownership
 is derived from authenticated artifacts when checking another writer. Missing historical evidence
 requires inspection before assigning a different owner. Failed and cancelled reservations are retained.
@@ -46,7 +46,7 @@ No database migration, automatic takeover or implicit cleanup is supplied.
 
 Request reads add a safe `timing` projection without changing retained manifests, request digests,
 approvals or database records. Older clients can ignore it. New clients report timing unavailable
-when an older controller omits it; existing controller enforcement remains authoritative. The
+when an older controller omits it. Existing controller enforcement remains authoritative. The
 projection contains explicitly selected timestamps and limits, without execution tokens or hashes.
 
 ## Local worker evidence
@@ -61,14 +61,14 @@ authorize reconciliation in this runtime. There is no automatic ownership backfi
 Local execution records additionally retain the controller's internal callback binding to the exact
 worker admission. This is outside the approved manifest. HTTP claim input cannot supply this binding.
 Deployment, preview cleanup and provider readback keep their separate meanings under the shared lock.
-An imported, legacy or external claim without matching ownership remains unknown; no later successful
+An imported, legacy or external claim without matching ownership remains unknown. No later successful
 readback or refused local execution authorizes resolving it.
 
 ## Portable inspection
 
 The version 1 inspection format is additive and read-only. It does not change the database schema,
 approved envelopes, controller manifests or authority. New native journal writes add recorded and
-observation timestamps; old records without them remain readable and report time unavailable.
+observation timestamps. Old records without them remain readable and report time unavailable.
 The JSON reader rejects unsupported versions and does not turn an imported summary into runtime state.
 Keep the original state and matching runtime for recovery. The inspection artifact is not a backup.
 
@@ -78,15 +78,15 @@ New Saves retain a version 1 local intent and private per-operation before/draft
 approved deployment artifacts. `workspace.updated` adds exact source hashes and a Save operation ID;
 old audit records and request digests remain unchanged. Reconciliation appends a distinct observation
 and keeps current content. No database schema migration or automatic historical backfill occurs.
-Retained readers still default to read-only; the explicit existing-state audit writer never creates
+Retained readers still default to read-only. The explicit existing-state audit writer never creates
 or initializes a database. Legacy pending files without verified intent require manual inspection.
-Finish or reconcile new pending Saves with this matching runtime; an older writer does not enforce
+Finish or reconcile new pending Saves with this matching runtime. An older writer does not enforce
 the new guard. See [Save recovery](save-recovery.md) for current-file, ownership and relocation limits.
 
 ## Private backup and restore
 
 Backup format 1 adds a coherent SQLite snapshot and exact owned-file manifest without changing the
-database schema or historical rows. Restored state and backup payloads are inspection-only; use the
+database schema or historical rows. Restored state and backup payloads are inspection-only. Use the
 matching runtime to enforce that boundary. Older runtimes do not understand it and must not be used
 to bypass admission. Original absolute references remain unchanged. `preview --retained` permits
 only compatible, reviewed static readback. There is no automatic writable restore or provider-resume
@@ -100,7 +100,7 @@ the matching runtime for old work, inspect uncertain provider effects and prepar
 no historical approval, digest or audit row is rewritten. The new fixed-origin REST writer uses current
 native credentials and service etags, records both operation boundaries and never retries an attempted
 write. It supports one existing container and an untagged single route. Portable inspection format 2
-adds this native scope/phase; the reader preserves exact format 1 extents. Private backups additionally
+adds this native scope/phase. The reader preserves exact format 1 extents. Private backups additionally
 include `cloud-run-operation.json`. No database schema migration or implicit grant change is supplied.
 
 ## Artifact observations
@@ -108,7 +108,7 @@ include `cloud-run-operation.json`. No database schema migration or implicit gra
 The optional explicit collector writes a version 1 report outside workspace/state. It changes no
 workspace schema, digest, approved envelope, authority or database schema. Legacy reviewed static
 artifacts can be measured when their existing format and exact retained bytes validate. The shared
-canonical tree helper preserves prior ordering and digest meaning; file/byte inventory remains separate
+canonical tree helper preserves prior ordering and digest meaning. File/byte inventory remains separate
 from package detection. Unknown report versions refuse offline inspection. Collected results neither
 backfill a historical approval nor enforce a new release policy. See [artifact observations](artifact-observations.md).
 
@@ -121,11 +121,11 @@ ownership evidence. Existing revisions and audit bytes are preserved. See [local
 
 ## Separate local activation
 
-Static `activation = "separate"` prepares adapter contract 3; direct activation continues to prepare
+Static `activation = "separate"` prepares adapter contract 3. Direct activation continues to prepare
 contract 2. Readers preserve contracts 1/2, and old approved bytes are not reserialized. A separate
 candidate needs an existing baseline and fresh matching dependency receipts after a workspace change.
 New manual route/retirement requests and per-operation `rollouts/` plans use the existing controller
-and release journal; there is no database schema migration or implicit listener adoption. Ordinary local
+and release journal. There is no database schema migration or implicit listener adoption. Ordinary local
 static targets gain deletion authority only through this opt-in profile's manual retirement proposals;
 existing isolated-preview cleanup remains separate.
 
@@ -139,7 +139,7 @@ represent routing completion. Required notices and existing history remain uncha
 The optional verifier writes a separate version 1 `deploy-ops.file-signature-observation` report. It
 changes no approved artifact envelope, workspace digest, approval, store schema or existing collection
 report. Its raw extent includes a bounded selected-file copy plus the local public key and modern
-bundle; diagnostics/tool home stay outside that extent. Older inventory/vulnerability reports retain
+bundle. Diagnostics/tool home stay outside that extent. Older inventory/vulnerability reports retain
 their original meaning. No imported signature result is turned into execution or policy authority.
 See [file signatures](file-signatures.md).
 
@@ -154,15 +154,15 @@ Their change rows preserve native actions plus import/move. Existing manifest by
 remain unchanged. The new writer refuses a legacy migration claim before execution admission and
 shows a fresh-plan blocker in CLI/API and UI projections. Read, rejection, pause and historical
 resolution remain available. Legacy caller-schema-1 migration submissions require a current caller
-submission; nonmigration schema-1 history and claims remain supported. There is no database migration.
+submission. Nonmigration schema-1 history and claims remain supported. There is no database migration.
 
 New CloudFormation/CDK destruction prepares `destroy_contract_version = 2`. The application runner
-refuses old deletion envelopes before claim; the native adapter also refuses before any native read
+refuses old deletion envelopes before claim. The native adapter also refuses before any native read
 or write. Old inspection stays available. Prepare fresh evidence to review stack removal and all
 resource fates. Local grants must explicitly include the stack type, delete and any snapshot action;
-they are never edited automatically. New snapshot rows require the current reader; an older typed
+they are never edited automatically. New snapshot rows require the current reader. An older typed
 reader may refuse them. Older writers do not acquire these new enforcement guarantees by reading a
-new report. Use the current writer consistently for mutations; no cross-version writer lock or
+new report. Use the current writer consistently for mutations. No cross-version writer lock or
 historical backfill is introduced. See [native infrastructure](native-infrastructure.md).
 
 ## Generic IaC readiness
@@ -171,12 +171,12 @@ The generic Terraform/OpenTofu delivery adapter prepares `iac_contract_version =
 saved-plan digest, effective initialized backend binding, selected-output readiness and native effects
 version 2. This extends the controller-path migration guard to the separate generic delivery
 runner. Earlier generic prepared envelopes lack that complete contract and refuse before runner claim
-or native adapter use; keep their historical evidence and prepare a fresh release. Native controller
+or native adapter use. Keep their historical evidence and prepare a fresh release. Native controller
 manifests and unrelated adapters keep their existing formats. No database migration, state migration,
 address rename, grant change or automatic historical backfill is performed.
 
 Current generic writers support exact owned local state or s3/gcs/azurerm remote metadata in the default
-workspace. Unknown output values remain a runtime validation boundary; known unusable selections refuse
+workspace. Unknown output values remain a runtime validation boundary. Known unusable selections refuse
 in preparation. Older writers do not enforce this contract. Historical inspection is retained, while
 mutations should use the current writer consistently. Remote backend/provider qualification remains
 separate from local metadata and native built-in-resource proof. See [configuration](configuration.md).
@@ -190,7 +190,7 @@ Historical records are not rewritten. Shared read-only prepared compatibility ch
 legacy IaC/stack-deletion reasons into console review without changing their requests or audit.
 
 A new public native journal preserves one-shot patch intent, acknowledgement and observation. Coherent
-backup format1 admits this known journal while excluding credential homes; older strict readers may
+backup format1 admits this known journal while excluding credential homes. Older strict readers may
 refuse that added extent. Deployment inspection format2 explicitly refuses the new operation scope;
 legacy summaries retain their meaning. No database migration, automatic namespace/resource adoption,
 cluster creation, kubeconfig edit, permission or host trust change is introduced. See [Kubernetes](kubernetes.md).
@@ -235,8 +235,8 @@ backup reader can refuse the newly supported filename. Restoration stays read-on
 ## Private runtime-cache observations
 
 New writers retain optional per-component private-cache observations through existing release/event
-storage. Older releases without them have no recorded cleanup qualification; no backfill or new
+storage. Older releases without them have no recorded cleanup qualification. No backfill or new
 database table is introduced. Existing backup/artifact allowlists still exclude private homes while
-retaining ordinary public release metadata. An existing runtime home with no native cleanup record is not adopted or removed; inspect it
-through the original operator before further native use. Stop older writers before upgrade; their silent cache
+retaining ordinary public release metadata. An existing runtime home with no native cleanup record is not adopted or removed. Inspect it
+through the original operator before further native use. Stop older writers before upgrade. Their silent cache
 removal cannot maintain these observations. Primary source/artifact/approval contracts are unchanged.

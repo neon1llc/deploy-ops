@@ -1,7 +1,14 @@
 # Changelog
 
-DeployOps releases use `v0.MINOR.PATCH` until the first complete release, v1.0.0, following neon1's [versioning standard](https://neon1.tech/knowledge/standards/versioning/). Each version has an annotated tag on the commit it names. Tags v0.2.0 to v0.13.0 were made when those versions shipped; this changelog was written from them on 2026-11-11. The release workflow adds missing tags and never moves one.
+DeployOps releases use `v0.MINOR.PATCH` until the first complete release, v1.0.0, following neon1's [versioning standard](https://neon1.tech/knowledge/standards/versioning/). Each version has an annotated tag on its commit. Tags v0.2.0 to v0.13.0 were made when those versions shipped, and this changelog was written from them on 2026-11-11. The release workflow adds missing tags and never moves one.
 
+## v0.15.1 - 2026-11-20
+
+### Changed
+- Shorter README, security notes, setup, licensing, and other docs. The README groups its doc links instead of tabulating them.
+- Docs and `--help` text use sentences instead of semicolons.
+- The native infrastructure page matches the support matrix: CloudFormation, Bicep, and ARM have run live, and CDK has fixtures only. The case study says the same.
+- `status --help` reads "Default 20" instead of "default20".
 
 ## v0.15.0 - 2026-11-19
 
@@ -163,5 +170,5 @@ This release adds local delivery, recovery, and inspection features, with fixes.
 <!-- commit: 5e6571f3ed6484aa829f0adc5e2554477656733c -->
 
 ### Added
-- The DeployOps baseline: a local infrastructure and application delivery preview. The first tagged version is v0.2.0; there was no v0.1.0.
+- The DeployOps baseline: a local infrastructure and application delivery preview. The first tagged version is v0.2.0. There was no v0.1.0.
 

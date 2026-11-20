@@ -1,7 +1,7 @@
 # Local static serving
 
 Serve deployed static files on a separate loopback origin. The foreground CLI or console owns the
-listener; stopping it closes its listeners without deleting deployed revisions. Application content
+listener. Stopping it closes its listeners without deleting deployed revisions. Application content
 receives no console token, cookies or cross-origin API access.
 
 ## Compare a fixed revision with the active target
@@ -23,10 +23,10 @@ In the console, use **Serve this static revision** or **Serve the active target*
 detail. Both offer a separate content link and **Stop serving**. The active-target session shows the
 currently observed release and artifact digest. Repeated starts for the same physical target return
 the existing session, including when started from a later active release. A requested alternate port
-does not move an already owned listener; stop that session first.
+does not move an already owned listener. Stop that session first.
 
 Preparing or approving a new release does not switch the target. The existing explicit execution
-activates the new static revision; the target URL then follows its successful completion. An in-flight
+activates the new static revision. The target URL then follows its successful completion. An in-flight
 response may finish from the previously selected revision. The fixed revision URL keeps its old bytes.
 Neither serving mode deploys, approves, repairs a pointer or retires files.
 
@@ -40,10 +40,10 @@ The target listener authenticates the reviewed physical target and its logical o
 successful component output and latest recorded activation. Missing, uncertain, foreign, modified or
 externally reverted evidence returns HTTP 410, without falling back to an older release. Review that
 release's retained state before attempting a new deployment. Restoring the exact valid evidence can
-make a later read available; the listener performs no recovery itself.
+make a later read available. The listener performs no recovery itself.
 
 Each newly selected revision's complete bounded inventory must match the reviewed digest. At most
-two inventories are cached per session; every requested file is freshly read and hashed. Subsequent
+two inventories are cached per session. Every requested file is freshly read and hashed. Subsequent
 changes to an unrelated cached file are discovered when that file is requested, rather than by a
 continuous health check. Listener status reports evidence/lifetime, not workload health or an uptime
 guarantee. There is no directory listing, symlink serving or arbitrary file path input.

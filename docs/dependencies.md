@@ -9,4 +9,4 @@ This repository maintains the authorization model, policies, state machine, audi
 
 Terraform, OpenTofu, their providers, GitHub Actions, and Slack stay external and aren't bundled or relicensed.
 
-`requirements.txt` records the exact runtime versions used in verification. A fresh install passed on macOS with Python 3.12.10. It's a tested snapshot, not a hash-verified lockfile, so add a reviewed, hashed lock before a production release. Pin a reviewed digest for the Docker base image.
+`requirements.txt` records the exact runtime versions used in verification, and a fresh install passed on macOS with Python 3.12.10. It's a tested snapshot, not a hash-verified lockfile. Before a production release, add a reviewed, hashed lock and pin a reviewed digest for the Docker base image.

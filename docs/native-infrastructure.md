@@ -1,6 +1,6 @@
 # Native infrastructure
 
-DeployOps supports bounded CloudFormation, AWS CDK, ARM, and Bicep paths alongside Terraform and OpenTofu. Each uses the shared release, approval, and public-output model. The native adapters have local contract checks only. No complete live AWS or Azure deployment is qualified.
+DeployOps supports bounded CloudFormation, AWS CDK, ARM, and Bicep paths alongside Terraform and OpenTofu. Each uses the shared release, approval, and public-output model. CloudFormation, Bicep, and ARM have run live on AWS and Azure within the limits in the [support matrix](support-matrix.md). CDK has command fixtures only.
 
 | Input | Preview and execution | Supported boundary |
 |---|---|---|
@@ -8,7 +8,7 @@ DeployOps supports bounded CloudFormation, AWS CDK, ARM, and Bicep paths alongsi
 | CloudFormation JSON or YAML | Create a native change set, review its exact ID, then execute it | One stack, explicit IAM capabilities and execution role, selected public outputs |
 | CDK cloud assembly | Freeze selected template/assets, then use the CloudFormation change set | Explicit account/region, assembly schema major 1 through 55, file/zip assets |
 | ARM JSON | Freeze template/parameters, review what-if, repeat prediction before submission | Incremental deployment into one existing resource group |
-| Compiled Bicep JSON | Same ARM lifecycle, retaining native compiler metadata | Compile in a separate build stage; never rerun source after approval |
+| Compiled Bicep JSON | Same ARM lifecycle, retaining native compiler metadata | Compile in a separate build stage. Never rerun source after approval |
 
 See the [configuration reference](configuration.md) for fields. Credentials and access grants stay outside the forms. Unsupported combinations fail before execution.
 
@@ -18,7 +18,7 @@ See the [configuration reference](configuration.md) for fields. Credentials and 
 Import and move describe state changes independently of native infrastructure actions. A saved plan
 that imports and updates one resource shows both `update` and `import`; a move with replacement shows
 both `replace` and `move`. Both migration annotations are retained if present. Pure migrations omit a
-redundant no-op row. Every effect must satisfy the target policy and resource scope; local grants and delegations count
+redundant no-op row. Every effect must satisfy the target policy and resource scope. Local grants and delegations count
 effect rows toward their limits. Allowing import or move alone cannot authorize update, deletion or replacement. Default migration and
 destructive-action denials remain unchanged. No import IDs or attribute values enter the normalized
 manifest. Combined effects above the existing 2,000-row bound refuse, rather than truncate.

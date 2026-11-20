@@ -25,7 +25,7 @@ of the artifact or bundle. Reading its fingerprint does not establish who should
 
 An optional expected SHA-256 pin checks the exact public-key file bytes, including formatting. This is
 a file digest, not a certificate or SPKI fingerprint. The console can read a selected key's fingerprint
-into an empty pin; it preserves an authored pin and reports a difference rather than replacing it.
+into an empty pin. It preserves an authored pin and reports a difference rather than replacing it.
 
 ## Verify and keep the result
 
@@ -35,7 +35,7 @@ deploy-ops artifact verify RELEASE_ID --component web --file downloads/package.t
   --bundle /evidence/package.sigstore.json --out /evidence/new-file-check
 ```
 
-Cosign stable v3.1 or later within v3 is the supported command contract; v3.1.4 was natively qualified.
+Cosign stable v3.1 or later within v3 is the supported command contract. V3.1.4 was natively qualified.
 Use `artifact signature-options` to check command-free availability and limits. DeployOps does not
 install Cosign or modify host trust. Follow the [upstream installation instructions](https://docs.sigstore.dev/cosign/system_config/installation/)
 for your own selected installation.
@@ -48,12 +48,12 @@ output directories and workspace/state destinations are refused. The directory c
 home are private and outside the verified report extent. Nothing is uploaded automatically.
 
 Limits are 100 MB/10,000 entries for the whole artifact, 100 MB for the selected file, 10 MB for the
-bundle and 16 KiB for the public key. `--timeout-seconds` is 10–300, default 60, for each native command;
+bundle and 16 KiB for the public key. `--timeout-seconds` is 10 to 300, default 60, for each native command;
 it does not bound every filesystem read or the sum of commands.
 
 The [pinned Cosign verification contract](https://github.com/sigstore/cosign/blob/v3.1.4/doc/cosign_verify-blob.md)
 supports a local-key bundle path. This integration explicitly leaves transparency and signed timestamps
-unchecked; no keyless/OIDC, KMS, registry or remote-key path is selected. The deprecated `--offline`
+unchecked. No keyless/OIDC, KMS, registry or remote-key path is selected. The deprecated `--offline`
 flag alone can still retrieve TUF trust material, so it is not used as a network-isolation claim. See
 the [upstream options](https://github.com/sigstore/cosign/blob/v3.1.4/cmd/cosign/cli/options/verify.go).
 This is not an OS-level network sandbox.
@@ -65,7 +65,7 @@ CLI exit meanings for `artifact verify`:
 | 0 | Cosign established a signature for these exact selected bytes and key. No whole-artifact or release-policy admission follows. |
 | 1 | Native verification did not establish that result. A bad signature and another native verification failure are not distinguished as a definitive cryptographic diagnosis. |
 | 3 | The selected native tool/version was unavailable or unsupported. |
-| 2 | Input, retained evidence or output admission failed; inspect the refusal and any incomplete private directory. |
+| 2 | Input, retained evidence or output admission failed. Inspect the refusal and any incomplete private directory. |
 
 Successful report retention is separate from signature status. The console shows the selected file,
 key digest, native result/version, observation time and scope. Changed inputs survive polling and late
@@ -85,12 +85,12 @@ report is not proof that native verification ran, a trusted signer assertion or 
 The API/CLI response names that limited check `integrity_verified`; the signature result is separately
 recorded in `report.status`.
 
-The console's **Inspect an existing signature report** needs only its directory; current key/bundle/file
+The console's **Inspect an existing signature report** needs only its directory. Current key/bundle/file
 fields do not block that read. Native verification, file search and CLI retained inspection do not need
 valid current workspace TOML or new execution registration. Relocated frozen inspection copies can be
 measured without gaining any target execution authority.
 
 This is an explicit observation profile. Managed signer trust, whole-tree/OCI evidence, freshness and
-promotion-policy enforcement remain unfinished work; a missing or inconclusive result cannot supply
+promotion-policy enforcement remain unfinished work. A missing or inconclusive result cannot supply
 those decisions. Ordinary [artifact observations](artifact-observations.md) keep their separate inventory,
 vulnerability and database coverage meanings.

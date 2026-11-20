@@ -45,9 +45,9 @@ An independent identity broker or provider-enforced approval boundary is a furth
 
 The release ledger is local to each runner. The controller can issue typed AWS ECS and GCP Cloud Run
 public-output receipts for separately authenticated application workers. Consumers recheck exact references
-online; these are controller records, not portable offline signatures. See
+online. These are controller records, not portable offline signatures. See
 [receipt configuration](../../docs/infrastructure-receipts.md). Cross-worker cloud behavior has fixture
-coverage and native offline backend checks; a live protected-workflow journey remains unqualified.
+coverage and native offline backend checks. A live protected-workflow journey remains unqualified.
 
 Runtime health means the adapter's documented provider readiness check. Add external application probes
 before production qualification. No example automatically rolls back a database or destructive IaC change.
@@ -58,7 +58,7 @@ The application recipe preserves the deployment command's exit code and captures
 separately. Its new `deployment-inspection-RUN-ATTEMPT` artifact includes only `inspection.json`, a
 [versioned allowlisted summary](../../docs/inspection.md). It does not add raw state or source to that
 artifact. The existing private `deployment-evidence` administrative artifact contract is retained
-separately; its raw database and prepared files have different privacy and restore requirements.
+separately. Its raw database and prepared files have different privacy and restore requirements.
 
 Capture failure, pre-execution absence and a missing upload file fail their own steps. They cannot
 manufacture a successful release. The transport summary records deployment/capture/upload step
@@ -68,11 +68,11 @@ intentional: the capture cannot attest to an upload that has not happened yet.
 
 The same private repository access boundary, reviewed action/toolkit pins and one-day retention remain.
 This recipe does not grant additional recipients access or promise indefinite availability. An expired
-or failed upload leaves the artifact unavailable; retain the job outcome and transport record. A hard
+or failed upload leaves the artifact unavailable. Retain the job outcome and transport record. A hard
 runner loss or cancellation can prevent capture and `always()` steps from running at all. Do not infer
 that a missing artifact means no provider write occurred.
 
 Download the artifact and run `deploy-ops evidence inspect inspection.json --html inspection.html`
 from any directory with the matching runtime installed. No source or cloud login is needed. Current
 local interruption/inspection checks do not qualify GitHub upload, expiry, OIDC or a protected live
-workflow; those must be exercised separately before relying on this transport operationally.
+workflow. Those must be exercised separately before relying on this transport operationally.

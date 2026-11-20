@@ -14,7 +14,7 @@ deploy-ops artifact inspect /private/evidence/new-report
 The console provides **Artifact evidence** inside the selected static component's release detail.
 Choose a new private directory, select observations and collect. **Inspect evidence directory** reopens
 a completed report without tools. Paths, choices and the previous good report survive polling and failed
-requests. Navigating elsewhere leaves the bounded collection running; return to that release to inspect
+requests. Navigating elsewhere leaves the bounded collection running. Return to that release to inspect
 its result. Reloading clears the tab's draft, but the completed directory remains available.
 
 ## Select observations
@@ -36,7 +36,7 @@ deploy-ops --state /private/workspace/.deploy-ops artifact collect RELEASE_ID --
 ```
 
 Use `--no-inventory` to select only vulnerabilities. `--timeout-seconds` sets each native command's
-10–300 second bound; default 60. Collection performs a finite sequence of tool/version commands.
+10 to 300 second bound. Default 60. Collection performs a finite sequence of tool/version commands.
 Its private cache starts empty, so an offline Trivy request can be unavailable without an advisory DB.
 An unavailable tool, unsupported output, no data or stale/unknown database remains explicit.
 There is no automatic download retry or tool installation.
@@ -56,7 +56,7 @@ or tar file. Current configuration can be invalid or unavailable: the CLI does n
 load grants or contact a provider to discover the retained artifact.
 
 Collection success means a truthful observation directory was retained. It does **not** mean every
-selected tool succeeded. Inspect each result; the command's zero exit is not a security-policy gate.
+selected tool succeeded. Inspect each result. The command's zero exit is not a security-policy gate.
 Authenticity, trusted signer and release policy are explicitly **not checked/evaluated**. No signature,
 Cosign verification, in-toto conformance, SLSA level or artifact-trust enforcement is claimed by this
 local observation contract. OCI subjects and enforced signer/scan policy remain separate additions.
@@ -64,7 +64,7 @@ local observation contract. OCI subjects and enforced signer/scan policy remain 
 ## Retention and privacy
 
 Output directories must be new and outside the workspace/state. Existing files are preserved.
-Native reports can contain private package/file paths; all output stays in the chosen private directory
+Native reports can contain private package/file paths. All output stays in the chosen private directory
 and nothing is uploaded automatically. A report's checksum detects changes, not an untrusted author.
 For offline transfer, retain `report.json` and its listed native report files together. Tool homes,
 advisory caches, generated tool configuration and diagnostic events are outside the verified extent.
@@ -72,10 +72,10 @@ Do not copy them into a public artifact by default. Interrupted output without `
 
 Native tools use a private HOME/configuration and the existing minimal process environment without
 operator, cloud or registry credentials. This is trusted local tool execution, not an OS sandbox for
-hostile binaries. A relocated inspection copy may measure its own frozen artifact; it gains no target
+hostile binaries. A relocated inspection copy may measure its own frozen artifact. It gains no target
 redirection, writable restore, deployment or cleanup authority.
 
 Maintained tools own the inventory and detection implementations: [Syft](https://oss.anchore.com/docs/guides/sbom/)
 and [Trivy](https://trivy.dev/docs/latest/target/sbom/). Trivy warns that third-party SBOM inputs can
-lose detection properties; this collector therefore scans the subject independently rather than treating
+lose detection properties. This collector therefore scans the subject independently rather than treating
 Syft-to-Trivy conversion as complete coverage. See [verification](verification.md) for tested versions.

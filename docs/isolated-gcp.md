@@ -1,6 +1,6 @@
 # Isolated local GCP infrastructure
 
-DeployOps can compile one registered Cloud Run recipe and run Terraform 1.12.2 or OpenTofu 1.10.0 in a dedicated Lima VM. Planning and apply need separate exact approvals. A successful apply issues the typed GCP infrastructure receipt, which the application worker can reuse for app-only releases.
+DeployOps compiles one registered Cloud Run recipe and runs Terraform 1.12.2 or OpenTofu 1.10.0 in a dedicated Lima VM. Planning and apply need separate exact approvals. A successful apply issues the typed GCP infrastructure receipt, which the application worker can reuse for app-only releases.
 
 This route uses local operator authority, so its records have no GitHub repository IDs or workflow claims. It accepts no HCL, modules, data sources, provisioners, command hooks, provider aliases, or endpoint overrides.
 

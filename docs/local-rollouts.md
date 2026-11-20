@@ -19,7 +19,7 @@ activation = "separate"
 
 Keep any existing destination setting in that table. `direct` remains the default. An independent static
 app needs no infrastructure component. If the app has dependencies, changing workspace configuration
-requires their fresh matching receipts; include dependencies rather than reusing a receipt from the
+requires their fresh matching receipts. Include dependencies rather than reusing a receipt from the
 previous workspace digest. Saving configuration runs no deployment.
 
 Run the normal preparation, exact approval and explicit execution flow for the candidate. Its deployment
@@ -96,7 +96,7 @@ deploy-ops rollout reconcile CANDIDATE_RELEASE --note "Inspected actual route an
 
 Recovery requires a verified stopped/dead owner with matching host, state and controller admission.
 Unknown or live ownership blocks reconciliation. A written route may be recorded as `switched-inspected`
-after explicit inspection and a measured check; the prior controller request is resolved as failed,
+after explicit inspection and a measured check. The prior controller request is resolved as failed,
 without fabricating successful completion. This grants no switch replay or deletion. Partial retirement
 requires inspection and a newly prepared inventory/approval for any further deletion. Configuration Save
 is interlocked while a rollout or retirement remains unresolved.
@@ -122,4 +122,4 @@ for these new rollout phases is not supplied.
 Coherent backups include exact per-operation rollout plans and both retained capacities. A relocated
 restore remains an inspection copy: historical absolute target paths are not rewritten or followed
 outside that selected state. Copied PIDs, paths and digests confer no continuation authority. No listeners
-are adopted after restart; start any foreground serving session explicitly.
+are adopted after restart. Start any foreground serving session explicitly.

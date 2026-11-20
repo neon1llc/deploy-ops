@@ -7,8 +7,8 @@
 | Separate infrastructure and app repositories | Frozen inputs, DAG order, public output references | Live local path, committed-source tests |
 | Independent app deployment | Reuses infrastructure outputs | Live local and ECS paths. Cross-worker receipts use fixtures |
 | Environments and overrides | Provider, production flag, variables, target options | Schema and engine checks |
-| Local deployment | Directory infrastructure and versioned static artifact deployment; fixed revision and active-target loopback serving | Live filesystem/HTTP checks; target routing is not full blue-green |
-| Local static blue-green | Separate candidate staging, measured HTTP readiness, manual route switch, post-check, retained baseline and deliberate file retirement | Source CLI/API/real HTTP and real exited-worker recovery; mounted controls/AT/human and cloud/container routing unqualified |
+| Local deployment | Directory infrastructure and versioned static artifact deployment. Fixed revision and active-target loopback serving | Live filesystem/HTTP checks. Target routing is not full blue-green |
+| Local static blue-green | Separate candidate staging, measured HTTP readiness, manual route switch, post-check, retained baseline and deliberate file retirement | Source CLI/API/real HTTP and real exited-worker recovery. Mounted controls/AT/human and cloud/container routing unqualified |
 | Build and test | Trusted local argv checks and build hooks | Live Python example, no shell interpolation |
 | OCI build and publish | Docker Buildx metadata gives an immutable image reference | Command-contract checks only. Registry publish not exercised |
 | Docker Compose | Digest-pinned images, bounded host features, health wait | Real Docker first and app-only delivery, HTTP checks |
@@ -18,9 +18,9 @@
 | ARM/Bicep | Frozen JSON, public parameters, what-if review, incremental deployment, readback | Live Bicep creation and ARM tag update. No native destruction |
 | AWS ECS app | Existing service, frozen task definition, exact image, readback, revision check | Live infrastructure-to-app and second app-only update. Container health, image, and startup log verified |
 | Azure Container Apps | Single revision mode, one named container, revision health, mutation journal | Live image update and logs. Recovery journal checked with fixtures |
-| Static artifact observations | Explicit retained artifact inventory with Syft and independent optional Trivy scan; shared CLI/API/UI, offline report inspection | Native local Syft; offline Trivy unavailable with empty advisory cache. No signature verification, OCI subject or release-policy enforcement |
-| Frozen file signatures | Cosign local-key modern-bundle verification of one selected frozen file; exact copied inputs, file search and offline report inspection | Native v3.1.4 verified a published signed file and refused an unsigned neighbor in the same tree. Whole-artifact/OCI trust, time/revocation/transparency and release-policy enforcement unqualified |
-| GCP Cloud Run | Existing single-container/untagged route, conditional candidate and traffic updates, durable native operations and actual revision-image readback | Native API fixtures; live workload qualification remains separate. See [Cloud Run](cloud-run.md) |
+| Static artifact observations | Explicit retained artifact inventory with Syft and independent optional Trivy scan. Shared CLI/API/UI, offline report inspection | Native local Syft. Offline Trivy unavailable with empty advisory cache. No signature verification, OCI subject or release-policy enforcement |
+| Frozen file signatures | Cosign local-key modern-bundle verification of one selected frozen file. Exact copied inputs, file search and offline report inspection | Native v3.1.4 verified a published signed file and refused an unsigned neighbor in the same tree. Whole-artifact/OCI trust, time/revocation/transparency and release-policy enforcement unqualified |
+| GCP Cloud Run | Existing single-container/untagged route, conditional candidate and traffic updates, durable native operations and actual revision-image readback | Native API fixtures. Live workload qualification remains separate. See [Cloud Run](cloud-run.md) |
 | Kubernetes app | Existing Deployment, patch precondition, rollout and image checks | Real disposable kind cluster: rollout, app-only, promotion, rollback, stale-target refusal |
 | Promotion and rollback | Reuse a built static artifact or immutable image | Real static and local Kubernetes paths. Cloud runtime paths unqualified |
 | Generic tool integration | Trusted local prepare, apply, and verify argv, always manual | Implemented, no native tool guarantee |

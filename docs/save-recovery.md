@@ -15,7 +15,7 @@ deploy-ops config reconcile --operation-id SAVE_ID --source-hash CURRENT_SOURCE_
 
 Use `--project` and `--state` before `config` when the workspace or state has another location. The
 status command reads existing state without initializing an Engine, grants, credentials or schema.
-Reconciliation opens the verified existing database for an explicit audit write; it does not create
+Reconciliation opens the verified existing database for an explicit audit write. It does not create
 or migrate state. This remains usable when an external edit has made current TOML invalid.
 
 ## Choose what to retain
@@ -28,7 +28,7 @@ When before/draft/current bytes are identical, recovery reports `same_content`; 
 replacement boundary from identical contents. The audit observation remains separate.
 
 Reconciliation keeps the current file byte-for-byte, including external or invalid edits. It appends
-`workspace.save_reconciled` with the observed hash and original audit status; it does not fabricate
+`workspace.save_reconciled` with the observed hash and original audit status. It does not fabricate
 a missing `workspace.updated` event. It removes only the verified owned pending draft and Save intent.
 Exact before/draft copies remain under `workspace-saves/SAVE_ID/`. An interrupted reconciliation
 can finish without appending a duplicate audit observation. Repeated requests return their retained
@@ -38,11 +38,11 @@ a fresh inspection records that different hash as a new observation. It does not
 
 Restoring a retained version is a separate reviewed, hash-guarded Save. Validate that file as a draft,
 inspect its diff, and save against the current source hash. An invalid current file remains available
-for inspection; correct it with your editor before restarting normal deployment work. Recovery itself
+for inspection. Correct it with your editor before restarting normal deployment work. Recovery itself
 does not repair TOML, replace unrelated edits, replay a deployment or change approval identities.
 
 The console preserves unsaved drafts during inspection and reconciliation. Once a valid configuration
-is reconciled, **Reload console** is a separate choice; preserve drafts before reloading. A reload
+is reconciled, **Reload console** is a separate choice. Preserve drafts before reloading. A reload
 clears the session token and form drafts.
 
 ## Boundaries
@@ -51,7 +51,7 @@ A real interprocess workspace lock excludes cooperative Saves, release preparati
 preparation. A retained Save intent blocks new work until reconciled. Recovery refuses a live writer,
 changed lock identity, relocated intent, missing/altered recovery copies or an unrelated pending draft.
 It supplies no force option. Keep all files when ownership cannot be verified. A legacy `.pending`
-without the new intent is unverified; preserve and review it before manually renaming or removing it.
+without the new intent is unverified. Preserve and review it before manually renaming or removing it.
 
 External editors do not participate in this advisory lock. Save rechecks exact source identity just
 before replacement, but this is not a filesystem compare-and-swap guarantee against an uncooperative

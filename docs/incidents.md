@@ -1,7 +1,6 @@
 # Local incidents and escalation signals
 
-An incident records who owns the response to a failed or uncertain release, or to an exact saved
-later observation of drift or unavailable evidence. It doesn't change the release outcome, repair a deployment, or show that a responder was paged. The owner is a label, not an authenticated identity.
+An incident records who owns the response to a failed or uncertain release, or to an exact saved later observation of drift or unavailable evidence. It doesn't change the release outcome, repair a deployment, or show that a responder was paged. The owner is a label, not an authenticated identity.
 
 ## Open, acknowledge and resolve
 

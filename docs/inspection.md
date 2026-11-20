@@ -20,15 +20,15 @@ deploy-ops --state /private/delivery-state status --component web --limit 50
 History flags return a page containing `releases`, normalized `filters`, matching `total`, `cursor` and
 `next_cursor`. Pass `--cursor` with the same filters for the next page. `GET /api/releases/history` accepts
 the same query fields and requires the existing operator authentication and origin/host checks. Page
-sizes are 1–100, default 20. Search is literal; `%` and `_` do not act as wildcards. Default `status` and
+sizes are 1 to 100, default 20. Search is literal; `%` and `_` do not act as wildcards. Default `status` and
 `GET /api/releases` retain their newest-200 array response for compatibility. An exact ID still reads one
-record; it cannot be combined with history filters. These reads do not load current configuration,
+record. It cannot be combined with history filters. These reads do not load current configuration,
 initialize a missing state directory, repair state, acquire execution authority or send notifications.
 
 Pages pin a creation boundary so new releases do not shift an older page. Recorded outcomes can still
-change; a cursor is not a frozen database snapshot, archival proof or execution capability. Filters and
+change. A cursor is not a frozen database snapshot, archival proof or execution capability. Filters and
 the selected store bind the read position. Start from newest after changing filters, replacing/restoring
-the store or performing database maintenance. Home metrics explicitly summarize recent rows; history
+the store or performing database maintenance. Home metrics explicitly summarize recent rows. History
 filters do not change active execution blockers or dependency receipt lookup.
 
 ## Save a portable summary
@@ -47,7 +47,7 @@ deploy-ops evidence inspect inspection.json --html inspection.html
 
 Open `inspection.html` locally. It has readable scope and outcome sections, expandable exact facts,
 responsive layout and print styling. It contains no scripts, external resources or execution controls.
-The JSON reader needs the matching installed DeployOps runtime; it does not initialize an Engine,
+The JSON reader needs the matching installed DeployOps runtime. It does not initialize an Engine,
 load a workspace, inspect credentials or contact a provider. Output files are owner-only and existing
 files are preserved. Treat public resource identities as private operational information when sharing.
 
@@ -55,7 +55,7 @@ files are preserved. Treat public resource identities as private operational inf
 
 The version 2 format records its toolkit version, capture time and SHA-256 over the normalized
 allowlisted summary, excluding the `sha256` field. Optional `--run-id` and `--run-attempt` bind a
-capture to a runner attempt; supply both. The release-record hash identifies the exact release data
+capture to a runner attempt. Supply both. The release-record hash identifies the exact release data
 read without exporting that data. Each included native journal has its exact file hash.
 The CLI capture result also returns the exact output file's byte hash, separately from the summary digest.
 
@@ -66,17 +66,17 @@ not proof that an image was deployed or is healthy.
 
 Each component reports controller and artifact identities as present or unavailable. Native journals
 are present, unavailable or not applicable to this format. Expected identities that are unavailable
-make capture partial. An unknown native adapter contract is explicitly not applicable; a complete
+make capture partial. An unknown native adapter contract is explicitly not applicable. A complete
 capture covers only this inspection extent. It does not establish a complete deployment or backup.
 
 ECS, Container Apps and Cloud Run journals retain exact recorded scope, image, durable phase, request identity
 and selected last observation. ECS candidate revisions and truncated discovery are retained when
-available. New journal writes record their time; an old record without a timestamp remains unknown.
+available. New journal writes record their time. An old record without a timestamp remains unknown.
 An acknowledgement does not establish convergence. A missing journal says **no retained operation
 record**: submission and current cloud outcome are unknown, even if the release is failed or cancelled.
 
 Version 2 adds GCP project/service scope and Cloud Run's candidate/traffic phases. Version 1 remains
-readable with its original exact extent and checksum; its narrower native-adapter scope is preserved.
+readable with its original exact extent and checksum. Its narrower native-adapter scope is preserved.
 An older reader rejects version 2 rather than silently dropping its new facts.
 
 Source trees, raw databases/WAL, prepared request contents, task definitions, arbitrary provider
@@ -91,7 +91,7 @@ valid evidence returns success even when its recorded deployment failed or remai
 `run`, `resume`, promotion and rollback retain their existing waiting/failure exits. A malformed,
 unsupported, contradictory or changed inspection fails without repairing its input.
 
-The summary checksum detects changed content; it does not authenticate the author. Imported facts
+The summary checksum detects changed content. It does not authenticate the author. Imported facts
 cannot approve, resume, reconcile or clean up anything. They do not revive a lease or rewrite an
 approved envelope. Use the original operation owner for a separately requested online readback,
 with exact current scope and grants revalidated. No source directories need to be fabricated.

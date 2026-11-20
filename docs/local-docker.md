@@ -13,7 +13,7 @@ Docker context. The browser cannot write an operator profile.
 
 ## Explicit profile
 
-The closed format contains these fields; replace the illustrative values with an independently selected,
+The closed format contains these fields. Replace the illustrative values with an independently selected,
 owned local endpoint and installed native tools:
 
 ```json
@@ -35,7 +35,7 @@ standalone invocation. No personal Docker configuration, credential helper, ambi
 automatic plugin discovery or global context is imported. The selected Unix socket must use its canonical
 path, have the declared current-user or root owner, and already exist. Projects are exact
 environment/component mappings, each with a distinct literal namespace matching the resolved component
-option or its `environment-component` default. The operator must select a namespace it owns; a profile
+option or its `environment-component` default. The operator must select a namespace it owns. A profile
 does not discover ownership across unrelated deployments or ledgers.
 
 Protect the profile with owner-only permissions, select its absolute path in
@@ -49,7 +49,7 @@ Native commands use the existing private worker HOME and Docker configuration di
 `info` must return the exact selected daemon ID before Compose preparation and again before `up`. Compose
 renders through the explicit executable with an explicit project. Existing pinned-image, host-access,
 volume and manual-approval restrictions remain. Registry credentials used for image builds stay separate
-and auths-only; this profile contains no registry authentication.
+and auths-only. This profile contains no registry authentication.
 
 Fresh Compose evidence uses adapter contract 4. It freezes profile bytes, tool bytes and ownership, socket
 identity/owner, daemon ID and project. Review displays the selected target and tool hashes. The existing
@@ -58,8 +58,8 @@ native use. A changed tool, profile or endpoint needs fresh evidence. Replacing 
 same path, invalidates the prior binding.
 
 Older Compose records remain readable with their original bytes and digests. They cannot execute under
-the new binding contract; preserve them and prepare a fresh release. No approval is reminted or replayed.
-These checks coordinate the selected operator profile and existing controller; they are not a filesystem
+the new binding contract. Preserve them and prepare a fresh release. No approval is reminted or replayed.
+These checks coordinate the selected operator profile and existing controller. They are not a filesystem
 or daemon lock against unrelated applications or malicious changes by the same host user. Native daemon
 identity checks do not prove container health or rollback remote effects after interruption.
 

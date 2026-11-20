@@ -1,8 +1,8 @@
 # Named paging destinations
 
-DeployOps routes local deployment incidents to named PagerDuty, GoAlert, incident.io, Better Stack, Grafana Cloud IRM, or ilert integrations. Ordinary notifications go to JSON webhooks, Slack, or ntfy. Each destination keeps its own delivery evidence, and you can have several instances of one provider. Provider acceptance doesn't prove a person received a page, acknowledged an incident, or fixed a deployment.
+DeployOps routes local deployment incidents to named PagerDuty, GoAlert, incident.io, Better Stack, Grafana Cloud IRM, or ilert integrations, and ordinary notifications to JSON webhooks, Slack, or ntfy. Each destination keeps its own delivery evidence, and one provider can have several instances. Provider acceptance doesn't prove a person received a page, acknowledged an incident, or fixed a deployment.
 
-The native adapters are qualified with local protocol fixtures only. No live provider page has been sent. Hosted accounts and provider channels may need paid plans or incur SMS or voice charges. DeployOps installs no subscriptions or background services.
+The adapters are checked with local protocol fixtures only. No live provider page has been sent. Hosted accounts and channels may need paid plans or incur SMS or voice charges. DeployOps installs no subscriptions or background services.
 
 ## Configure, preview and activate
 

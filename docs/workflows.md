@@ -79,26 +79,13 @@ The adapter uses a release-specific revision suffix, and Azure rejects conflicti
 
 ## Inspect command output failures
 
-Local delivery commands share a 10 MB raw-byte budget across stdout and private diagnostics. The runner
-checks actual private-file extents while a child runs and again after it exits. An exit code of zero
-can still have an unusable result when that combined output exceeds the policy. Inspect the recorded
-command outcome and target before retrying: the command may already have changed files or a provider.
-No automatic replay or rollback follows an output-policy failure.
+Local delivery commands share a 10 MB raw-byte budget across stdout and private diagnostics. The runner checks the actual private-file extents while a child runs and again after it exits. An exit code of zero can still be an unusable result when combined output exceeds the budget. Inspect the recorded command outcome and the target before retrying, because the command may already have changed files or a provider. An output-policy failure triggers no automatic replay or rollback.
 
-CLI status/events and console release details retain the failure and observed exit code separately.
-Private diagnostics stay out of ordinary events. Successful captured machine output keeps its existing
-replacement decoding, while raw bytes determine the budget. Displayed stdout is redacted before its
-bounded tail is selected. This observation limit does not reserve disk capacity or prevent every
-between-check output burst.
+CLI status and events and console release details keep the failure and the observed exit code separately. Private diagnostics stay out of ordinary events. Raw bytes determine the budget, and displayed stdout is redacted before its bounded tail is selected. The limit reserves no disk capacity and can't stop every burst of output between checks.
 
 ## Notify and page
 
-Entering approval wait records one event with the exact component/request ID and digest. Repeated
-bounded waits or resume observations of that same pending request still recheck authority, but do
-not create another decision-needed event or notification obligation. A new pending component/request
-gets its own event. Worker start/stop evidence remains separate. If cancellation settles while an
-already-waiting CLI sleeps, the waiter reports the cancelled record without execution. A direct
-resume of a terminal release still refuses.
+Entering approval wait records one event with the exact component, request ID, and digest. Repeated waits or resume observations of the same pending request recheck authority but create no new decision-needed event or notification. A new pending request gets its own event, and worker start and stop evidence stays separate. If cancellation settles while a waiting CLI sleeps, the waiter reports the cancelled record without executing. Resuming a terminal release is still refused.
 
 Events are saved before delivery. Send the outbox from a trusted scheduled worker or after a run:
 
@@ -123,28 +110,17 @@ Nothing is repaired automatically. Inspect a drifted or unknown target, then pre
 
 ## Temporary private cache outcomes
 
-Each component can retain a separate `private_cache_cleanup` observation for its runtime `home` and
-`build-home`. Read it with `deploy-ops status RELEASE_ID`, the release API, or the console's native
-**Temporary private cache cleanup** disclosure. A warning appears only for unverified or failed
-cleanup/recording; confirmed removal stays quiet. The primary deployment or provider-readback result
-is separate. Cache recording merges only its metadata into the current record; it cannot replace
-newer primary state or outputs. Readback/discard eligibility is checked after native lock ownership. A cache warning does not turn a confirmed success into a reason to replay deployment.
+Each component can keep a separate `private_cache_cleanup` observation for its runtime `home` and `build-home`. Read it with `deploy-ops status RELEASE_ID`, the release API, or the console's **Temporary private cache cleanup** disclosure. A warning appears only for unverified or failed cleanup or recording. Confirmed removal stays quiet. The deployment or provider-readback result is separate: recording merges only its metadata, can't replace newer primary state or outputs, and a cache warning is never a reason to replay deployment.
 
-`removed` means the selected private directory was removed and its location checked absent;
-`absent` means it was absent at inspection. `failed` means native removal failed, and `unverified`
-means supported ownership/path/removal evidence was unavailable. Categories are fixed to the two
-operation-owned homes, not source, artifacts, application data, external grants or user credentials.
-No cache contents, sensitive paths or raw exceptions enter the observation. Metadata is published as
-pending before cache use, so unavailable final recording cannot leave an older clean observation
-looking current. Immediate command/readback results disclose an unverified recording separately.
+| Outcome | Meaning |
+|---|---|
+| `removed` | The private directory was removed and its location checked absent |
+| `absent` | It was absent at inspection |
+| `failed` | Native removal failed |
+| `unverified` | Supported ownership, path, or removal evidence was unavailable |
 
-Inspect a warning through the original local operator after checking that the operation's worker
-has stopped. This feature adds no cleanup retry, automatic janitor, permission override, deployment
-replay, credential rotation or provider rollback. Existing worker exclusion remains mandatory. Unknown cache-shaped folders on unvisited components
-are not adopted or deleted. Existing unrecorded or replaced runtime-home entries refuse use without
-permission repair; preserve them for the original operator.
-Removal uses no-follow directory descriptors and the platform's symlink-resistant native removal;
-unsupported platforms retain an unverified result rather than taking a weaker fallback. The two
-fixed categories bound scope, not recursive removal time or filesystem capacity. Absence/removal
-does not prove secure erasure, memory clearing or token revocation; interrupted/power-loss cleanup
-is not guaranteed.
+The two fixed categories cover only the operation-owned homes, not source, artifacts, application data, external grants, or user credentials. No cache contents, sensitive paths, or raw exceptions enter the observation. Metadata is published as pending before the cache is used, so a failed final recording can't leave an older clean observation looking current.
+
+Inspect a warning through the original local operator after checking that the operation's worker has stopped. There is no cleanup retry, janitor, permission override, deployment replay, credential rotation, or provider rollback. Cache-shaped folders on unvisited components aren't adopted or deleted, and unrecorded or replaced runtime-home entries refuse use without permission repair, so preserve them for the original operator.
+
+Removal uses no-follow directory descriptors and the platform's symlink-resistant removal. Unsupported platforms report `unverified` instead of using a weaker fallback. The fixed categories bound scope, not removal time or filesystem capacity. Removal doesn't prove secure erasure, memory clearing, or token revocation, and interrupted or power-loss cleanup isn't guaranteed.

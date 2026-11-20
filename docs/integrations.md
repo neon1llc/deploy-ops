@@ -50,13 +50,13 @@ symlinks and nonregular files refuse. It happens before credentials or native in
 The refusal changes no files. Review public configuration through the normal commit workflow or use
 a clean checkout. Keep secrets out of Git. Ordinary untracked notes, explicitly selected variable
 files that this command does not load, saved plans and native caches remain usable. Execution still
-applies the exact approved saved plan; it does not generate a replacement plan.
+applies the exact approved saved plan. It does not generate a replacement plan.
 
 This bounded root check does not attest local child modules outside the root, module downloads,
 files read by expressions or providers, arbitrary external inputs, submodule contents or concurrent
 uncooperative changes after inspection. Use a controlled, isolated runner for those boundaries.
 Native file loading is documented by [Terraform](https://developer.hashicorp.com/terraform/language/files)
-and [OpenTofu](https://opentofu.org/docs/language/files/); automatic variable names follow their
+and [OpenTofu](https://opentofu.org/docs/language/files/). Automatic variable names follow their
 [input variable contract](https://opentofu.org/docs/language/values/variables/).
 
 ## Generic manifest contract

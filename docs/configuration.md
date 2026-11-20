@@ -30,13 +30,13 @@ Only complete `${env.name}` and `${outputs.component.key}` values are expanded, 
 | `static` | `directory`, optional `destination` | Versioned files and atomic active pointer, no public hosting service created |
 | `compose` | `file`, optional `project` | Existing digest-pinned images only, no build, privileged mode, or host bind mounts |
 | `opentofu`, `terraform` | Exactly one of `remote_state=true` or local `local_state=true` | Actual default-workspace backend is reviewed: exact owned local path or supported s3/gcs/azurerm. Commit provider lock file |
-| `cloudformation` | `account_id`, `region`, `stack_name`, `template` | Preview creates a remote change set; execute that exact reviewed identifier |
-| `cdk` | `account_id`, `region`, `stack_name`, `assembly`, `stack_artifact` | Consume a frozen assembly; never synthesize application code with writer credentials |
+| `cloudformation` | `account_id`, `region`, `stack_name`, `template` | Preview creates a remote change set. Execute that exact reviewed identifier |
+| `cdk` | `account_id`, `region`, `stack_name`, `assembly`, `stack_artifact` | Consume a frozen assembly. Never synthesize application code with writer credentials |
 | `arm`, `bicep` | `subscription_id`, `tenant_id`, `resource_group`, `template` | Frozen local JSON, incremental deployment only; Bicep requires compiler metadata |
 | `ecs` | `region`, `cluster`, `service`, `container`, `image` | Existing ECS-controller service |
 | `container-apps` | `name`, `resource_group`, `subscription_id`, `image` | Existing Single revision mode app with one named container |
 | `cloud-run` | `name`, `project_id`, `region`, `image` | Existing service with one 100% traffic target |
-| `kubernetes` | `context`, `namespace`, `deployment`, `container`, `image` | Dedicated kubeconfig; reviewed connection and existing Deployment UID; [native profile](kubernetes.md) |
+| `kubernetes` | `context`, `namespace`, `deployment`, `container`, `image` | Dedicated kubeconfig. Reviewed connection and existing Deployment UID; [native profile](kubernetes.md) |
 | `workflow` | `apply` and `verify` command lists, optional `prepare` and `outputs_file` | Local trusted scripts only, manual approval, no preview equivalence guarantee |
 
 Native app images must use `registry/repository@sha256:...`. Tags such as `latest` are rejected. The same registry artifact can be promoted, but cross-provider replication and credentials aren't automatic.
@@ -65,13 +65,11 @@ Remote AWS ECS workers resolve infrastructure dependencies through controller-is
 
 ## Guided edits and review
 
-The console's **Workspace configuration** panel edits existing repositories, environments, and components. Choose the entry, adjust its fields, then **Apply fields to draft**. Native adapter forms save changes into that environment's override. Existing [Cloud Run components](cloud-run.md) share these controls for public project, region, service, immutable image, and image repository. Whole references and optional preparation-time image selection stay supported. Pin and inherit act on one environment field without adding omitted image defaults or discarding advanced authored options. Credential files and live grants stay outside these forms. These change the TOML draft, not the saved file. New entries and advanced settings use TOML. The whole workspace is validated, and changing a provider doesn't translate existing provider options.
+The console's **Workspace configuration** panel edits existing repositories, environments, and components. Choose the entry, adjust its fields, then **Apply fields to draft**. Native adapter forms save changes into that environment's override. [Cloud Run components](cloud-run.md) share these controls for public project, region, service, immutable image, and image repository, and whole references and preparation-time image selection still work. Pin and inherit act on one environment field without adding omitted image defaults or discarding advanced authored options. Credential files and live grants stay outside these forms. Edits change the TOML draft, not the saved file. New entries and advanced settings use TOML. The whole workspace is validated, and changing a provider doesn't translate existing provider options.
 
 **Validate configuration** shows the complete diff before **Save local configuration**. A save keeps the previous file in local state, refuses outstanding releases, and rejects stale file revisions. If another tab or editor changed the file, keep your draft before reloading. This detects observed conflicts and isn't a filesystem lock. Remote-controller consoles can prepare and validate drafts but can't save controller or workspace authority.
 
-Save reloads and locks the console. Reconnect directly on Controls to return to the same view, without
-a Home detour. The connection form is available on every locked server view; successful connection
-moves keyboard focus to that view's heading. Tokens remain in tab memory and are cleared on reload.
+Save reloads and locks the console. The connection form is on every locked view, so reconnect directly on Controls to return to the same place. A successful connection moves keyboard focus to that view's heading. Tokens stay in tab memory and clear on reload.
 
 The CLI edits a draft without writing the source file:
 
@@ -83,27 +81,9 @@ deploy-ops --project deploy-ops.toml config patch --section components --name we
 
 The JSON result has the updated `toml`, a unified `diff`, validated fields, and the contract digest. Save the draft through the console or your editor. Check configuration output for repository paths and options before publishing it.
 
-For directory/static/Compose components, **Local build and deployment settings** distinguishes component options from
-environment overrides. **Use adapter default** removes one optional component option; required settings
-such as the directory resource name cannot be removed. **Use inherited** removes one environment override.
-An explicit override remains pinned even when it equals the inherited value, and survives later component
-changes. Activation choices use a native dropdown. Both reset actions update only the draft, preserving
-other fields and comments until you explicitly save.
+For directory, static, and Compose components, **Local build and deployment settings** separates component options from environment overrides. **Use adapter default** removes one optional component option, and required settings such as the directory resource name can't be removed. **Use inherited** removes one environment override. An explicit override stays pinned even when it equals the inherited value, and it survives later component changes. Both resets update only the draft and keep other fields and comments until you save. [Setup](setup.md#edit-existing-local-build-and-deployment-settings) has the CLI commands.
 
-The CLI uses these same scopes and returns a separate reviewable draft:
-
-```bash
-deploy-ops --project deploy-ops.toml config reset --name web --scope base \
-  --field activation --draft-out defaults-draft.toml
-deploy-ops --project deploy-ops.toml config reset --name web --scope environment \
-  --environment staging --field activation --draft-out inherited-draft.toml
-```
-
-Compose file and project settings use the same creation, component-default and environment-override
-controls. The file is required and must stay inside the component source. Omitting the project derives
-`environment-component`; an explicit project follows Docker's lowercase/digit/dash/underscore naming
-rules. An equal environment pin remains explicit when component defaults change. These pure edits do
-not read Compose files, start Docker, render configuration or pull images.
+A Compose component needs a `file` inside its source. Omitting `project` derives `environment-component`, and an explicit project follows Docker's [project-name rules](https://docs.docker.com/compose/how-tos/project-name/). These edits don't read Compose files, start Docker, or pull images.
 
 ```bash
 deploy-ops --project deploy-ops.toml config add --section components --name container \
@@ -111,20 +91,13 @@ deploy-ops --project deploy-ops.toml config add --section components --name cont
   --draft-out compose-draft.toml
 ```
 
-Release preparation still delegates rendering to native `docker compose config` and checks the rendered
-services for the existing image and host-access restrictions. Container execution requires a separately
-reviewed release and an [explicit local Docker profile](local-docker.md) selecting suitable native tools,
-an owned Unix endpoint and its daemon identity. See Docker's [project-name rules](https://docs.docker.com/compose/how-tos/project-name/)
-and [native configuration rendering](https://docs.docker.com/reference/cli/docker/compose/config/).
+Release preparation renders the file with native [`docker compose config`](https://docs.docker.com/reference/cli/docker/compose/config/) and checks the services against the image and host-access restrictions. Execution needs a separately reviewed release and an [explicit local Docker profile](local-docker.md) that selects the native tools, an owned Unix endpoint, and its daemon identity.
 
 Paging uses a separate versioned configuration, so edits don't invalidate deployment approvals. Use `deploy-ops paging` or the console. See [paging](paging.md).
 
 ## Retained history and reviewed inputs
 
-`deploy-ops --state PATH status` and `events RELEASE` inspect an existing private store without loading
-current workspace or cloud grants. A missing path reports uninitialized state and creates nothing.
-Unsupported database formats and incomplete WAL copies are refused. Reading history does not restore
-execution authority or repair a store.
+`deploy-ops --state PATH status` and `events RELEASE` inspect an existing private store without loading the current workspace or cloud grants. A missing path reports uninitialized state and creates nothing. Unsupported database formats and incomplete WAL copies are refused. Reading history restores no execution authority and repairs nothing.
 
 Each release captures a repository once, then gives its components copies of that same snapshot.
 Committed capture uses the selected Git revision. Current-files capture ignores that revision and refuses
@@ -150,11 +123,11 @@ it does not protect against arbitrary filesystem changes by the same operating-s
 The bound path is rechecked before claim, including symlink changes after approval. Older prepared local
 artifacts remain readable, but require fresh preparation before execution under this runtime. Their
 approved bytes are not rewritten. Unknown adapter contracts are refused. Use the matching runtime for
-historical evidence; do not downgrade a writer over newer pending work.
+historical evidence. Do not downgrade a writer over newer pending work.
 
 Generic IaC preparation uses `init -reconfigure`, which reinitializes without migrating a cached backend.
 Local state fixes its owned destination and refuses source override files or `backend_config` selectors.
-Remote state must actually initialize a supported remote backend; a declaration alone is insufficient.
+Remote state must actually initialize a supported remote backend. A declaration alone is insufficient.
 The prepared review binds native metadata, public destination fields, default workspace and a digest of
 the complete effective configuration. Apply repeats initialization and checks the same binding before
 native apply. This is metadata binding, not proof of cloud ownership, backend access isolation or

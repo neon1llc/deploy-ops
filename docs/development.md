@@ -29,11 +29,11 @@ docs/                Product, operational, research, and evidence records
 tests/               Shared fixtures, complete paths, and meaningful negative cases
 ```
 
-Python is the core because orchestration mostly waits on tools and network I/O. The browser console uses plain JavaScript and CSS with no build system.
+Python is the core because orchestration mostly waits on tools and network I/O. The console uses plain JavaScript and CSS with no build system.
 
-An adapter must declare what it can preview, verify, and restore. A generic command wrapper must not imply Terraform-style saved-plan guarantees. Prefer explicit provider options over a lowest-common-denominator cloud API.
-
-Add tests at security, state, and data-integrity boundaries. A new integration should show one complete successful path and one consequential failure before gaining more options. Keep fake commands, local execution, and live provider checks distinct in the evidence record.
+- An adapter declares what it can preview, verify, and restore. A generic command wrapper must not imply Terraform-style saved-plan guarantees. Prefer explicit provider options over a lowest-common-denominator cloud API.
+- Add tests at security, state, and data-integrity boundaries. A new integration shows one complete successful path and one consequential failure before gaining more options.
+- Keep fake commands, local execution, and live provider checks distinct in the evidence record.
 
 Put a short comment above each function, method, class, and meaningful group of related declarations or operations. Explain its purpose, relationship, or constraint in one or two lines. Internal comments use simple thoughts without terminal periods. Don't narrate each assignment. Keep useful docstrings, help text, and native documentation contracts.
 
