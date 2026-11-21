@@ -5,7 +5,7 @@ DeployOps releases use `v0.MINOR.PATCH` until the first complete release, v1.0.0
 ## Unreleased
 
 ### Added
-- CI runs the checks, tests, and demo on Linux and macOS, and installs the built wheel with pipx to run the demo from it.
+- CI runs the checks, tests, and demo on Linux and macOS, and installs the built wheel with pipx to run the demo from it. On macOS runners the test step doesn't fail the job, because a few timing-dependent tests fail there intermittently.
 
 ### Changed
 - The README installs with pipx from a release tag instead of a source checkout, and says Windows is unsupported. There is no PyPI release.
