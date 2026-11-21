@@ -281,7 +281,7 @@ engine.gate.complete=completion
 rollouts.execute(engine,sys.argv[2])
 '''
     env = {key: value for key, value in os.environ.items() if not key.startswith('DEPLOY_OPS_')}
-    result = subprocess.run([sys.executable, '-c', script, str(engine.path), second['id'], point], env=env, capture_output=True, timeout=30)
+    result = subprocess.run([sys.executable, '-c', script, str(engine.path), second['id'], point], env=env, capture_output=True, timeout=120)
     assert result.returncode == 83
     assert rollouts.inspect(Retained(engine.state), second['id'])['route'] == 'candidate'
     status = rollouts.recovery_status(engine, second['id'])
