@@ -7,6 +7,11 @@ DeployOps releases use `v0.MINOR.PATCH` until the first complete release, v1.0.0
 ### Added
 - CI runs the checks, tests, and demo on Linux and macOS, and installs the built wheel with pipx to run the demo from it. On macOS runners the test step doesn't fail the job, because a few timing-dependent tests fail there intermittently.
 
+### Fixed
+- The isolated console's status read active workers after request status, so a request could show as idle while still running. It now reads active workers first.
+- The static HTTP check's 10-second limit started before the local server did. It now covers the transfer only.
+- Tests that poll background workers wait up to 30 seconds instead of 5, and the exited-process rollout test shows the child's error when it fails.
+
 ### Changed
 - The README installs with pipx from a release tag instead of a source checkout, and says Windows is unsupported. There is no PyPI release.
 
