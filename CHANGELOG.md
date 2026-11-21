@@ -2,6 +2,14 @@
 
 DeployOps releases use `v0.MINOR.PATCH` until the first complete release, v1.0.0, following neon1's [versioning standard](https://neon1.tech/knowledge/standards/versioning/). Each version has an annotated tag on its commit. Tags v0.2.0 to v0.13.0 were made when those versions shipped, and this changelog was written from them on 2026-11-11. The release workflow adds missing tags and never moves one.
 
+## Unreleased
+
+### Added
+- CI runs the checks, tests, and demo on Linux and macOS, and installs the built wheel with pipx to run the demo from it.
+
+### Changed
+- The README installs with pipx from a release tag instead of a source checkout, and says Windows is unsupported. There is no PyPI release.
+
 ## v0.15.1 - 2026-11-20
 
 ### Changed

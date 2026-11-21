@@ -2,7 +2,7 @@
 
 ## Install and run
 
-Use Python 3.11 or newer and install as in the [README](../README.md). The pinned requirements aren't an audited dependency lock or an SBOM.
+Use Python 3.11 or newer on Linux or macOS, and install as in the [README](../README.md). To upgrade, install the newer tag with `pipx install --force`. The pinned requirements aren't an audited dependency lock or an SBOM.
 
 ```bash
 deploy-ops init ../my-workspace
