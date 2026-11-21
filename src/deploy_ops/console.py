@@ -274,9 +274,11 @@ def create_app(engine, token: str, port: int = 8765) -> FastAPI:
         if not isinstance(engine.gate, IsolatedGate):
             return {"enabled": False, "available": False, "reason": "No isolated operator grant configured",
                     "requests": [], "active": [], "destroy_supported": False}
-        result = isolated_route().status()
+        # Read active workers first so a request reported idle was read after its worker finished
         with mutex:
-            result["active"] = [name.removeprefix("isolated:") for name in workers if name.startswith("isolated:")]
+            active = [name.removeprefix("isolated:") for name in workers if name.startswith("isolated:")]
+        result = isolated_route().status()
+        result["active"] = active
         return result
 
 
