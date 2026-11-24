@@ -130,12 +130,14 @@ def http_check(engine, release_id, component, mode='revision'):
     started = time.monotonic()
     try:
         session = sessions.start(engine, release_id, component, mode=mode)
+        # The time limit covers the transfer, not starting the local server
+        transfer_started = time.monotonic()
         with httpx.Client(trust_env=False, timeout=5, follow_redirects=False) as client:
             with client.stream('GET', session['url'] + '/index.html') as response:
                 digest, size = hashlib.sha256(), 0
                 for chunk in response.iter_bytes():
                     size += len(chunk)
-                    if size > 100_000_000 or time.monotonic() - started > 10:
+                    if size > 100_000_000 or time.monotonic() - transfer_started > 10:
                         raise Refused('Static HTTP check exceeded its byte or time limit')
                     digest.update(chunk)
                 if response.status_code != 200 or digest.hexdigest() != expected:

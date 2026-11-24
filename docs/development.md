@@ -1,6 +1,8 @@
 # Development
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install -r requirements-dev.txt -e .
 make check
 deploy-ops demo ../deploy-ops-check

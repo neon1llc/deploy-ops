@@ -6,14 +6,16 @@ DeployOps deploys infrastructure and applications from separate repositories. Yo
 
 It's for developers who want reviewed, approved releases on their own machine. It isn't a CI/CD platform and doesn't replace GitHub Actions, Argo CD, or Atlantis. [Where it fits](docs/adoption-fit.md) compares them and says who should wait.
 
-Needs Python 3.11 or later.
+Needs Python 3.11 or later on Linux or macOS. Windows is unsupported.
+
+Install with [pipx](https://pipx.pypa.io), then run the demo:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements-dev.txt -e .
-deploy-ops demo ../deploy-ops-demo
+pipx install git+https://github.com/neon1llc/deploy-ops.git@v0.15.1
+deploy-ops demo ./deploy-ops-demo
 ```
+
+There is no PyPI release yet. To work on the source, see [Development](docs/development.md).
 
 The demo builds, deploys, promotes, and HTTP-checks a real local application, with no cloud account.
 

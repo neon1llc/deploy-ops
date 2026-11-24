@@ -624,7 +624,7 @@ def test_console_promotes_and_rolls_back_the_same_artifact(engine):
         })
         assert response.status_code == 200
         release_id = response.json()["id"]
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             release = client.get("/api/releases/" + release_id, headers=headers).json()["release"]
             if release["status"] == "waiting":

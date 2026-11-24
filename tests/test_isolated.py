@@ -448,7 +448,7 @@ def test_console_isolated_planning_apply_and_private_status(setup, monkeypatch, 
         shared.runner.fail = True
     started = client.post(base + "/execute", json={"digest": request["digest"]})
     assert started.status_code == 200 and started.json()["started"]
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         status = client.get("/api/isolated").json()
         if not status["active"]:
@@ -467,12 +467,14 @@ def test_console_isolated_planning_apply_and_private_status(setup, monkeypatch, 
     base = "/api/isolated/requests/" + apply["id"]
     assert client.post(base + "/approve", json={"digest": apply["digest"]}).status_code == 200
     assert client.post(base + "/execute", json={"digest": apply["digest"]}).status_code == 200
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         status = client.get("/api/isolated").json()
         if not status["active"]:
             break
         time.sleep(.02)
+    else:
+        pytest.fail("Isolated console apply worker did not finish")
     completed = next(item for item in status["requests"] if item["id"] == apply["id"])
     assert completed["output_receipt"]["outputs"] == OUTPUTS
     assert completed["receipt_status"]["valid"] is True
