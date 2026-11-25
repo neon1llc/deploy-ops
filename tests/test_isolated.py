@@ -385,6 +385,47 @@ def test_guest_process_group_is_stopped_on_authority_loss(tmp_path, monkeypatch)
         pytest.fail("Native descendant survived authority loss")
 
 
+# Capture bounded native output and expose failures without command diagnostics
+@pytest.mark.parametrize(("code", "expected", "stage"), [
+    ("print('reviewed output')", b"reviewed output\n", None),
+    ("raise SystemExit(9)", None, "native"),
+    ("print('x' * 12_000_001)", None, "native"),
+])
+def test_guest_native_command_results_are_bounded(tmp_path, monkeypatch, code, expected, stage):
+    from deploy_ops import isolated_guest
+    original = subprocess.Popen
+
+    # Use the current test identity instead of requiring root-owned guest accounts
+    def spawn(*args, **kwargs):
+        for key in ("user", "group", "extra_groups"):
+            kwargs.pop(key, None)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", spawn)
+    command = [sys.executable, "-c", code]
+    authority_checks = []
+
+    # Stand in for lease reads without contacting a controller or provider
+    def authority():
+        authority_checks.append(True)
+
+    if stage:
+        expected_error = isolated_guest.NativeFailure if code.startswith("raise SystemExit") else RuntimeError
+        with pytest.raises(expected_error) as failure:
+            isolated_guest.run(command, tmp_path, {"PATH": "/usr/bin:/bin"},
+                               os.getuid(), os.getgid(), authority)
+        if code.startswith("raise SystemExit"):
+            assert failure.value.stage == stage
+            assert failure.value.exit_code == 9
+            assert str(failure.value) == "Isolated native command failed"
+        else:
+            assert "Native output exceeded limit" in str(failure.value)
+    else:
+        assert isolated_guest.run(command, tmp_path, {"PATH": "/usr/bin:/bin"},
+                                  os.getuid(), os.getgid(), authority) == expected
+    assert authority_checks
+
+
 # Local provenance does not borrow synthetic GitHub identifiers to satisfy validation
 @pytest.mark.parametrize("field", ["workflow_ref", "repository_id", "repository_owner_id"])
 def test_local_registration_refuses_federated_placeholders(setup, field):

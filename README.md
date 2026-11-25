@@ -24,7 +24,7 @@ The demo builds, deploys, promotes, and HTTP-checks a real local application, wi
 - **Start:** [Where it fits](docs/adoption-fit.md), [Setup](docs/setup.md), [Workflows](docs/workflows.md)
 - **Deliver:** [Native infrastructure](docs/native-infrastructure.md), [Cloud Run](docs/cloud-run.md), [Kubernetes](docs/kubernetes.md), [Local Docker](docs/local-docker.md), [Local serving](docs/local-serving.md), [Local blue-green](docs/local-rollouts.md), [Static previews](docs/previews.md), [Infrastructure receipts](docs/infrastructure-receipts.md), [Isolated GCP](docs/isolated-gcp.md)
 - **Inspect and recover:** [Source captures](docs/source-captures.md), [Portable inspection](docs/inspection.md), [Artifact observations](docs/artifact-observations.md), [File signatures](docs/file-signatures.md), [Private backups](docs/backups.md), [Save recovery](docs/save-recovery.md), [Local incidents](docs/incidents.md), [Paging](docs/paging.md)
-- **Reference:** [Configuration](docs/configuration.md), [Architecture](docs/architecture.md), [Capabilities](docs/capabilities.md), [Support matrix](docs/support-matrix.md), [Verification](docs/verification.md), [Security](SECURITY.md), [Research](docs/research/prior-art.md), [Roadmap](docs/roadmap.md), [Development](docs/development.md)
+- **Reference:** [Configuration](docs/configuration.md), [Architecture](docs/architecture.md), [Capabilities](docs/capabilities.md), [Support matrix](docs/support-matrix.md), [v1.0.0 exit criteria](docs/v1-readiness.md), [Verification](docs/verification.md), [Security](SECURITY.md), [Research](docs/research/prior-art.md), [Roadmap](docs/roadmap.md), [Development](docs/development.md)
 
 ## Status
 

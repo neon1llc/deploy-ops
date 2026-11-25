@@ -33,6 +33,8 @@ tests/               Shared fixtures, complete paths, and meaningful negative ca
 
 Python is the core because orchestration mostly waits on tools and network I/O. The console uses plain JavaScript and CSS with no build system.
 
+Node.js 24 is used for the JavaScript UI contract tests. `make check` skips those contracts when Node.js is absent. Use Node.js 24 or newer for local checks because older runtimes may not provide the browser APIs modeled by the fixtures.
+
 - An adapter declares what it can preview, verify, and restore. A generic command wrapper must not imply Terraform-style saved-plan guarantees. Prefer explicit provider options over a lowest-common-denominator cloud API.
 - Add tests at security, state, and data-integrity boundaries. A new integration shows one complete successful path and one consequential failure before gaining more options.
 - Keep fake commands, local execution, and live provider checks distinct in the evidence record.

@@ -2,13 +2,15 @@
 
 Stage: local developer preview, not production-supported. The [README](../README.md#status) summarizes this table.
 
+The [v1.0.0 exit criteria](v1-readiness.md) compare these claims with the release bar.
+
 Bounded observations from v0.10.0 through v0.12.0 and later source checks, checked on 2026-11-03. A supported schema doesn't prove runtime or cloud compatibility. Versions outside this table may work but aren't qualified. No production reliability or security certification is claimed.
 
 | Surface | Checked environment | Observed result | Remaining limits |
 |---|---|---|---|
 | Python package on macOS | Python 3.12.10, macOS 26.7.1, x86_64 | v0.14.0 on 2026-11-13: fresh venv install from the README, 653 tests, and the demo from an editable install and an installed wheel, including static HTTP delivery and promotion | Other macOS and Python combinations |
 | Python package on Linux | Python 3.14.4, Ubuntu 26.04, x86_64 | v0.7 runtime base: all 177 tests | Later incident/preview tests not rerun on Python 3.14. Other distributions and architectures |
-| CI | Ubuntu and macOS, Python 3.11 and 3.13 | Source checks, demo, and a pipx install of the built wheel with the demo run from it, on both systems. The full tests pass on Ubuntu. On macOS runners they passed in 3 of 4 runs of the final workflow. The fourth hit `test_guest_process_group_is_stopped_on_authority_loss` (a `PermissionError` when signaling a process group), so the macOS test step reports without failing the job. Inspect each commit's workflow result | CI does not exercise live providers. The macOS test step is not yet reliable on hosted runners |
+| CI | Ubuntu and macOS, Python 3.11 and 3.13 | At `3bb77d6`, all four Linux/macOS test jobs passed, both pipx wheel and source install demos passed, and dependency and secret scans passed in the [hosted run](https://github.com/neon1llc/deploy-ops/actions/runs/45665267490). The macOS test step passed but remains non-blocking after an earlier hosted `PermissionError` while signaling a process group | Repeat hosted runs before removing the macOS soft failure. CI does not exercise live providers |
 | Local browser console | Chrome 156.0.8078.80 on macOS | Auth, editing, approvals, delivery, promotion, recovery, appearance, focus, narrow layout | Safari, Firefox and assistive-technology audit |
 | Controller container | Docker 29.1.3, Linux x86_64 | v0.7 image build, nonroot/read-only startup, persistent state volume and HTTP health | HA, backup restoration and production ingress |
 | Compose application | Docker 29.1.3, Compose 2.40.3 | First deployment, health wait, app-only update, HTTP content and cleanup | Image build/publish, promotion and production host policy |
